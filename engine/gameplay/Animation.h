@@ -180,6 +180,10 @@ struct AnimatorState {
     // This frame's points, its size and whether it's drawn mirrored (for attachments).
     std::map<std::string, AnimPoint> points;
     float frameWidth = 0.0f, frameHeight = 0.0f;
+    // Where it was at the last update, and how fast it went since (smoothed): "speed" for one moved without a velocity
+    // (an AI package's walk sets its place directly).
+    float lastX = 0.0f, lastY = 0.0f, moved = 0.0f;
+    bool placed = false;
 };
 
 // Sets each animated entity's sprite to its current frame. `parameters` adds

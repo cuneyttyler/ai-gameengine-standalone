@@ -1456,7 +1456,9 @@ def create_app(
         faces = charsheet.directions_of(sheet)
         mirrored = {"west": "east", "south-west": "south-east", "north-west": "north-east"}
         painted = [d for d in faces if not (d in mirrored and mirrored[d] in faces)]
-        if video_animator(request.provider) or pixellab_animator(request.provider):
+        if pixellab_animator(request.provider):
+            painted = [d for d in ("south", "south-east", "east", "north-east", "north") if d in faces]  # (see below)
+        elif video_animator(request.provider):
             painted = [d for d in ("south", "east", "north") if d in faces]  # the calls it makes (see below)
         auto = autosprite_animator(request.provider)
         if auto:
@@ -1544,16 +1546,15 @@ def create_app(
             # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
             # one after another (a low-credit BFL account runs one task at a time).
             results = {d: one(d)[1] for d in painted}
-        elif video or v3:
-            # As few calls as keep it good: south, east and north alone, one each; west is east mirrored, and the diagonals
-            # are left to the nearest direction the clip has (the animator's), their idle poses still their own. PixelLab's
-            # all at once (its queue is the wait); BFL's one after another (a low-credit account runs one task at a time).
-            wanted = [d for d in ("south", "east", "north") if d in faces]
-            if v3:
-                with ThreadPoolExecutor(3) as pool:
-                    results = dict(pool.map(one, wanted))
-            else:
-                results = {d: one(d)[1] for d in wanted}
+        elif v3:
+            # PixelLab: one call a direction it faces but the west side (south-east, east, north-east mirrored): five for
+            # eight, all at once (its queue is the wait). Walking on the diamond grid is mostly diagonal.
+            with ThreadPoolExecutor(5) as pool:
+                results = dict(pool.map(one, painted))
+        elif video:
+            # BFL video: as few calls as keep it good, south, east and north alone, one after another (a low-credit
+            # account runs one task at a time); west is east mirrored, the diagonals left to the nearest direction.
+            results = {d: one(d)[1] for d in painted}
         else:
             with ThreadPoolExecutor(3) as pool:
                 results = dict(pool.map(one, painted))

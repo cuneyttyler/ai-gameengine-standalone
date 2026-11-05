@@ -43,6 +43,7 @@
 #include <atomic>
 #include <deque>
 #include <functional>
+#include <filesystem>
 #include <map>
 #include <thread>
 #include <memory>
@@ -807,6 +808,11 @@ private:
     bool inspectorStale_ = false;
     bool editorStateStale_ = true;
     double sinceInspectorRefresh_ = 0.0;
+    // Animation sheets changed on disk by something else (the AI panel's walks, made by the service): read again so
+    // the viewport and Play use their new frames. Each sheet's last write time, checked every two seconds.
+    void ReloadChangedSheets(double frameSeconds);
+    std::map<std::string, std::filesystem::file_time_type> sheetTimes_;
+    double sinceSheetCheck_ = 0.0;
 };
 
 } // namespace aige

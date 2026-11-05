@@ -374,6 +374,7 @@ AnimLibrary::AnimLibrary(fs::path projectRoot) : root_(std::move(projectRoot)) {
 void AnimLibrary::Refresh() {
     sheets_.clear();
     problems_.clear();
+    sizes_.clear(); // a sheet's picture grown (a walk added) is read again
     std::error_code ec;
     if (root_.empty() || !fs::is_directory(root_, ec)) return;
     for (const auto& file : fs::recursive_directory_iterator(root_, fs::directory_options::skip_permission_denied, ec)) {
@@ -666,6 +667,15 @@ std::vector<AnimEventFired> UpdateAnimators(Registry& registry, const AnimLibrar
         // Parameters, from components and triggers.
         std::map<std::string, float> p;
         if (const auto* v = registry.try_get<Velocity2D>(entity)) p["speed"] = std::sqrt(v->x * v->x + v->y * v->y);
+        // Moved without a velocity (an AI package's walk, a cutscene's move): its speed from where it was. A jump (a
+        // teleport, dragged in the editor) isn't walking; smoothed so a frame without a step doesn't drop to idle.
+        if (const auto* w = registry.try_get<WorldTransform2D>(entity); w && dt > 0.0f) {
+            const float d = state.placed ? std::hypot(w->x - state.lastX, w->y - state.lastY) : 0.0f;
+            const float now = d / dt < 30.0f ? d / dt : 0.0f;
+            state.moved = now > state.moved ? now : state.moved + (now - state.moved) * std::min(1.0f, dt * 8.0f);
+            state.lastX = w->x, state.lastY = w->y, state.placed = true;
+            if (state.moved > p["speed"]) p["speed"] = state.moved;
+        }
         p["dead"] = registry.all_of<Dead>(entity) ? 1.0f : 0.0f;
         p["attacking"] = state.attacking;
         p["hurt"] = state.hurt;

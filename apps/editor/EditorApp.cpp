@@ -3915,6 +3915,31 @@ std::filesystem::path EditorApp::LayoutPath() const {
 // The scene is snapshotted on Play and restored on Stop, so a playtest (and
 // any inspector edits made during it) never changes the edited scene.
 
+void EditorApp::ReloadChangedSheets(double frameSeconds) {
+    sinceSheetCheck_ += frameSeconds;
+    if (sinceSheetCheck_ < 2.0) return;
+    sinceSheetCheck_ = 0.0;
+    const std::filesystem::path& root = assets_.GetProject().root;
+    if (root.empty()) return;
+    bool changed = false;
+    std::vector<std::string> textures;
+    for (const AnimSheet& sheet : session_.Animations().Sheets()) {
+        std::error_code ec;
+        const auto time = std::filesystem::last_write_time(root / sheet.path, ec);
+        if (ec) continue;
+        auto [it, added] = sheetTimes_.try_emplace(sheet.path, time);
+        if (!added && it->second != time) {
+            it->second = time;
+            changed = true;
+            textures.push_back(sheet.texture);
+        }
+    }
+    if (!changed) return;
+    for (const auto& texture : textures) renderer_.InvalidateTexture(texture);
+    session_.ReloadAnimations();
+    post_(AnimationsJson());
+}
+
 void EditorApp::StartPlay() {
     if (playing_) {
         return;
@@ -3932,6 +3957,7 @@ void EditorApp::StartPlay() {
     session_.OnSceneChanged(); // no gateway fires under a player who starts on one
     // Dialogue and quests as they are on disk now; a fresh run each Play.
     story_.Refresh();
+    session_.ReloadAnimations(); // animations too (a walk the AI panel just made)
     world_.Refresh();
     session_.SetStory(&story_);
     session_.SetScene(OpenSceneRelative());
@@ -5381,6 +5407,7 @@ void EditorApp::Tick(double frameSeconds) {
     const SlowWatch whole("frame (all of Tick: if only this is logged, it was the rest of the frame's work)");
     { const SlowWatch w("frame: the AI's answers"); PollAi(); }
     if (!playing_) ApplyInteriors(registry_); // the Inspector's Interior ▸ shown previews it
+    if (!playing_) ReloadChangedSheets(frameSeconds);
     if (!playing_) UpdateAnimators(registry_, session_.Animations(), static_cast<float>(frameSeconds)); // characters idle, facing their way
     { const SlowWatch w("frame: a build job ending"); FinishBuildJob(); }
     { const SlowWatch w("frame: a build step"); StepBuildRun(); }
@@ -10260,6 +10287,8 @@ void EditorApp::RefreshAssets() {
         renderer_.InvalidateTexture(path);
         ++assetVersions_[path];
     }
+    // Sheets made or grown with them (a character the AI panel made): its thumbnail shows one pose, not the whole sheet.
+    session_.ReloadAnimations();
     post_(AssetsJson());
     // What the Art tool made, kept outside the project too (development_plan.md 10).
     if (UserLibrary(UserLibraryDir()).KeepGenerated(assets_.GetProject().root) > 0) PostLibrary();
