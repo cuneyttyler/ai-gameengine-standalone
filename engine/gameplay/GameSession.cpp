@@ -308,9 +308,12 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
                 const float x1 = screen.x + sprite.width * 0.5f, y1 = screen.y + sprite.height * 0.5f;
                 for (const Building& b : buildings) {
                     if (x1 <= b.x0 || x0 >= b.x1 || y1 <= b.y0 || y0 >= b.y1) continue;
+                    // Inside it (its interior not shown, or it wouldn't be listed): hidden behind its walls.
+                    const bool inside = world.x > b.cx - b.left && world.x < b.cx + b.right + 1.0f && world.y > b.cy - b.back &&
+                                        world.y < b.cy + 1.0f;
                     const float nx = std::clamp(world.x, b.cx - b.left, b.cx + b.right + 1.0f);
                     const float ny = std::clamp(world.y, b.cy - b.back, b.cy + 1.0f);
-                    const bool inFront = own >= ProjectIso(nx, ny, iso).depth;
+                    const bool inFront = !inside && own >= ProjectIso(nx, ny, iso).depth;
                     // In front: over its door and other parts too (drawn at its depth + 0.01, PlaceAttachments); behind:
                     // under the building and what's on its front.
                     if (inFront && screen.depth <= b.depth + 0.015f) screen.depth = b.depth + 0.02f;
