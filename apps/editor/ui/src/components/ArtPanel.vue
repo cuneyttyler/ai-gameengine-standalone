@@ -226,6 +226,8 @@ const whyOff = computed(() =>
         >
           Generate {{ variantList.length > 1 ? variantList.length + ' variants' : '' }}
         </button>
+        <span class="muted" :title="editorState.ai.project.art ? 'The art model of this project (Project Settings ▸ AI). Preferences ▸ AI ▸ Art can make the project follow the app.' : 'Preferences ▸ AI ▸ Art'">
+          By {{ editorState.ai.artInUse }}{{ editorState.ai.project.art ? ' (set by this project)' : '' }}</span>
         <span v-if="busy" class="muted">Drawing {{ expected }} {{ expected === 1 ? 'image' : 'images' }} (~10 s each)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
         <span v-else-if="whyOff" class="muted">{{ whyOff }}</span>

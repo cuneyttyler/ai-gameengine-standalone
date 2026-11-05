@@ -778,6 +778,20 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
         SendProvider();
         post_(AiStatusJson());
+    } else if (type == "ai:projectFollowsApp") {
+        // The open project's own choice (Project Settings ▸ AI: art, background, paint, provider) cleared: it follows the
+        // app's (Preferences ▸ AI) from now on.
+        const std::string which = message.value("which", std::string());
+        if (which == "art" || which == "background" || which == "paint" || which == "provider" || which == "model") {
+            if (auto error = EditSetting(EngineReflection(), "AI", which, std::string())) {
+                post_({{"type", "notify"}, {"text", *error}});
+            } else {
+                SaveSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
+                SendProvider();
+                post_({{"type", "notify"}, {"text", "This project now uses Preferences ▸ AI's " + which + " choice"}});
+            }
+        }
+        post_(AiStatusJson());
     } else if (type == "ai:setCheckModels") {
         // Who checks new writing against the canon and who looks at pictures (Preferences ▸ AI ▸ Checks): auto, mistral
         // or openrouter, each with a model. Applied at once.

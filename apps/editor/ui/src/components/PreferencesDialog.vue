@@ -298,6 +298,10 @@ function close(): void {
                   </select>
                   <p v-if="editorState.ai.artError" class="error">{{ editorState.ai.artError }}</p>
                   <p class="desc">Who draws the prefabs' art: every piece made in one style (Assembled builds), and the Art tool's single pieces.</p>
+                  <p v-if="editorState.ai.project.art" class="override">
+                    This project uses its own: <b>{{ editorState.ai.project.art }}</b> (Project Settings ▸ AI), so the choice above doesn't apply to it.
+                    <button class="small" @click="sendToHost({ type: 'ai:projectFollowsApp', which: 'art' })">Use this choice in the project</button>
+                  </p>
                   <p v-if="editorState.ai.project.art" class="desc">This project uses its own: {{ editorState.ai.project.art }}.</p>
                 </div>
               </div>
@@ -319,7 +323,10 @@ function close(): void {
                   </select>
                   <p v-if="editorState.ai.backgroundError" class="error">{{ editorState.ai.backgroundError }}</p>
                   <p class="desc">Who paints a place's background: its ground, roads and floors as one picture, from its plan.</p>
-                  <p v-if="editorState.ai.project.background" class="desc">This project uses its own: {{ editorState.ai.project.background }}.</p>
+                  <p v-if="editorState.ai.project.background" class="override">
+                    This project uses its own: <b>{{ editorState.ai.project.background }}</b> (Project Settings ▸ AI), so the choice above doesn't apply to it.
+                    <button class="small" @click="sendToHost({ type: 'ai:projectFollowsApp', which: 'background' })">Use this choice in the project</button>
+                  </p>
                 </div>
               </div>
               <div class="field">
@@ -399,6 +406,16 @@ function close(): void {
 </template>
 
 <style scoped>
+.override {
+  margin: 4px 0 0;
+  padding: 4px 6px;
+  border-left: 2px solid #f59e0b;
+  background: #f59e0b14;
+  font-size: 11.5px;
+}
+.override button {
+  margin-left: 6px;
+}
 .backdrop {
   position: fixed;
   inset: 0;
