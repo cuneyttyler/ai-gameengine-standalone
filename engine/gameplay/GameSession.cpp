@@ -284,6 +284,40 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
             }
         }
     }
+    // Everyone else who walks (characters with packages, followers): a building's one depth suits the player only, so
+    // each one whose picture overlaps a building's is drawn in front of it when in front of the footprint point nearest
+    // them, behind it otherwise (not cut by a building they walk past the front of).
+    {
+        struct Building {
+            float cx, cy, left, right, back, depth, x0, y0, x1, y1;
+        };
+        std::vector<Building> buildings;
+        for (auto [entity, obstacle, world, screen, sprite] : registry.view<Obstacle, WorldTransform2D, ScreenTransform2D, Sprite>(entt::exclude<Tile>).each()) {
+            if ((obstacle.left <= 0 && obstacle.right <= 0 && obstacle.back <= 0) || sprite.flat || sprite.ground) continue;
+            if (const auto* interior = registry.try_get<Interior>(entity); interior && interior->shown) continue;
+            buildings.push_back({std::floor(world.x), std::floor(world.y), static_cast<float>(obstacle.left), static_cast<float>(obstacle.right),
+                                 static_cast<float>(obstacle.back), screen.depth, screen.x - sprite.width * 0.5f, screen.y - sprite.height * 0.5f,
+                                 screen.x + sprite.width * 0.5f, screen.y + sprite.height * 0.5f});
+        }
+        const auto player = FindPlayer(registry);
+        if (!buildings.empty()) {
+            for (auto [entity, world, screen, sprite] : registry.view<WorldTransform2D, ScreenTransform2D, Sprite>(entt::exclude<Tile, Obstacle>).each()) {
+                if (sprite.flat || sprite.ground || (player && entity == *player)) continue;
+                if (!registry.any_of<Behaviour, Follow, Velocity2D, Animator>(entity)) continue;
+                const float own = ProjectIso(world.x, world.y, iso).depth;
+                const float x0 = screen.x - sprite.width * 0.5f, y0 = screen.y - sprite.height * 0.5f;
+                const float x1 = screen.x + sprite.width * 0.5f, y1 = screen.y + sprite.height * 0.5f;
+                for (const Building& b : buildings) {
+                    if (x1 <= b.x0 || x0 >= b.x1 || y1 <= b.y0 || y0 >= b.y1) continue;
+                    const float nx = std::clamp(world.x, b.cx - b.left, b.cx + b.right + 1.0f);
+                    const float ny = std::clamp(world.y, b.cy - b.back, b.cy + 1.0f);
+                    const bool inFront = own >= ProjectIso(nx, ny, iso).depth;
+                    if (inFront && screen.depth <= b.depth) screen.depth = b.depth + 0.001f;
+                    else if (!inFront && screen.depth >= b.depth) screen.depth = b.depth - 0.001f;
+                }
+            }
+        }
+    }
 
     auto tiles = registry.view<Tile, ScreenTransform2D>();
     for (auto entity : tiles) {

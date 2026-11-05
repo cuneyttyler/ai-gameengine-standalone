@@ -20,6 +20,7 @@ export interface AiCall {
   plan?: AiStep[] // its steps known beforehand (matched art: each sheet and its pieces, the check, the fixes)
   taskPlan?: string[] // an AI panel task's plan, known once its answer is read (before its art or walks are made)
   taskStep?: string // that answer's step, while its art or walks are made
+  taskReply?: string // its reply to the user (a task's first answer)
 }
 
 export interface AiStep {

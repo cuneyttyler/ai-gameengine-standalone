@@ -44,6 +44,7 @@ class Entry:
     plan: list = field(default_factory=list)  # its steps known beforehand: [{id, label, pieces, state, made}]
     task_plan: list = field(default_factory=list)  # an AI panel task's plan (lines), known once its answer is read
     task_step: str = ""  # that answer's step (its summary), while its art or characters are made
+    task_reply: str = ""  # its reply to the user (a task's first answer)
 
     def view(self) -> dict:
         now = self.ended or time.monotonic()
@@ -54,6 +55,7 @@ class Entry:
             "plan": self.plan,
             "taskPlan": self.task_plan,
             "taskStep": self.task_step,
+            "taskReply": self.task_reply,
             "id": self.id,
             "path": self.path,
             "label": self.label,
@@ -110,7 +112,7 @@ def reporter():
     entry_id = _current.get()
 
     def report(done: int | None = None, total: int | None = None, step: str | None = None, plan: list | None = None,
-               task_plan: list | None = None, task_step: str | None = None) -> None:
+               task_plan: list | None = None, task_step: str | None = None, task_reply: str | None = None) -> None:
         with _lock:
             if entry_id is None or (entry := _active.get(entry_id)) is None:
                 return
@@ -126,6 +128,8 @@ def reporter():
                 entry.task_plan = task_plan
             if task_step is not None:
                 entry.task_step = task_step
+            if task_reply is not None:
+                entry.task_reply = task_reply
             entry.calls = max(entry.calls, 1)  # shown on the strips, though its calls aren't streamed
     return report
 

@@ -9034,6 +9034,7 @@ void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
            {"plan", task_->Plan()},
            {"step", step.number},
            {"summary", step.summary},
+           {"reply", answer.value("reply", "")},
            {"applyErrors", step.applyErrors},
            {"problems", problems},
            {"state", state == TaskRunner::State::Working ? "working" : "finished"}});

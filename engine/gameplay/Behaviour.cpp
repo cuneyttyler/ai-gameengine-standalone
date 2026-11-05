@@ -254,14 +254,19 @@ struct Run {
             return true;
         }
         const auto goal = Cell(to.first, to.second);
-        // Recovery from being stuck (any reason: a wall's corner, a door that didn't open, someone in the way): getting
-        // no nearer the goal, it plans again, then slips past thin walls, then steps out to an open spot; at last it's
-        // moved to the goal if the player can't see it, else gives the goal up so its package does something else.
+        // Recovery from being stuck (any reason: a wall's corner, a door that didn't open, someone in the way): staying
+        // near one spot (not just getting no nearer the goal: a way round a building is walked, not stuck), it plans
+        // again, then slips past thin walls, then steps out to an open spot; at last it's moved to the goal if the
+        // player can't see it, else gives the goal up so its package does something else.
         {
             const float left = std::sqrt(dxT * dxT + dyT * dyT);
-            if (goal != state.goal) state.noProgress = 0.0f, state.nearest = left, state.recovery = 0, state.gaveUp = false;
-            if (left < state.nearest - 0.2f) state.nearest = left, state.noProgress = 0.0f, state.recovery = 0;
-            else state.noProgress += dt;
+            const bool fresh = goal != state.goal;
+            if (fresh) state.noProgress = 0.0f, state.nearest = left, state.recovery = 0, state.gaveUp = false;
+            if (fresh || std::hypot(at.x - state.anchorX, at.y - state.anchorY) > 0.75f || left < 0.3f) {
+                state.anchorX = at.x, state.anchorY = at.y, state.noProgress = 0.0f, state.recovery = 0;
+            } else {
+                state.noProgress += dt;
+            }
             if (state.gaveUp) return false;
             if (state.noProgress > 1.5f && state.recovery < 1) {
                 state.recovery = 1;
@@ -385,8 +390,12 @@ struct Run {
         // along the way rather than pushing against the corner for ever.
         if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && ctx.wallBetween &&
             ((state.stuck > 0.35f && !ctx.wallBetween(at.x, at.y, tx, ty)) || state.recovery >= 2)) {
+            // Through a thin wall only when really stuck (recovery 2: three seconds near one spot); caught on a doorway's
+            // edge, only along a way clear of walls.
             const float nx = at.x + dx / distance * step, ny = at.y + dy / distance * step;
-            if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny)))) moved = {nx, ny}, slipped = true;
+            const bool throughWall = ctx.wallBetween(at.x, at.y, nx, ny);
+            if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny))) && (!throughWall || state.recovery >= 2))
+                moved = {nx, ny}, slipped = true;
         }
         const float progress = std::hypot(moved.x - at.x, moved.y - at.y);
         at.x = moved.x;

@@ -408,6 +408,9 @@ class Outline(BaseModel):
 
 class Proposal(BaseModel):
     summary: str
+    # A task's first answer: a sentence or two to the user, first person, what it's doing and how much ("I'm animating
+    # 21 characters with a walk, four at a time: 6 steps."), shown at once in the AI panel, before the slow work.
+    reply: str = ""
     # Art to make first: the service draws each, and "art:<name>" in the operations becomes its path.
     art: list[ArtRequest] = []
     # Characters and animations to make first (Generate's, by the service).

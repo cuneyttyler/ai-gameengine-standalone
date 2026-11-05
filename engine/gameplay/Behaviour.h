@@ -112,10 +112,12 @@ struct BehaviourState {
     size_t next = 0;
     std::pair<int, int> goal{INT32_MIN, INT32_MIN};
     float stuck = 0.0f;
-    // Getting no nearer the goal (Walk's recovery): how long, the nearest it has come, and how far recovery has gone
-    // (1 planned again, 2 slipping past thin walls, 3 stepped out to an open spot, then gave up or was moved there).
+    // Really stuck (Walk's recovery): how long it's stayed near one spot (`anchor`, where it last got clear of), and
+    // how far recovery has gone (1 planned again, 2 slipping past thin walls, 3 stepped out to an open spot, then gave
+    // up or was moved there). Walking round a building to its door isn't stuck, though it gets no nearer for a while.
     float noProgress = 0.0f;
     float nearest = 1e9f;
+    float anchorX = 0.0f, anchorY = 0.0f;
     int recovery = 0;
     bool gaveUp = false; // the goal given up (a step walking to it fails, and the package goes on)
     // Using a smart object.

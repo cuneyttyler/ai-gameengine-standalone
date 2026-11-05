@@ -14,6 +14,7 @@ Answer with ONE JSON object and nothing else:
   "scope": "small" | "task" | "split" | "tools" | "route" | "ask",
   "summary": "one sentence describing the change (for a task: this step), for the review panel",
   "plan": ["only for a task that benefits from planning: 2-6 short steps"],
+  "reply": "task only, on its first answer: one or two short sentences to the user, first person, plain words: what you're doing and how much, e.g. \"I'm animating 21 characters with a walk, four at a time: 6 steps. Garran, Harl, Iven and Jory first.\"",
   "outline": {"title": "...", "text": "the idea in a few lines", "parts": [{"heading": "The Mill", "items": ["Bren, the miller: ..."]}]}   (only on a task's first answer, alone: see "task"),
   "operations": [ ...operations, applied in order... ],
   "done": true/false (task only: true on the step that finishes the request),

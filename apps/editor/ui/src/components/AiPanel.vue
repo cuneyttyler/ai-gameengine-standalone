@@ -77,6 +77,7 @@ interface TaskEntry {
   plan: string[]
   steps: { number: number; summary: string; problems: number; applyErrors: number }[]
   state: 'working' | 'finished' | 'stopped'
+  reply?: string // its first answer's few words to the user ("I'm animating 21 characters…")
   reason: string
   paused?: { step: number; summary: string; operations: unknown[] } // Review each step: waiting for Continue
   // An outline first (a village's people, a story): shown for approval before anything is made.
@@ -268,6 +269,7 @@ function handle(message: Record<string, unknown>): void {
     const entry = taskEntry(message.id as number)
     entry.outlineWaiting = false
     entry.plan = (message.plan as string[]) ?? []
+    if (message.reply && !entry.reply) entry.reply = message.reply as string
     entry.steps.push({
       number: message.step as number,
       summary: message.summary as string,
@@ -452,6 +454,9 @@ function taskEntry(id: number): TaskEntry {
 // A working task's answer being made now (its art or walks take minutes): its plan and step, from the service's
 // progress, before the answer reaches the editor.
 const liveTask = computed(() => aiCalls.value.find((c) => c.path === '/propose' && (c.taskPlan?.length || c.taskStep)))
+function taskReply(entry: TaskEntry): string {
+  return entry.reply || (entry.state === 'working' && !entry.steps.length ? (liveTask.value?.taskReply ?? '') : '')
+}
 function taskPlan(entry: TaskEntry): string[] {
   return entry.plan.length || entry.state !== 'working' ? entry.plan : (liveTask.value?.taskPlan ?? [])
 }
@@ -725,6 +730,7 @@ const examples = [
               </div>
             </template>
           </div>
+          <p v-if="taskReply(entry)" class="task-reply">{{ taskReply(entry) }}</p>
           <ol v-if="taskPlan(entry).length" class="task-plan">
             <li v-for="(line, i) in taskPlan(entry)" :key="i">{{ line }}</li>
           </ol>
@@ -1198,6 +1204,10 @@ h2 {
   display: flex;
   gap: 6px;
   margin-top: 6px;
+}
+.task-reply {
+  margin: 4px 0;
+  line-height: 1.4;
 }
 .task-plan {
   margin: 8px 0 0;
