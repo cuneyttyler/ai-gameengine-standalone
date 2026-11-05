@@ -113,7 +113,7 @@ struct BehaviourState {
     std::pair<int, int> goal{INT32_MIN, INT32_MIN};
     float stuck = 0.0f;
     // Really stuck (Walk's recovery): how long it's stayed near one spot (`anchor`, where it last got clear of), and
-    // how far recovery has gone (1 planned again, 2 slipping past thin walls, 3 stepped out to an open spot, then gave
+    // how far recovery has gone (1 planned again, 2 jumped to the next cell of its way, 3 stepped out to an open spot, then gave
     // up or was moved there). Walking round a building to its door isn't stuck, though it gets no nearer for a while.
     float noProgress = 0.0f;
     float nearest = 1e9f;

@@ -256,8 +256,8 @@ struct Run {
         const auto goal = Cell(to.first, to.second);
         // Recovery from being stuck (any reason: a wall's corner, a door that didn't open, someone in the way): staying
         // near one spot (not just getting no nearer the goal: a way round a building is walked, not stuck), it plans
-        // again, then slips past thin walls, then steps out to an open spot; at last it's moved to the goal if the
-        // player can't see it, else gives the goal up so its package does something else.
+        // again, then jumps to the next open cell on its way, then steps out to an open spot; at last it's moved to the
+        // goal if the player can't see it, else gives the goal up so its package does something else.
         {
             const float left = std::sqrt(dxT * dxT + dyT * dyT);
             const bool fresh = goal != state.goal;
@@ -272,7 +272,21 @@ struct Run {
                 state.recovery = 1;
                 state.path.clear(); // plan again
             } else if (state.noProgress > 3.0f && state.recovery < 2) {
-                state.recovery = 2; // slips past thin walls below
+                state.recovery = 2;
+                // Jumps onto the next open cell of its way (the one after it when it can): never slipping through the
+                // wall in between, it's put past what held it.
+                if (state.next < state.path.size()) {
+                    for (size_t i = std::min(state.next + 1, state.path.size() - 1) + 1; i-- > state.next;) {
+                        const auto [cx, cy] = state.path[i];
+                        if (ctx.isSolid(cx, cy) && !(i + 1 == state.path.size())) continue;
+                        const Vec2 there = WaypointIn(cx, cy);
+                        at.x = there.x, at.y = there.y;
+                        state.next = i + 1;
+                        state.stuck = 0.0f;
+                        if (state.next >= state.path.size()) return true;
+                        break;
+                    }
+                }
             } else if (state.noProgress > 5.0f && state.recovery < 3) {
                 state.recovery = 3;
                 // The nearest open spot within two cells that isn't where it stands: stepped to.
@@ -387,14 +401,12 @@ struct Run {
         Vec2 moved = ResolveAabbMovement({at.x, at.y}, half, {dx / distance * step, dy / distance * step}, ctx.isSolid);
         bool slipped = false;
         // Caught on a thin wall's piece (a narrow doorway's edge) where the planned way itself is clear of walls: it slips
-        // along the way rather than pushing against the corner for ever.
-        if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && ctx.wallBetween &&
-            ((state.stuck > 0.35f && !ctx.wallBetween(at.x, at.y, tx, ty)) || state.recovery >= 2)) {
-            // Through a thin wall only when really stuck (recovery 2: three seconds near one spot); caught on a doorway's
-            // edge, only along a way clear of walls.
+        // along the way rather than pushing against the corner for ever, never through a wall (really stuck, it jumps
+        // to a cell of its way instead: the recovery above).
+        if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && ctx.wallBetween && state.stuck > 0.35f &&
+            !ctx.wallBetween(at.x, at.y, tx, ty)) {
             const float nx = at.x + dx / distance * step, ny = at.y + dy / distance * step;
-            const bool throughWall = ctx.wallBetween(at.x, at.y, nx, ny);
-            if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny))) && (!throughWall || state.recovery >= 2))
+            if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny))) && !ctx.wallBetween(at.x, at.y, nx, ny))
                 moved = {nx, ny}, slipped = true;
         }
         const float progress = std::hypot(moved.x - at.x, moved.y - at.y);
