@@ -611,6 +611,11 @@ AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
   vendor · sleep (its bed, location.alias bed) · eat · patrol (data.route: a named path, or data.path: markers) · guard · follow / accompany /
   escort / flee (target, data.distance) · hide · ambush (data.radius) · wait · use-object · approach-player
   (data.dialogue) · custom (its own "procedure") · script (data.script: a Lua file with run()).
+  Their numbers are data too, each left empty for the template's own: data.waitMin / data.waitMax (seconds it stands
+  after a walk or a use: wander, sandbox, use-part, tend, live), data.radius (how far it looks: eat, work, vendor,
+  sleep, use-object), data.duration (how long it stays when it finds nothing: eat, work), sandbox's
+  data.objectsWeight / data.outsideWeight / data.barkWeight (3 / 2 / 1), live's data.partRadius (15), accompany's
+  data.distance (2). Set only what the request asks ("waits longer" = waitMin / waitMax).
 - custom: "procedure" is a behaviour tree as JSON. Composites: sequence, selector (first that succeeds), random
   ("weights": one per child), parallel, loop ("count", none: for ever); decorators (one child): condition ("if":
   conditions, "time": {"from","to"}), cooldown ("seconds"), invert. Steps: move-to {"to": "@location"|"@home"|

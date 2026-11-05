@@ -33,54 +33,54 @@ const char* kTemplates = R"JSON({
   "stay": {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle"}]},
   "wander": {"type": "loop", "children": [{"type": "sequence", "children": [
       {"type": "wander", "around": "@location", "radius": "@data:radius"},
-      {"type": "wait", "min": 2, "max": 5}]}]},
-  "sandbox": {"type": "loop", "children": [{"type": "random", "weights": [3, 2, 1], "children": [
+      {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=5"}]}]},
+  "sandbox": {"type": "loop", "children": [{"type": "random", "weights": ["@data:objectsWeight=3", "@data:outsideWeight=2", "@data:barkWeight=1"], "children": [
       {"type": "use-object", "affordance": "sit|eat|drink|read|warm|pray", "around": "@location", "radius": "@data:radius"},
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "radius": "@data:radius"},
-                                          {"type": "wait", "min": 2, "max": 6}]},
+                                          {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=6"}]},
       {"type": "sequence", "children": [{"type": "bark", "text": "@idle"}, {"type": "wait", "min": 3, "max": 6}]}]}]},
   "sleep": {"type": "selector", "children": [
-      {"type": "use-object", "type_": "bed", "affordance": "sleep", "around": "@bed", "radius": 12, "forever": true},
+      {"type": "use-object", "type_": "bed", "affordance": "sleep", "around": "@bed", "radius": "@data:radius=12", "forever": true},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle", "hidden": true}]}]},
   "eat": {"type": "selector", "children": [
-      {"type": "use-object", "affordance": "eat", "around": "@location", "radius": 10},
-      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 10}]}]},
+      {"type": "use-object", "affordance": "eat", "around": "@location", "radius": "@data:radius=10"},
+      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": "@data:duration=10"}]}]},
   "work": {"type": "loop", "children": [{"type": "selector", "children": [
-      {"type": "use-object", "type_": "@data:object", "affordance": "work", "around": "@location", "radius": 10},
-      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 8}]}]}]},
+      {"type": "use-object", "type_": "@data:object", "affordance": "work", "around": "@location", "radius": "@data:radius=10"},
+      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": "@data:duration=8"}]}]}]},
   "vendor": {"type": "loop", "children": [{"type": "selector", "children": [
-      {"type": "use-object", "type_": "counter", "affordance": "work", "around": "@location", "radius": 10, "forever": true},
+      {"type": "use-object", "type_": "counter", "affordance": "work", "around": "@location", "radius": "@data:radius=10", "forever": true},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle"}]}]}]},
   "patrol": {"type": "patrol", "points": "@data:path", "route": "@data:route", "wait": "@data:duration"},
   "follow-path": {"type": "follow-path", "path": "@data:route", "mode": "@data:mode", "from": "@data:from", "hold": true},
   "guard": {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle"}]},
   "follow": {"type": "follow", "target": "@target", "distance": "@data:distance"},
-  "accompany": {"type": "follow", "target": "@player", "distance": 2},
+  "accompany": {"type": "follow", "target": "@player", "distance": "@data:distance=2"},
   "escort": {"type": "escort", "target": "@target", "to": "@location", "wait": "@data:distance"},
   "flee": {"type": "flee", "from": "@target", "distance": "@data:distance"},
   "hide": {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle", "hidden": true}]},
   "ambush": {"type": "sequence", "children": [{"type": "move-to", "to": "@location"},
                                                {"type": "ambush", "radius": "@data:radius"}]},
   "wait": {"type": "idle"},
-  "use-object": {"type": "use-object", "type_": "@data:object", "around": "@location", "radius": 12},
+  "use-object": {"type": "use-object", "type_": "@data:object", "around": "@location", "radius": "@data:radius=12"},
   "approach-player": {"type": "talk-to-player", "dialogue": "@data:dialogue"},
   "script": {"type": "script", "script": "@data:script"},
   "use-part": {"type": "loop", "children": [{"type": "selector", "children": [
       {"type": "sequence", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": "@data:radius",
                                            "seconds": "@data:duration"},
-                                          {"type": "wait", "min": 2, "max": 5}]},
+                                          {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=5"}]},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]},
   "live": {"type": "loop", "children": [{"type": "random", "weights": ["@data:outsideWeight=3", "@data:insideWeight=2", "@actionsWeight"], "children": [
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "radius": "@data:radius"},
                                           {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=6"}]},
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "inside": true},
                                           {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=6"}]},
-      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": 15,
+      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": "@data:partRadius=15",
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "seconds": 2}]}]}]},
   "tend": {"type": "loop", "children": [{"type": "selector", "children": [
       {"type": "sequence", "children": [{"type": "act", "action": "@data:action", "around": "@location", "radius": "@data:radius"},
-                                          {"type": "wait", "min": 1, "max": 3}]},
+                                          {"type": "wait", "min": "@data:waitMin=1", "max": "@data:waitMax=3"}]},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]}
 })JSON";
 

@@ -745,10 +745,12 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         // What each template needs: each value only for the templates that read it (custom's steps read any by
         // "@data:<name>").
         .Object("data",
-                {OnlyWhen(MakeRecordValue("radius", FieldType::Float, "Cells around the place"), "template",
-                          {"wander", "sandbox", "live", "use-part", "tend", "ambush", "custom"}),
-                 OnlyWhen(MakeRecordValue("duration", FieldType::Float, "Seconds: how long a part is used, or a stop on the way"), "template",
-                          {"live", "use-part", "patrol", "custom"}),
+                {OnlyWhen(MakeRecordValue("radius", FieldType::Float, "Cells around the place: where it wanders, or looks for what it "
+                                                                      "uses (empty: the template's, in its outline)"), "template",
+                          {"wander", "sandbox", "live", "use-part", "tend", "ambush", "eat", "work", "vendor", "sleep", "use-object", "custom"}),
+                 OnlyWhen(MakeRecordValue("duration", FieldType::Float, "Seconds: how long a part is used, a stop on the way, or how "
+                                                                        "long it stays when it finds nothing to use (eat, work)"), "template",
+                          {"live", "use-part", "patrol", "eat", "work", "custom"}),
                  OnlyWhen(PickedFrom(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: "
                                                                                   "its input action, station, clip or event (cook)"), "uses"),
                           "template", {"tend", "custom"}),
@@ -772,7 +774,24 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  // and how long it stands between walks; empty: the template's own (3, 2; 2 to 6 seconds).
                  OnlyWhen([] {
                      RecordField f = MakeRecordValue("outsideWeight", FieldType::Float, "How often it wanders round the place "
-                                                                                       "(against the others; empty: 3, 0: never)");
+                                                                                       "(against the others; empty: live 3, sandbox 2; 0: never)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"live", "sandbox"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("objectsWeight", FieldType::Float, "How often it uses a smart object: sits, eats, "
+                                                                                       "reads (empty: 3, 0: never)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"sandbox"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("barkWeight", FieldType::Float, "How often it says an idle remark (empty: 1, 0: never)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"sandbox"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("partRadius", FieldType::Float, "Cells around the place it looks for what it uses "
+                                                                                    "(empty: 15)");
                      f.min = 0;
                      return f;
                  }(), "template", {"live"}),
@@ -783,15 +802,17 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      return f;
                  }(), "template", {"live"}),
                  OnlyWhen([] {
-                     RecordField f = MakeRecordValue("waitMin", FieldType::Float, "Seconds it stands after a walk, at least (empty: 2)");
+                     RecordField f = MakeRecordValue("waitMin", FieldType::Float, "Seconds it stands after a walk or a use, at least "
+                                                                                 "(empty: the template's, in its outline)");
                      f.min = 0;
                      return f;
-                 }(), "template", {"live"}),
+                 }(), "template", {"live", "wander", "sandbox", "use-part", "tend"}),
                  OnlyWhen([] {
-                     RecordField f = MakeRecordValue("waitMax", FieldType::Float, "Seconds it stands after a walk, at most (empty: 6)");
+                     RecordField f = MakeRecordValue("waitMax", FieldType::Float, "Seconds it stands after a walk or a use, at most "
+                                                                                 "(empty: the template's)");
                      f.min = 0;
                      return f;
-                 }(), "template", {"live"}),
+                 }(), "template", {"live", "wander", "sandbox", "use-part", "tend"}),
                  OnlyWhen(MakeRecordValue("object", FieldType::String, "A smart object type (counter, forge, desk)"), "template",
                           {"work", "use-object", "custom"}),
                  OnlyWhen(PickedFrom(MakeRecordValue("dialogue", FieldType::String, "A dialogue file"), "dialogues"), "template",
@@ -818,11 +839,12 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      return from;
                  }(), "template", {"follow-path"}),
                  OnlyWhen(MakeRecordValue("distance", FieldType::Float, "Cells: how close it keeps, or how far it runs"), "template",
-                          {"follow", "escort", "flee", "custom"}),
+                          {"follow", "accompany", "escort", "flee", "custom"}),
                  OnlyWhen(MakeRecordValue("script", FieldType::Script, "A Lua file with run()"), "template", {"script"})},
                 "What the template needs.")
         .When("template", {"wander", "sandbox", "live", "use-part", "tend", "ambush", "patrol", "follow-path", "work",
-                           "use-object", "approach-player", "follow", "escort", "flee", "custom", "script"});
+                           "use-object", "approach-player", "follow", "escort", "flee", "custom", "script", "eat", "vendor",
+                           "sleep", "accompany"});
 
     r.RecordType("procedure", "A procedure (14.1): a behaviour tree a package template can be, written by hand. "
                               "Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; "
