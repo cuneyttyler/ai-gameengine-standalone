@@ -401,7 +401,11 @@ def background_note(colour: str) -> str:
     if hue in ("orange", "yellow") and light < 0.45:
         hue = "brown"
     tone = ("dark " if light < 0.3 else "light " if light > 0.7 else "") + ("muted " if sat < 0.35 and hue != "grey" else "") + hue
-    return f"Colours suited to a place of {colour} ({tone}): similar lighting, saturation and warmth."
+    return (f"Colours: the place it will be put in is mostly {colour} (RGB {r}, {g}, {b}: {tone}). Give the object itself "
+            "colours that belong there: the same lighting, a similar saturation and warmth, a palette harmonious with that "
+            "colour (its shadows tinted toward it), keeping its own colours recognisable. Still draw the object ALONE on the "
+            "plain pure white background as asked: do not paint that colour, a ground, a patch or any backdrop around or "
+            "behind it.")
 
 
 class ProposeResponse(BaseModel):
@@ -1785,12 +1789,12 @@ def create_app(
             return {"ok": False, "errors": ["No project or image generator available (MISTRAL_API_KEY)"]}
         if len(request.variants) > 6:
             return {"ok": False, "errors": ["At most 6 variants at a time"]}
-        # The user's description as written (a colour note an older version kept in it taken out); Match the background's
-        # note goes to the model's prompt only, never into the description that's kept.
-        clean = re.split(r"\s*(?:It will stand on a background whose average colour|Colours: the place it will be put in|Colours suited to a place of)",
-                         request.description)[0].strip()
-        description, brief = clean, None
-        colour_note = background_note(request.backgroundColour)
+        description, brief = request.description, None
+        # Match the background: its colour, in words, for the art to sit on it.
+        if note := background_note(request.backgroundColour):
+            description = f"{description.rstrip('.')}. {note}"
+            if request.context:
+                request.context["background"] = note
         # The project's look, so new art matches what's there.
         if request.context and root is not None:
             if references := project_style.brief_context(root):
@@ -1806,8 +1810,7 @@ def create_app(
             results = generate_sprites(images, root, request.name, description, request.kind,
                                        request.height, request.style, request.variants, request.evenLight, brief,
                                        layer=str(request.context.get("layer", "")) if request.context else "",
-                                       with_images=with_images, backdrops=match_backdrops(request.backgroundColour),
-                                       prompt_extra=colour_note)
+                                       with_images=with_images, backdrops=match_backdrops(request.backgroundColour))
         except ValueError as error:
             return {"ok": False, "errors": [str(error)]}
         except ProviderError as error:
