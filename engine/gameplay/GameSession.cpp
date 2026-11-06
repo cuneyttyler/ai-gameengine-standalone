@@ -131,7 +131,9 @@ void UpdatePlayerMove(Registry& registry, Entity player, float inputRight, float
             }
             return false;
         };
-        withCliffs = [&, h = *here](int x, int y) {
+        // By value (step and rampAt end with this block; the check is called after it): a reference to them read
+        // freed stack, which crashed walking on ground with heights (a painted place).
+        withCliffs = [&registry, &isSolid, cx, cy, step, rampAt, h = *here](int x, int y) {
             if (isSolid(x, y)) return true;
             if (x == cx && y == cy) return false;
             const std::optional<float> there = GroundHeightAt(registry, x + 0.5f, y + 0.5f);
