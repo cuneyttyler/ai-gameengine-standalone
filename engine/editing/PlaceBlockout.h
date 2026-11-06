@@ -31,7 +31,10 @@ class Ontology;
 // always the view (`view`: x0, y0, x1, y1, tw, th, top): cell (x, y) at height up is at
 // ((x - x0 - (y - y0)) tw/2 + (y1 - y0) tw/2, (x - x0 + y - y0) th/2 + top - up).
 inline constexpr int kBlockoutLine = 0xFFFFFF;
+// `natural`: small things (not buildings) in their own materials' colours (stone grey, wood brown, torch gold) instead of
+// the key's strong colours, so a painter that keeps a marker's colour still paints it right (the Paint method: the id map,
+// not the colour, says which thing is where).
 ImageData RenderPlanBlockout(const nlohmann::json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology = nullptr,
-                             nlohmann::json* legend = nullptr, ImageData* ids = nullptr);
+                             nlohmann::json* legend = nullptr, ImageData* ids = nullptr, bool natural = false);
 
 } // namespace aige

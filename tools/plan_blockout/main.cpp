@@ -3,8 +3,10 @@
 //
 //     plan_blockout <spec.json> <out dir>
 //
-// Writes <packing>-solved.json, <packing>-blockout.png, <packing>-blockout-ids.png and <packing>-blockout.legend.json.
+// Writes <packing>-solved.json, <packing>-blockout.png, <packing>-blockout-ids.png, <packing>-blockout.legend.json and
+// <packing>-blockout-plain.png (no things in it); and <packing>-editor/ as the editor's Paint method prepares it.
 #include "assets/TextureCook.h"
+#include "editing/PaintedPlace.h"
 #include "editing/PlaceBlockout.h"
 #include "places/Compile.h"
 #include "places/Ontology.h"
@@ -52,6 +54,14 @@ int main(int argc, char** argv) {
         WritePng(out / (packing + "-blockout.png"), image);
         WritePng(out / (packing + "-blockout-ids.png"), ids);
         std::ofstream(out / (packing + "-blockout.legend.json")) << legend.dump(2);
+        // And with no things at all: the rooms and walls alone (nothing an image model could read a thing from).
+        json bare = solved.document;
+        bare["objects"] = json::array();
+        json bareLegend;
+        ImageData bareIds;
+        WritePng(out / (packing + "-blockout-plain.png"), RenderPlanBlockout(bare, b[0], b[1], b[2], b[3], 2000, &ontology, &bareLegend, &bareIds));
+        // As the editor's Paint method prepares it (PrepareBlockout): only the things painted in, in their own colours.
+        PrepareBlockout(solved.document, &ontology, out / (packing + "-editor"), 2000);
         std::cout << packing << ": bounds " << b.dump() << ", " << solved.document.value("regions", json::array()).size()
                   << " regions\n";
     }

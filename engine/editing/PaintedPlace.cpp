@@ -217,7 +217,7 @@ json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::pat
     const auto b = OccupiedBounds(solved);
     json legend;
     ImageData idMap;
-    const ImageData image = RenderPlanBlockout(painted, b[0], b[1], b[2], b[3], width, ontology, &legend, &idMap);
+    const ImageData image = RenderPlanBlockout(painted, b[0], b[1], b[2], b[3], width, ontology, &legend, &idMap, true);
     std::error_code ec;
     fs::create_directories(folder, ec);
     WritePng(folder / "blockout.png", image);

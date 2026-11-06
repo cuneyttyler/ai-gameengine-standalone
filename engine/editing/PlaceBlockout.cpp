@@ -55,7 +55,13 @@ Rgb TerrainColour(const std::string& t) {
 
 // A thing's colour (props, buildings' walls): by what it is.
 Rgb ThingColour(const std::string& slot) {
-    if (slot == "well" || slot == "statue" || slot == "pillar" || slot == "sarcophagus" || slot == "altar") return {150, 150, 150};
+    if (slot == "well" || slot == "statue" || slot == "pillar" || slot == "sarcophagus" || slot == "altar" || slot == "stairs" ||
+        slot == "column" || slot == "tomb" || slot == "fountain") {
+        return {150, 150, 150};
+    }
+    if (slot == "debris" || slot == "rubble" || slot == "rock" || slot == "boulder") return {112, 102, 90};
+    if (slot == "bones" || slot == "skull" || slot == "skeleton") return {222, 212, 184};
+    if (slot == "trap" || slot == "chains" || slot == "cage" || slot == "anvil") return {72, 68, 66};
     if (slot == "stall" || slot == "table" || slot == "bench" || slot == "chair" || slot == "crate" || slot == "barrel" || slot == "pier" ||
         slot == "cart" || slot == "chest" || slot == "bookshelf" || slot == "desk" || slot == "bed") {
         return {128, 88, 52};
@@ -89,6 +95,19 @@ std::string Hex(Rgb c) {
     char s[8];
     std::snprintf(s, sizeof(s), "#%02X%02X%02X", c[0], c[1], c[2]);
     return s;
+}
+
+// A thing's own colour in words (ThingColour's), for the key.
+std::string MaterialName(const std::string& slot) {
+    const Rgb c = ThingColour(slot);
+    const std::string hex = " (" + Hex(c) + ")";
+    if (c == Rgb{150, 150, 150}) return "stone grey" + hex;
+    if (c == Rgb{128, 88, 52}) return "wood brown" + hex;
+    if (c == Rgb{240, 190, 80}) return "torch gold" + hex;
+    if (c == Rgb{112, 102, 90}) return "rubble grey-brown" + hex;
+    if (c == Rgb{222, 212, 184}) return "bone ivory" + hex;
+    if (c == Rgb{72, 68, 66}) return "dark iron" + hex;
+    return "muted " + Hex(c);
 }
 
 Rgb Shade(Rgb c, double k) {
@@ -154,7 +173,8 @@ public:
 
 } // namespace
 
-ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology, json* legend, ImageData* ids) {
+ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology, json* legend, ImageData* ids,
+                             bool natural) {
     // The terrain, cell by cell.
     const json bounds = solved.contains("grid") ? solved["grid"].value("bounds", json::array({0, 0, 0, 0})) : json::array({0, 0, 0, 0});
     const int W = bounds[2].get<int>(), H = bounds[3].get<int>();
@@ -250,6 +270,9 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         if (Plant(slot)) {
             colourOf[slot] = slot == "tree" ? Rgb{44, 74, 40} : slot == "flower" ? Rgb{200, 170, 90} : slot == "crop" ? Rgb{100, 140, 50} : Rgb{58, 96, 50};
             name = slot == "tree" ? "dark green" : slot == "flower" ? "pale yellow" : slot == "crop" ? "leaf green (in rows)" : "mid green";
+        } else if (natural && layerOf[slot] != "building") {
+            colourOf[slot] = ThingColour(slot);
+            name = MaterialName(slot);
         } else if (next < std::size(kPalette)) {
             colourOf[slot] = kPalette[next].rgb;
             name = kPalette[next++].name;
