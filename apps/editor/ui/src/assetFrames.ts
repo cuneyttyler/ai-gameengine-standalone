@@ -44,11 +44,12 @@ function sheetFileOf(path: string): string | null {
   return null
 }
 
-export function ensureFrame(path: string): void {
+// `host`/`key`: another file host (the user's library, keyed "lib:<path>") than the project's.
+export function ensureFrame(path: string, host = PROJECT_HOST, key = path): void {
   const file = sheetFileOf(path)
-  if (!file || path in derivedFrames.value || asking.has(path)) return
-  asking.add(path)
-  fetch(PROJECT_HOST + file)
+  if (!file || key in derivedFrames.value || asking.has(key)) return
+  asking.add(key)
+  fetch(host + file)
     .then((r) => (r.ok ? r.json() : null))
     .then((sheet: SheetFile | null) => {
       let found: SheetFrame | null = null
@@ -66,10 +67,10 @@ export function ensureFrame(path: string): void {
           found = { frame: [first.x, first.y, first.w, first.h], width: tw, height: th }
         }
       }
-      derivedFrames.value = { ...derivedFrames.value, [path]: found }
+      derivedFrames.value = { ...derivedFrames.value, [key]: found }
     })
-    .catch(() => (derivedFrames.value = { ...derivedFrames.value, [path]: null }))
-    .finally(() => asking.delete(path))
+    .catch(() => (derivedFrames.value = { ...derivedFrames.value, [key]: null }))
+    .finally(() => asking.delete(key))
 }
 
 // A sheet changed (a walk added): its frame read again next time.

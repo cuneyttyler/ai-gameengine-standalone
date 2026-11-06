@@ -4,7 +4,8 @@
 // project), art from the web and the AIGE library, and project art they keep. An item goes
 // into the open project with a click; generated art can be offered to other users through
 // the AIGE library (asked once, then decided per item).
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
+import { derivedFrames, ensureFrame, type SheetFrame } from '../assetFrames'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { confirmDialog, promptDialog } from '../dialogs'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -90,6 +91,36 @@ const items = computed(() => {
   )
 })
 const item = computed(() => library.value?.items.find((i) => i.id === selected.value))
+
+// Previews: a small sprite enlarged stays crisp (pixel scaling), a big picture shrunk stays smooth; a character's (or
+// another animation sheet's) picture shows its one pose, read from the sheet next to it in the library.
+const natural = reactive<Record<string, number>>({}) // the picture's longer side, once loaded
+function loaded(path: string, event: Event): void {
+  const img = event.target as HTMLImageElement
+  natural[path] = Math.max(img.naturalWidth, img.naturalHeight)
+}
+function rendering(path: string): string {
+  return (natural[path] ?? 0) > 0 && natural[path]! <= 192 ? 'pixelated' : 'auto'
+}
+const frameOf = (path: string): SheetFrame | null | undefined => derivedFrames.value['lib:' + path]
+watchEffect(() => {
+  for (const i of items.value) ensureFrame(i.path, LIBRARY_HOST, 'lib:' + i.path)
+  if (item.value) ensureFrame(item.value.path, LIBRARY_HOST, 'lib:' + item.value.path)
+})
+// One frame of a sheet, filling its box (percentages, so it fits a card of any size).
+function frameStyle(path: string, f: SheetFrame): Record<string, string> {
+  const [x, y, w, h] = f.frame
+  const across = f.width > w ? (x / (f.width - w)) * 100 : 0
+  const down = f.height > h ? (y / (f.height - h)) * 100 : 0
+  return {
+    aspectRatio: `${w} / ${h}`,
+    [w >= h ? 'width' : 'height']: '90%',
+    backgroundImage: `url("${LIBRARY_HOST + path}")`,
+    backgroundSize: `${(f.width / w) * 100}% ${(f.height / h) * 100}%`,
+    backgroundPosition: `${across}% ${down}%`,
+    imageRendering: w <= 192 ? 'pixelated' : 'auto',
+  }
+}
 const undecided = computed(() => (library.value?.items ?? []).filter((i) => i.source === 'generated' && i.shared === 'unasked').length)
 
 async function newFolder(): Promise<void> {
@@ -213,7 +244,10 @@ function when(seconds?: number): string {
         @dblclick="toProject(i)"
         @contextmenu.prevent="itemMenu(i, $event)"
       >
-        <span class="pic"><img :src="LIBRARY_HOST + i.path" alt="" decoding="async" /></span>
+        <span class="pic">
+          <span v-if="frameOf(i.path)" class="sheet" :style="frameStyle(i.path, frameOf(i.path)!)"></span>
+          <img v-else :src="LIBRARY_HOST + i.path" alt="" decoding="async" :style="{ imageRendering: rendering(i.path) }" @load="loaded(i.path, $event)" />
+        </span>
         <span v-if="inProject(i)" class="in" title="In the project">✓</span>
         <span class="name">{{ i.name }}</span>
         <span v-if="i.source === 'generated' && i.shared === 'yes'" class="badge" title="Offered to other users">↗</span>
@@ -225,7 +259,8 @@ function when(seconds?: number): string {
 
     <Splitter v-if="item" direction="horizontal" @drag="resizeDetails" />
     <section v-if="item" class="details" :style="{ width: detailsWidth + 'px' }">
-      <img :src="LIBRARY_HOST + item.path" alt="" />
+      <div v-if="frameOf(item.path)" class="big-pic"><span class="sheet" :style="frameStyle(item.path, frameOf(item.path)!)"></span></div>
+      <img v-else :src="LIBRARY_HOST + item.path" alt="" :style="{ imageRendering: rendering(item.path) }" @load="loaded(item.path, $event)" />
       <div>
         <strong>{{ item.name }}</strong>
         <div class="dim">{{ SOURCE_NAMES[item.source] ?? item.source }}<span v-if="item.origin"> · in {{ item.origin }}</span> · {{ when(item.created) }}</div>
@@ -325,8 +360,8 @@ function when(seconds?: number): string {
 .card.picked {
   border-color: #3b82f6;
 }
-/* The picture in a square, at its own size when it's small (a 64 px sprite isn't blown up into a blur), else fitted;
-   a dark checkerboard behind shows its clear edges. */
+/* The picture fitted in a square (pixel scaling for a small sprite, smooth for a big picture: rendering()), a dark
+   checkerboard behind showing its clear edges. */
 .card .pic {
   width: 100%;
   aspect-ratio: 1;
@@ -340,7 +375,18 @@ function when(seconds?: number): string {
   width: 90%;
   height: 90%;
   object-fit: contain;
-  image-rendering: pixelated; /* a small sprite shown big stays crisp */
+}
+.sheet {
+  display: block;
+  background-repeat: no-repeat;
+}
+.big-pic {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .card .in {
   position: absolute;
@@ -387,7 +433,6 @@ function when(seconds?: number): string {
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
-  image-rendering: pixelated;
   background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .row {
