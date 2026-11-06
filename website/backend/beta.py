@@ -265,7 +265,9 @@ def send(to: str, compose) -> str:
     subject, html_body, text = compose(cid)
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = setting("SMTP_FROM") or setting("AIGE_SUPPORT_EMAIL") or "AIGE <no-reply@localhost>"
+    # From the account that sends (mail servers refuse other senders), unless SMTP_FROM says otherwise.
+    sender = setting("SMTP_USER") or setting("AIGE_SUPPORT_EMAIL")
+    message["From"] = setting("SMTP_FROM") or (f"AIGE <{sender}>" if sender else "AIGE <no-reply@localhost>")
     message["To"] = to
     if setting("AIGE_SUPPORT_EMAIL"):
         message["Reply-To"] = setting("AIGE_SUPPORT_EMAIL")
@@ -285,7 +287,12 @@ def send(to: str, compose) -> str:
         return f"outbox ({'no SMTP_HOST' if not host else 'no recipient'})"
     port = int(setting("SMTP_PORT", "587"))
     security = setting("SMTP_SECURITY", "starttls").lower()
-    context = ssl.create_default_context()
+    # Certifi's certificates where it's installed (a Windows Python may not trust the mail server's chain on its own).
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
     if security == "ssl":
         server = smtplib.SMTP_SSL(host, port, context=context, timeout=20)
     else:
