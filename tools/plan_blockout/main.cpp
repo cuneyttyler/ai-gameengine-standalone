@@ -647,8 +647,26 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
 
 } // namespace
 
+// A place's solved plan prepared for painting as the editor's ④ Paint does (PrepareBlockout: the painted things, the
+// id map, the legend), at `cellPx` pixels across a cell.
+int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx) {
+    Ontology ontology;
+    ontology.Load({EnginePlacesDir()});
+    json solved;
+    {
+        std::ifstream in(solvedFile);
+        solved = json::parse(in);
+    }
+    const json b = solved["grid"]["bounds"];
+    const int width = (b[2].get<int>() + b[3].get<int>()) * cellPx / 2;
+    const json painting = PrepareBlockout(solved, &ontology, out, width);
+    std::cout << "block-out " << painting["size"].dump() << " at " << cellPx << " px a cell\n";
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc >= 4 && std::string(argv[1]) == "--brief") return FromBrief(argv[2], argv[3]);
+    if (argc >= 5 && std::string(argv[1]) == "--prepare") return Prepare(argv[2], argv[3], std::atoi(argv[4]));
     if (argc < 3) {
         std::cerr << "plan_blockout <spec.json> <out dir>  |  plan_blockout --brief <brief.json> <out dir>\n";
         return 2;

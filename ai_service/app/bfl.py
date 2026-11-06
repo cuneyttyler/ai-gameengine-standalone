@@ -408,6 +408,7 @@ PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro"
 # density, so a bigger place is painted in n × n tiles, n = ceil((W + H) / TILE_SPAN), each overlapping its neighbours
 # by TILE_OVERLAP of the image, painted at full size and joined by cross-fading the overlaps.
 TILE_SPAN = 60
+TILE_PX = TILE_SPAN * 40  # the block-out's width a tile holds (TILE_SPAN cells at its 80 px a cell): by pixels, any density
 TILE_OVERLAP = 0.12
 TILES_AT_ONCE = 4
 TILE_NOTE = ("THIS IMAGE IS ONE PART of a bigger map, cut out of it: paint it right up to its cut edges, the parts cut "
@@ -482,8 +483,9 @@ def _tile_legend(legend: dict | None, n: int) -> dict:
 
 def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
                 notes: str = "", seed: int = 7, reference: bytes | None = None, guide: str | None = None, written: str = "",
-                objects: bool = True, report=None) -> tuple[bytes, str]:
-    """A place painted from its block-out by one of PAINT_MODELS; the painting at the block-out's own size (so its
+                objects: bool = True, report=None, tiles_dir=None) -> tuple[bytes, str]:
+    """A place painted from its block-out by one of PAINT_MODELS; with `tiles_dir`, each tile is saved there as it's painted
+    (tile-<i>.png) and one already there is reused, so a run cut short (credit, a timeout) goes on where it stopped; the painting at the block-out's own size (so its
     pixels line up with the block-out's id map) and the prompt(s). A place more than TILE_SPAN cells across its diamond
     (its legend's scale) is painted in tiles (tile_count) and joined; `report(done, total, text)` hears each tile.
     - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
@@ -498,8 +500,9 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
     # The ontology's guide for its kind unless one is given; the place's own words; the key only for things shown.
     guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
-    scale = (legend or {}).get("scale") or {}
-    n = tile_count(int(scale.get("across") or 0), int(scale.get("down") or 0)) if scale else 1
+    # As many tiles a side as its width needs (TILE_PX each): the same as by its cells at the editor's density.
+    import math
+    n = max(1, math.ceil(src.width / TILE_PX))
     tiled = _tile_legend(legend, n) if n > 1 else legend
     keyed = (blockout_prompt(place, story, look, tiled, notes, guide, written, objects) + " " +
              (counts_sentence(tiled) if objects else "")).strip()
@@ -549,7 +552,15 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     done = [0]
 
     def tile(box):
-        result = one(src.crop(box))
+        from pathlib import Path
+        saved = Path(tiles_dir) / f"tile-{boxes.index(box)}.png" if tiles_dir and n > 1 else None
+        if saved and saved.is_file():
+            result = (Image.open(saved).convert("RGB"), keyed)
+        else:
+            result = one(src.crop(box))
+            if saved:
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                result[0].save(saved)
         done[0] += 1
         if report and n > 1:
             report(done[0], len(boxes), f"Painted tile {done[0]} of {len(boxes)}")
