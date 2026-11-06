@@ -218,8 +218,11 @@ static json NestedSiteSize(const Ontology& ontology, const json& parcel, const M
     const ScaleClass* scale = cls.is_string() ? build->Scale(cls.get<std::string>()) : nullptr;
     if (scale == nullptr && !build->scale.empty()) scale = &build->scale[build->scale.size() / 2];
     if (scale == nullptr || scale->side.second <= 0) return json();
-    // Its class's range, the middle up: room to come out smaller where its land is cut (a river, a road).
-    const int lo = scale->side.first, mid = static_cast<int>(std::lround((scale->side.first + scale->side.second) / 2.0));
+    // Its class's range, the middle up: room to come out smaller where its land is cut (a river, a road); with its
+    // compile's padding round it (the land a section keeps round its place: its own woods, fields and water).
+    const double pad = std::max(1.0, m.compile.value("padding", 1.0));
+    const int lo = static_cast<int>(std::lround(scale->side.first * pad)),
+              mid = static_cast<int>(std::lround((scale->side.first + scale->side.second) / 2.0 * pad));
     return json{{"w", json::array({lo, mid})}, {"h", json::array({lo, mid})}};
 }
 
@@ -641,8 +644,12 @@ void Compiler::Root(const json& root) {
             }
         }
     }
-    Emit({{"op", "anchor"}, {"id", "site/entrance-w"}, {"node", id}, {"at", {inset, s / 2}}, {"kind", "entrance"}});
-    Emit({{"op", "anchor"}, {"id", "site/entrance-e"}, {"node", id}, {"at", {s - 1 - inset, s / 2 + s / 10}}, {"kind", "entrance"}});
+    // Its ways in: where it was told (a section's, on its land's edge), else at its sides.
+    const json given = options_.entrances.is_object() ? options_.entrances : json::object();
+    const json west = given.value("w", json()), east = given.value("e", json());
+    Emit({{"op", "anchor"}, {"id", "site/entrance-w"}, {"node", id}, {"at", west.is_array() && west.size() == 2 ? west : json{inset, s / 2}}, {"kind", "entrance"}});
+    Emit({{"op", "anchor"}, {"id", "site/entrance-e"}, {"node", id}, {"at", east.is_array() && east.size() == 2 ? east : json{s - 1 - inset, s / 2 + s / 10}},
+          {"kind", "entrance"}});
 
     // The place's water, for the relations that name it ("along parent.water": the docks zone, each dock).
     water_.clear();
@@ -772,6 +779,13 @@ void Compiler::Root(const json& root) {
         const auto area = Range(c, *cm, "area");
         json prefers = json::object();
         for (const auto& [criterion, weight] : cm->prefersSite) prefers[criterion] = weight;
+        // A place of its own shape (a world's section, its land bigger than the place): what's built keeps together in
+        // the middle, its woods, meadows and water go round it towards the land's edge.
+        if (options_.outside.is_array() && !options_.outside.empty()) {
+            const bool nature = ontology_.IsA(cm->id, "NatureArea") || ontology_.IsA(cm->id, "WaterBody");
+            if (nature) prefers["edge"] = std::max(prefers.value("edge", 0.0), 1.5);
+            else prefers["centre"] = std::max(prefers.value("centre", 0.0), 3.0);
+        }
         // A zone has room for its parcels: about 1.9 times their lots, with its streets and open land.
         const double needed = ParcelArea(c);
         const double planned = area ? (area->first + area->second) / 2 : 400.0;
@@ -782,6 +796,24 @@ void Compiler::Root(const json& root) {
         const bool flexible = needed <= 0;
         json zone = {{"id", c.value("id", "")}, {"node", c.value("id", "")}, {"module", cm->id},
                      {"area", static_cast<int>(std::lround(std::max(planned * (flexible ? 1.0 : scale), need)))}, {"prefers", prefers}};
+        // How its edge grows (its compile's `edge`: organic or not, the round middle kept for what it holds).
+        if (cm->compile.is_object() && cm->compile.contains("edge")) {
+            zone["edge"] = cm->compile["edge"];
+            // Claiming its middle for its sites (a village's land): as far as its biggest site's corners, and a little.
+            if (zone["edge"].value("claim", false)) {
+                double side = 0;
+                for (const auto& p : c.value("children", json::array())) {
+                    const ModuleDef* pm = ontology_.Module(p.value("module", ""));
+                    const json size = pm ? NestedSiteSize(ontology_, p, *pm) : json();
+                    if (!size.is_object()) continue;
+                    for (const char* d : {"w", "h"}) {
+                        const json v = size[d];
+                        side = std::max(side, v.is_array() ? v.back().get<double>() : v.is_number() ? v.get<double>() : 0.0);
+                    }
+                }
+                if (side > 0) zone["edge"]["claimRadius"] = std::ceil(side * 0.7072) + 3;
+            }
+        }
         if (flexible) zone["flexible"] = true;
         else zone["min"] = static_cast<int>(std::lround(need));
         // Where it goes among the others: its relations (near the river, south of the docks).
@@ -856,6 +888,14 @@ void Compiler::Root(const json& root) {
                           {"method", form_.value("zone-shape", "") == "blocks" ? "blocks" : "growth"}};
         if (form_.value("coverage", "") == "full") partition["cover"] = true;
         if (!lattice_.is_null()) partition["lattice"] = lattice_;
+        // A place of its own shape: what isn't it is a zone of its own, those cells exactly, first.
+        const bool shaped = options_.outside.is_array() && !options_.outside.empty();
+        if (shaped) {
+            partition["into"].push_back({{"id", "site/outside"}, {"node", id}, {"module", ""}, {"area", 1}, {"paint", options_.outside},
+                                         {"edge", {{"organic", false}}}});
+        }
+        // (Not voided: its ground is the world's, put in after the solve, so the Paint block-out and the Assembled
+        // background show the land round the place, and neighbours' paintings overlap there.)
         Emit(partition);
     }
     const json layout = m ? FieldOf(root, *m, "layout") : json();

@@ -91,6 +91,8 @@
   ],
   "compile": {
     "nested": true,
-    "surface": "dirt"
+    "surface": "dirt",
+    "padding": 1.35,
+    "paddingDescription": "the room round the place in its section: its own woods, meadows and water, so the place sits in its land with an organic edge instead of filling its box"
   }
 }

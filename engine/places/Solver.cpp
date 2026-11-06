@@ -19,6 +19,29 @@ using json = nlohmann::json;
 
 namespace {
 
+// Smooth noise in [-1, 1] over the grid (value noise, three octaves, `scale` cells its largest wave): what gives a nature
+// zone's edge its wander, a coastline's bays and a forest's tongues, instead of a growth circle.
+double Lattice(int x, int y, uint32_t seed) {
+    uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u + seed * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= h >> 16;
+    return (h & 0xffffff) / static_cast<double>(0xffffff) * 2.0 - 1.0;
+}
+
+double ValueNoise(double x, double y, uint32_t seed) {
+    const int x0 = static_cast<int>(std::floor(x)), y0 = static_cast<int>(std::floor(y));
+    auto smooth = [](double v) { return v * v * (3 - 2 * v); };
+    const double fx = smooth(x - x0), fy = smooth(y - y0);
+    const double a = Lattice(x0, y0, seed), b = Lattice(x0 + 1, y0, seed), c = Lattice(x0, y0 + 1, seed), d = Lattice(x0 + 1, y0 + 1, seed);
+    return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+
+double OrganicNoise(double x, double y, double scale, uint32_t seed) {
+    scale = std::max(4.0, scale);
+    return 0.55 * ValueNoise(x / scale, y / scale, seed) + 0.3 * ValueNoise(x / (scale / 2.7), y / (scale / 2.7), seed + 17) +
+           0.15 * ValueNoise(x / (scale / 7.0), y / (scale / 7.0), seed + 31);
+}
+
 // --- Randomness: one stream per statement --------------------------------------------
 
 uint64_t Fnv(const std::string& text, uint64_t seed) {
@@ -1154,6 +1177,10 @@ void Solver::Partition(const json& s, int region) {
         json prefers;
         json rel;          // [{type, to}]: near the river, south of the docks
         int keep = -1;     // the cell it was seeded at last time, to stay there
+        bool organic = false; // its edge wanders (OrganicNoise): nature and water
+        double core = 0.4;    // ...outside a round middle this big (of its quota's radius): room for what's in it
+        bool claim = false;   // that middle is its before anything grows (a village's land: its site must fit)
+        double claimRadius = 0; // how far round its seed (the compiler's, from its sites' size)
         int seed = -1;
         std::vector<int> cells;
         std::array<int, 4> box{-1, -1, -1, -1}; // drawn by the user (x0, y0, x1, y1): it takes that land, exactly
@@ -1168,6 +1195,14 @@ void Solver::Partition(const json& s, int region) {
         zone.id = z.value("id", "");
         zone.node = z.value("node", zone.id);
         zone.module = z.value("module", "");
+        // Nature and water (a forest, the sea, the land round a village) grow with a wandering edge; wards stay tidy.
+        zone.organic = !zone.module.empty() && (ontology_.IsA(zone.module, "NatureArea") || ontology_.IsA(zone.module, "WaterBody"));
+        if (const json edge = z.value("edge", json()); edge.is_object()) {
+            zone.organic = edge.value("organic", zone.organic);
+            zone.core = edge.value("core", zone.core);
+            zone.claim = edge.value("claim", false);
+            zone.claimRadius = edge.value("claimRadius", 0.0);
+        }
         zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
         zone.prefers = z.value("prefers", json::object());
         zone.flexible = z.value("flexible", false);
@@ -1526,7 +1561,11 @@ void Solver::Partition(const json& s, int region) {
     std::vector<uint8_t> open(W * H, 0);
     for (int c : available) open[c] = 1;
     Rng rng = StreamFor(s);
-    const double minApart = std::sqrt(room / zones.size()) * 0.8;
+    // Apart by the land the zones take (no more than all of it): a place in a much bigger land (a world's section)
+    // keeps its zones together, not spread over all of it.
+    double taking = 0;
+    for (const auto& z : zones) taking += z.flexible ? 0.0 : z.quota;
+    const double minApart = std::sqrt((taking > 0 ? std::min<double>(room, taking * 1.3) : room) / zones.size()) * 0.8;
     // The land drawn, painted or kept for zones is theirs before any seed is placed; a seed goes
     // on the free land that's left, in a stretch of it big enough for its zone (not a pocket shut
     // in by kept zones, the river and a road).
@@ -1564,8 +1603,26 @@ void Solver::Partition(const json& s, int region) {
         }
     }
     const int widest = stretchSize.empty() ? 0 : *std::max_element(stretchSize.begin(), stretchSize.end());
+    // The open land in sums (a summed-area table): whether a square round a cell is all open.
+    std::vector<int> openSum(static_cast<size_t>(W + 1) * (H + 1), 0);
+    for (int y = 0; y < H; ++y) {
+        for (int x = 0; x < W; ++x) {
+            openSum[static_cast<size_t>(y + 1) * (W + 1) + x + 1] = (open[Cell(x, y)] && !claimed[Cell(x, y)] ? 1 : 0) + openSum[static_cast<size_t>(y) * (W + 1) + x + 1] +
+                                                                    openSum[static_cast<size_t>(y + 1) * (W + 1) + x] - openSum[static_cast<size_t>(y) * (W + 1) + x];
+        }
+    }
+    auto squareOpen = [&](int c, int half) {
+        const int x0 = c % W - half, y0 = c / W - half, x1 = c % W + half + 1, y1 = c / W + half + 1;
+        if (x0 < 0 || y0 < 0 || x1 > W || y1 > H) return false;
+        const int n = openSum[static_cast<size_t>(y1) * (W + 1) + x1] - openSum[static_cast<size_t>(y0) * (W + 1) + x1] -
+                      openSum[static_cast<size_t>(y1) * (W + 1) + x0] + openSum[static_cast<size_t>(y0) * (W + 1) + x0];
+        return n == (x1 - x0) * (y1 - y0);
+    };
     auto seedable = [&](const Zone& z, int c) {
         if (claimed[c] || stretch[c] < 0) return false;
+        // A zone claiming room for a site (a village's land) starts where the site's whole square is open: no river or
+        // road through it.
+        if (z.claim && z.claimRadius > 0 && !squareOpen(c, static_cast<int>((z.claimRadius - 3) / 1.4142 + 0.5) + 1)) return false;
         return stretchSize[stretch[c]] >= std::min(0.7 * z.quota, 0.9 * widest);
     };
     for (size_t k : order) {
@@ -1668,6 +1725,32 @@ void Solver::Partition(const json& s, int region) {
             seedOf[zones[k].seed] = static_cast<int>(k);
         }
     }
+    // A zone that claims its middle (a village's land) has it first: the free cells round its seed, out to its core.
+    for (size_t k = 0; k < zones.size(); ++k) {
+        Zone& z = zones[k];
+        if (!z.claim || z.seed < 0 || z.box[0] >= 0) continue;
+        // Just what its biggest site needs: the site's square round its seed (the compiler's claimRadius is its
+        // corner-to-corner reach), so its own edge wanders from there; else a round core.
+        const bool square = z.claimRadius > 0;
+        const double radius = square ? (z.claimRadius - 3) / 1.4142 + 2 : z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159);
+        const int sx = z.seed % W, sy = z.seed / W, r = static_cast<int>(std::ceil(radius));
+        for (int y = std::max(0, sy - r); y <= std::min(H - 1, sy + r); ++y) {
+            for (int x = std::max(0, sx - r); x <= std::min(W - 1, sx + r); ++x) {
+                const int c = Cell(x, y);
+                if (!usable[c] || taken[c] >= 0 || (!square && std::hypot(x - sx, y - sy) > radius)) continue;
+                if (seedOf[c] >= 0 && seedOf[c] != static_cast<int>(k)) continue;
+                taken[c] = static_cast<int>(k);
+                z.cells.push_back(c);
+            }
+        }
+        // It grows on from the middle's rim.
+        for (int c : z.cells) {
+            const int x = c % W, y = c / W;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                if (In(x + dx, y + dy) && taken[Cell(x + dx, y + dy)] < 0) frontier[k].push({-std::hypot(x + dx - sx, y + dy - sy), Cell(x + dx, y + dy)});
+            }
+        }
+    }
     while (true) {
         int pick = -1;
         double lowest = 1e18;
@@ -1703,7 +1786,14 @@ void Solver::Partition(const json& s, int region) {
             if (!usable[n] || taken[n] >= 0 || (seedOf[n] >= 0 && seedOf[n] != pick)) continue;
             // Compact zones: closeness to the seed matters most; interest breaks ties.
             // A zone with relations grows by them too (along the river: a strip).
-            const double distance = std::hypot(nx - z.seed % W, ny - z.seed / W);
+            double distance = std::hypot(nx - z.seed % W, ny - z.seed / W);
+            // A wandering edge: the distance stretched and shrunk by smooth noise at the zone's own scale, so it grows
+            // in lobes and bays.
+            if (z.organic) {
+                const double scale = std::max(10.0, std::sqrt(std::max(1.0, z.quota)) * 0.45);
+                const double core = z.claimRadius > 0 ? (z.claimRadius - 3) / 1.4142 : z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159);
+                if (distance > core) distance = core + (distance - core) * (1.0 + 0.6 * OrganicNoise(nx, ny, scale, static_cast<uint32_t>(pick * 7919 + 13)));
+            }
             const bool related = !z.rel.empty() || !z.sketched.empty();
             queue.push({-(related ? 0.45 : 1.0) * distance + (related ? 1.5 : 0.5) * interest(z, n), n});
         }

@@ -52,6 +52,12 @@ struct CompileOptions {
     std::map<std::string, std::pair<int, int>> keepSeeds;
     // `side` as given, not grown for what the zones need (a revision keeps the site).
     bool fixedSide = false;
+    // A place of a shape of its own (a world's section: its land, docs/places/tiling.md §5): the cells of its square
+    // that aren't it (EncodeCells runs), outside every zone, nothing planned on them (their ground is the world's, put
+    // in after the solve: the land round the place in its block-out and background); and its ways in, on its land's edge
+    // ({"w": [x, y], "e": [x, y]}). Null: the whole square, its ways in at its sides.
+    nlohmann::json outside;
+    nlohmann::json entrances;
 };
 
 nlohmann::json CompileSpec(const Ontology& ontology, const nlohmann::json& spec, const CompileOptions& options = {});

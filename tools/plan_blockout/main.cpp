@@ -11,6 +11,7 @@
 // A place planned from a Brief alone, as the editor does with the AI off (docs/places/tiling.md: a world from its
 // definitions): the ontology's load problems, the spec, the solved plan and its block-out (spec.json, solved.json,
 // blockout.png, problems.txt).
+#include "assets/LayoutImage.h"
 #include "assets/TextureCook.h"
 #include "editing/PaintedPlace.h"
 #include "editing/PlaceBlockout.h"
@@ -20,9 +21,12 @@
 #include "places/Planner.h"
 #include "places/Solver.h"
 
+#include <httplib.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -41,16 +45,51 @@ struct Planned {
     std::vector<std::string> problems;
 };
 
-// A place planned from its Brief alone, as the editor does with the AI off: the fallback answers, expanded, tidied,
+// The AI service (its port), when the plan is the AI's: the Build panel's root and zone steps.
+int gAiPort = 0;
+
+json AskAi(const std::string& path, const json& body) {
+    if (gAiPort <= 0) return json();
+    httplib::Client client("127.0.0.1", gAiPort);
+    client.set_read_timeout(600);
+    const auto r = client.Post(path, body.dump(), "application/json");
+    if (!r || r->status != 200) return json();
+    try {
+        const json answer = json::parse(r->body);
+        return answer.value("ok", true) && answer.contains("answer") ? answer["answer"] : json();
+    } catch (const std::exception&) {
+        return json();
+    }
+}
+
+// A place planned from its Brief: by the AI's root and zone steps when it's on (gAiPort; each step falling back to the
+// rules when it can't answer), else as the editor does with the AI off: the fallback answers. Then expanded, tidied,
 // resolved, compiled and solved. `edit` changes the Spec before it's compiled.
 Planned PlanPlace(const Ontology& ontology, json brief, const std::string& id, CompileOptions options,
-                  const std::function<void(json&)>& edit = {}) {
+                  const std::function<void(json&)>& edit = {}, bool ai = false) {
     Planned out;
     out.brief = CompleteBrief(ontology, brief);
-    json spec = SpecFromRoot(ontology, out.brief, FallbackRootAnswer(ontology, out.brief), id);
+    json rootAnswer = ai ? AskAi("/places/plan-root", {{"brief", out.brief}, {"context", PlanRootContext(ontology, out.brief)}}) : json();
+    if (ai) out.problems.push_back(rootAnswer.is_null() ? "ai: the root step fell back to the rules" : "ai: the root step is the AI's");
+    if (rootAnswer.is_null()) rootAnswer = FallbackRootAnswer(ontology, out.brief);
+    json spec = SpecFromRoot(ontology, out.brief, rootAnswer, id);
     const json root = spec.value("root", json::object());
+    json siblings = json::array();
+    for (const auto& c : spec["root"].value("children", json::array())) {
+        siblings.push_back({{"id", c.value("id", "")}, {"module", c.value("module", "")}, {"quantity", c.value("quantity", json())},
+                            {"quality", c.value("quality", json())}});
+    }
     for (const auto& zone : ZoneIds(ontology, spec)) {
-        if (json* node = SpecNode(spec, zone)) ApplyZoneAnswer(ontology, out.brief, spec, zone, FallbackZoneAnswer(ontology, *node, root));
+        json* node = SpecNode(spec, zone);
+        if (node == nullptr) continue;
+        json asked = *node;
+        asked.erase("children");
+        json answer = ai ? AskAi("/places/plan-zone", {{"brief", out.brief}, {"zone", asked}, {"siblings", siblings},
+                                                       {"context", PlanZoneContext(ontology, out.brief, asked.value("module", ""))}})
+                         : json();
+        if (ai && answer.is_null()) out.problems.push_back("ai: zone " + zone + " fell back to the rules");
+        if (answer.is_null()) answer = FallbackZoneAnswer(ontology, *node, root);
+        ApplyZoneAnswer(ontology, out.brief, spec, zone, answer);
     }
     ExpandSpec(ontology, out.brief, spec);
     if (edit) edit(spec);
@@ -98,25 +137,143 @@ void SetTerrain(json& solved, const std::vector<std::string>& cells, int W, int 
     solved["terrain"]["rows"] = rows;
 }
 
-// A section's plan put into the world's where the world placed it (its box at ox, oy): its ground, its things, its
-// fences and walls, its areas; what the world had in its box goes.
-void PutSection(json& world, const json& section, int ox, int oy, const std::string& prefix) {
+// Smooth noise in [-1, 1] (value noise, two octaves): a section's ragged outline.
+double Noise(double x, double y, uint32_t seed) {
+    auto lattice = [&](int ix, int iy) {
+        uint32_t h = static_cast<uint32_t>(ix) * 374761393u + static_cast<uint32_t>(iy) * 668265263u + seed * 2246822519u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= h >> 16;
+        return (h & 0xffffff) / static_cast<double>(0xffffff) * 2.0 - 1.0;
+    };
+    auto value = [&](double vx, double vy) {
+        const int x0 = static_cast<int>(std::floor(vx)), y0 = static_cast<int>(std::floor(vy));
+        auto s = [](double v) { return v * v * (3 - 2 * v); };
+        const double fx = s(vx - x0), fy = s(vy - y0);
+        const double p = lattice(x0, y0), q = lattice(x0 + 1, y0), r = lattice(x0, y0 + 1), u = lattice(x0 + 1, y0 + 1);
+        return (p + (q - p) * fx) * (1 - fy) + (r + (u - r) * fx) * fy;
+    };
+    return 0.65 * value(x / 14.0, y / 14.0) + 0.35 * value(x / 5.0, y / 5.0);
+}
+
+// A section's plan put into the world's where the world placed it (its box at ox, oy). Only the section itself goes
+// in: its buildings and the things, streets, yards and fields with them, and a ragged margin round them; beyond it the
+// world's own land carries on, so the place has the outline of what's built, not of its box.
+void PutSection(json& world, const json& section, int ox, int oy, const std::string& prefix, const std::vector<uint8_t>* landMask = nullptr) {
     const json wb = world["grid"]["bounds"], sb = section["grid"]["bounds"];
     const int W = wb[2], H = wb[3], SW = sb[2], SH = sb[3];
-    auto inside = [&](int x, int y) { return x >= ox && y >= oy && x < ox + SW && y < oy + SH; };
-    std::vector<std::string> cells = TerrainCells(world, W, H);
-    const std::vector<std::string> own = TerrainCells(section, SW, SH);
+    // What's built: every object of the section but the wild land's dressing (its landscape scatter).
+    std::vector<int> dist(static_cast<size_t>(SW) * SH, 1 << 20);
+    std::deque<int> queue;
+    for (const auto& o : section.value("objects", json::array())) {
+        if (o.value("dressing", "") == "landscape" || o.value("id", "").find("landscape-wild") != std::string::npos) continue;
+        if (o.value("layer", "") != "building" && o.value("layer", "") != "prop") continue;
+        const int x0 = o.value("x", 0), y0 = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
+        for (int y = y0; y < y0 + h; ++y) {
+            for (int x = x0; x < x0 + w; ++x) {
+                if (x < 0 || y < 0 || x >= SW || y >= SH || dist[static_cast<size_t>(y) * SW + x] == 0) continue;
+                dist[static_cast<size_t>(y) * SW + x] = 0;
+                queue.push_back(y * SW + x);
+            }
+        }
+    }
+    while (!queue.empty()) {
+        const int c = queue.front();
+        queue.pop_front();
+        const int x = c % SW, y = c / SW;
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            const int nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= SW || ny >= SH) continue;
+            int& d = dist[static_cast<size_t>(ny) * SW + nx];
+            if (d > dist[c] + 1) d = dist[c] + 1, queue.push_back(ny * SW + nx);
+        }
+    }
+    const uint32_t seed = static_cast<uint32_t>(std::hash<std::string>{}(prefix));
+    // How far each cell is inside the section: from its land's edge (a section of its own shape), else its box's.
+    std::vector<int> inside(static_cast<size_t>(SW) * SH, 1 << 20);
+    {
+        std::deque<int> q;
+        for (int y = 0; y < SH; ++y) {
+            for (int x = 0; x < SW; ++x) {
+                const size_t c = static_cast<size_t>(y) * SW + x;
+                const bool out = landMask ? !(*landMask)[c] : false;
+                const bool rim = x == 0 || y == 0 || x == SW - 1 || y == SH - 1;
+                if (out) inside[c] = 0, q.push_back(static_cast<int>(c));
+                else if (rim) inside[c] = 1, q.push_back(static_cast<int>(c));
+            }
+        }
+        while (!q.empty()) {
+            const int c = q.front();
+            q.pop_front();
+            const int x = c % SW, y = c / SW;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = x + dx, ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= SW || ny >= SH) continue;
+                int& d = inside[static_cast<size_t>(ny) * SW + nx];
+                if (d > inside[c] + 1) d = inside[c] + 1, q.push_back(ny * SW + nx);
+            }
+        }
+    }
+    std::vector<uint8_t> mask(static_cast<size_t>(SW) * SH, 0);
     for (int y = 0; y < SH; ++y) {
         for (int x = 0; x < SW; ++x) {
-            if (ox + x < W && oy + y < H && !own[static_cast<size_t>(y) * SW + x].empty()) cells[static_cast<size_t>(oy + y) * W + ox + x] = own[static_cast<size_t>(y) * SW + x];
+            // The whole section (its place and the land it keeps round it: its woods, meadows, water), but a ragged band
+            // along its box's edge, 2.6 to 9.4 cells, where the world's land carries on: no line where they meet. What's
+            // built (and a little round it) always goes in.
+            const double edge = inside[static_cast<size_t>(y) * SW + x];
+            const double band = 6.0 * (1.0 + 0.57 * Noise(x, y, seed));
+            const double reach = 3.0 * (1.0 + 0.5 * Noise(x + 500, y, seed));
+            const bool its = !landMask || (*landMask)[static_cast<size_t>(y) * SW + x];
+            mask[static_cast<size_t>(y) * SW + x] = its && (edge > band || dist[static_cast<size_t>(y) * SW + x] <= reach);
+        }
+    }
+    auto in = [&](int sx, int sy) { return sx >= 0 && sy >= 0 && sx < SW && sy < SH && mask[static_cast<size_t>(sy) * SW + sx]; };
+    std::vector<std::string> cells = TerrainCells(world, W, H);
+    const std::vector<std::string> own = TerrainCells(section, SW, SH);
+    // The world's land round the box (its commonest ground just outside it): what the box is outside the section's
+    // margin (the world marked the site's lot with a surface of its own).
+    std::map<std::string, int> around;
+    for (int x = ox - 1; x <= ox + SW; ++x) {
+        for (const int y : {oy - 1, oy + SH}) {
+            if (x >= 0 && y >= 0 && x < W && y < H) ++around[cells[static_cast<size_t>(y) * W + x]];
+        }
+    }
+    for (int y = oy; y < oy + SH; ++y) {
+        for (const int x : {ox - 1, ox + SW}) {
+            if (x >= 0 && y >= 0 && x < W && y < H) ++around[cells[static_cast<size_t>(y) * W + x]];
+        }
+    }
+    std::string land = "grass";
+    int most = 0;
+    for (const auto& [t, n] : around) {
+        if (n > most && t != "water" && !t.empty()) most = n, land = t;
+    }
+    const std::string lotSurface = cells[static_cast<size_t>(std::min(H - 1, oy + SH / 2)) * W + std::min(W - 1, ox + SW / 2)];
+    // The world's roads that ran along the lot to reach its door, just outside the box: land.
+    for (int y = oy - 4; y < oy + SH + 4; ++y) {
+        for (int x = ox - 4; x < ox + SW + 4; ++x) {
+            if (x < 0 || y < 0 || x >= W || y >= H || (x >= ox && y >= oy && x < ox + SW && y < oy + SH)) continue;
+            if (cells[static_cast<size_t>(y) * W + x] == "dirt") cells[static_cast<size_t>(y) * W + x] = "grass";
+        }
+    }
+    for (int y = 0; y < SH; ++y) {
+        for (int x = 0; x < SW; ++x) {
+            if (ox + x >= W || oy + y >= H) continue;
+            std::string& cell = cells[static_cast<size_t>(oy + y) * W + ox + x];
+            if (in(x, y) && !own[static_cast<size_t>(y) * SW + x].empty()) cell = own[static_cast<size_t>(y) * SW + x];
+            // Beyond the margin: the lot's surface, and the world's roads that hugged the lot to reach its door, are land.
+            else if ((cell == lotSurface || cell == "dirt") && cell != "water") cell = land;
         }
     }
     SetTerrain(world, cells, W, H);
     json objects = json::array();
     for (const auto& o : world.value("objects", json::array())) {
-        if (!inside(o.value("x", 0), o.value("y", 0))) objects.push_back(o);
+        const int lx = o.value("x", 0) - ox, ly = o.value("y", 0) - oy;
+        // The world's marker for the site (its building with a door) goes wherever it stood in the box.
+        const bool marker = o.value("layer", "") == "building" && lx >= -2 && ly >= -2 && lx < SW + 2 && ly < SH + 2;
+        if (!in(lx, ly) && !marker) objects.push_back(o);
     }
     for (json o : section.value("objects", json::array())) {
+        if (!in(o.value("x", 0), o.value("y", 0))) continue;
         o["x"] = o.value("x", 0) + ox, o["y"] = o.value("y", 0) + oy;
         o["id"] = prefix + "/" + o.value("id", "");
         if (const json outline = o.value("outline", json()); outline.is_array()) {
@@ -128,14 +285,24 @@ void PutSection(json& world, const json& section, int ox, int oy, const std::str
     }
     world["objects"] = objects;
     for (json l : section.value("lines", json::array())) {
-        for (auto& e : l["edges"]) e[0] = e[0].get<int>() + ox, e[1] = e[1].get<int>() + oy;
+        json edges = json::array();
+        for (const auto& e : l["edges"]) {
+            if (in(e[0].get<int>(), e[1].get<int>())) edges.push_back({e[0].get<int>() + ox, e[1].get<int>() + oy, e[2]});
+        }
+        if (edges.empty()) continue;
+        l["edges"] = edges;
         l["id"] = prefix + "/" + l.value("id", "");
         world["lines"].push_back(l);
     }
-    for (const auto& b : section["terrain"].value("bridges", json::array())) world["terrain"]["bridges"].push_back({b[0].get<int>() + ox, b[1].get<int>() + oy});
+    for (const auto& b : section["terrain"].value("bridges", json::array())) {
+        if (in(b[0].get<int>(), b[1].get<int>())) world["terrain"]["bridges"].push_back({b[0].get<int>() + ox, b[1].get<int>() + oy});
+    }
     for (json r : section.value("regions", json::array())) {
         std::vector<int> moved;
-        for (int c : DecodeCells(r.value("cells", json::array()), SW)) moved.push_back((c / SW + oy) * W + c % SW + ox);
+        for (int c : DecodeCells(r.value("cells", json::array()), SW)) {
+            if (in(c % SW, c / SW)) moved.push_back((c / SW + oy) * W + c % SW + ox);
+        }
+        if (moved.empty()) continue;
         r["cells"] = EncodeCells(moved, W);
         if (const json bounds = r.value("bounds", json()); bounds.is_array() && bounds.size() == 4) {
             r["bounds"] = {bounds[0].get<int>() + ox, bounds[1].get<int>() + oy, bounds[2], bounds[3]};
@@ -143,6 +310,29 @@ void PutSection(json& world, const json& section, int ox, int oy, const std::str
         r["id"] = prefix + "/" + r.value("id", "");
         world["regions"].push_back(r);
     }
+}
+
+// The plan drawn as the Build panel's Layout page draws it (top-down: its zones named, its buildings, roads, water),
+// `names` the zones' labels by region id (else each its module's name).
+void DrawLayout(const Ontology& ontology, const json& spec, const json& solved, const std::string& title, const fs::path& file, int width,
+                std::map<std::string, std::string> names = {}) {
+    LayoutImageOptions image;
+    image.targetSize = width;
+    image.title = title;
+    std::function<void(const json&)> walk = [&](const json& node) {
+        image.modules[node.value("id", "")] = node.value("module", "");
+        for (const auto& c : node.value("children", json::array())) walk(c);
+    };
+    if (spec.contains("root")) walk(spec["root"]);
+    for (const auto& [id, m] : ontology.Modules()) image.moduleNames[id] = m.name;
+    for (const auto& r : solved.value("regions", json::array())) {
+        const ModuleDef* m = ontology.Module(r.value("module", ""));
+        if (m == nullptr || m->level != PlaceLevel::Zone) continue;
+        const std::string id = r.value("id", "");
+        if (!names.contains(id)) names[id] = m->name;
+    }
+    image.names = names;
+    WritePng(file, RenderLayoutImage(solved, image));
 }
 
 void Draw(const Ontology& ontology, const json& solved, const fs::path& file, int width) {
@@ -163,10 +353,18 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     }
     // The test's own sites (a world's: each its build type, scale class and name), in place of the planner's.
     const json sites = brief.value("test", json::object()).value("sites", json::array());
+    // The AI plans the sections when the test asks ("ai": "sections"), on the service's port.
+    const bool aiSections = brief.value("test", json::object()).value("ai", "") == "sections";
+    const bool reuse = brief.value("test", json::object()).value("reuse", false); // the sections planned last time
+    gAiPort = aiSections ? brief.value("test", json::object()).value("port", 8765) : 0;
+    // The world's side, when the test sets it (else from its area and what it holds).
+    CompileOptions worldOptions;
+    worldOptions.side = brief.value("test", json::object()).value("side", 0);
+    worldOptions.fixedSide = worldOptions.side > 0;
     brief.erase("test");
     // Each site in a settled zone of its own (a heartland each), so the world spreads them over its land, apart, with
     // its forests, hills, mountains and water between them.
-    const Planned world = PlanPlace(ontology, brief, "test-place", {}, [&](json& spec) {
+    const Planned world = PlanPlace(ontology, brief, "test-place", worldOptions, [&](json& spec) {
         if (sites.empty()) return;
         json& children = spec["root"]["children"];
         json kept = json::array();
@@ -192,7 +390,7 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
                 if (sc) side = (sc->side.first + sc->side.second) / 2;
             }
             // Room round it: its fields, its approach, a little wild land of its own.
-            const int around = static_cast<int>(side * 1.5) + 2 * 18;
+            const int around = static_cast<int>(side * 1.35 * 1.2) + 2 * 12;
             h["quantity"] = {{"sites", {{"count", 1}}}, {"area", {{"area", around * around}}}};
             h["children"] = json::array({json{{"id", h["id"].get<std::string>() + "/site"}, {"module", "site"},
                                               {"quality", {{"build-type", kind}, {"scale-class", cls}, {"name", s.value("name", "")}}},
@@ -209,35 +407,84 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     const json b = world.solved["grid"]["bounds"];
     std::cout << world.brief.value("buildType", "") << ": " << b.dump() << ", " << world.problems.size() << " problems\n";
 
-    // Each site a section: planned as a place of its own kind in its box, then put into the world.
+    // Each place a section of its own shape: its land in the world plan (the organic zone it was given), planned as a
+    // place of its kind on that land's square (what isn't its land left unplanned, its ways in on its land's edge),
+    // given the world's ground round it, then put into the world.
     json together = world.solved;
     json sections = json::array();
+    const int WW = b[2], WH = b[3];
+    const std::vector<std::string> worldGround = TerrainCells(world.solved, WW, WH);
     for (const auto& r : world.solved.value("regions", json::array())) {
-        if (r.value("module", "") != "site") continue;
-        json spec = world.spec;
-        const json* node = SpecNode(spec, r.value("node", ""));
-        if (node == nullptr) continue;
-        const json q = node->value("quality", json::object());
-        const std::string kind = q.value("build-type", "settlement"), cls = q.value("scale-class", ""), name = q.value("name", "");
-        const json bounds = r["bounds"];
-        const int x = bounds[0], y = bounds[1], w = bounds[2], h = bounds[3];
+        const std::string landId = r.value("id", "");
+        if (landId.rfind("heartland-", 0) != 0 || landId.find('/') != std::string::npos) continue;
+        const int index = std::atoi(landId.substr(10).c_str()) - 1;
+        if (index < 0 || index >= static_cast<int>(sites.size())) continue;
+        const json& site = sites[index];
+        const std::string kind = site.value("build-type", "settlement"), cls = site.value("scale-class", ""), name = site.value("name", "");
+        std::vector<int> landCells = DecodeCells(r.value("cells", json::array()), WW);
+        if (landCells.empty()) continue;
+        int lx0 = WW, ly0 = WH, lx1 = 0, ly1 = 0;
+        for (int c : landCells) lx0 = std::min(lx0, c % WW), ly0 = std::min(ly0, c / WW), lx1 = std::max(lx1, c % WW + 1), ly1 = std::max(ly1, c / WW + 1);
+        const int side = std::max(lx1 - lx0, ly1 - ly0);
+        const int x = lx0, y = ly0, w = side, h = side;
+        std::vector<uint8_t> land(static_cast<size_t>(side) * side, 0);
+        for (int c : landCells) land[static_cast<size_t>(c / WW - ly0) * side + c % WW - lx0] = 1;
+        std::vector<int> outsideCells;
+        for (int c = 0; c < side * side; ++c) {
+            if (!land[c]) outsideCells.push_back(c);
+        }
         json sectionBrief = {{"buildType", kind}, {"name", name}};
-        // Its parts, as the test names them (else the planner's).
-        const std::string n = r.value("node", "");
-        const int index = n.rfind("heartland-", 0) == 0 ? std::atoi(n.substr(10).c_str()) - 1 : -1;
-        if (index >= 0 && index < static_cast<int>(sites.size()) && sites[index].contains("components")) sectionBrief["components"] = sites[index]["components"];
+        if (site.contains("components")) sectionBrief["components"] = site["components"]; // its parts, as the test names them
         if (!cls.empty() && ontology.Build(kind) && ontology.Build(kind)->Scale(cls)) sectionBrief["scale"] = {{"class", cls}};
         CompileOptions options;
-        options.side = std::min(w, h);
+        options.side = side;
         options.fixedSide = true;
-        options.seed = std::hash<std::string>{}(r.value("id", "")) % 1000003; // each section its own layout
-        const std::string id = r.value("id", "site");
-        Planned section = PlanPlace(ontology, sectionBrief, id, options);
+        options.seed = std::hash<std::string>{}(landId) % 1000003; // each section its own layout
+        options.outside = EncodeCells(outsideCells, side);
+        // Its ways in: its land's westmost cell on its middle row, its eastmost a little below.
+        auto edgeOn = [&](int row, bool west) {
+            for (int dy = 0; dy < side; ++dy) {
+                for (const int yy : {row + dy, row - dy}) {
+                    if (yy < 0 || yy >= side) continue;
+                    for (int k = 0; k < side; ++k) {
+                        const int xx = west ? k : side - 1 - k;
+                        if (land[static_cast<size_t>(yy) * side + xx]) return json{xx, yy};
+                    }
+                }
+            }
+            return json{west ? 0 : side - 1, row};
+        };
+        options.entrances = {{"w", edgeOn(side / 2, true)}, {"e", edgeOn(side / 2 + side / 10, false)}};
+        const std::string id = landId + "/site";
+        Planned section;
+        std::string saved = id;
+        std::replace(saved.begin(), saved.end(), '/', '-');
+        std::replace(saved.begin(), saved.end(), '#', '-');
+        if (reuse && fs::exists(out / (saved + "-solved.json")) && fs::exists(out / (saved + "-spec.json"))) {
+            std::ifstream a(out / (saved + "-solved.json")), b2(out / (saved + "-spec.json"));
+            section.solved = json::parse(a);
+            section.spec = json::parse(b2);
+        } else {
+            section = PlanPlace(ontology, sectionBrief, id, options, {}, aiSections);
+        }
         for (const auto& p : section.problems) problems << id << " " << p << "\n";
+        // Round its land, the world's ground (for its block-out and background: the land it sits in).
+        {
+            std::vector<std::string> ground = TerrainCells(section.solved, side, side);
+            for (int c = 0; c < side * side; ++c) {
+                if (land[c]) continue;
+                const int wx = x + c % side, wy = y + c / side;
+                ground[c] = wx < WW && wy < WH ? worldGround[static_cast<size_t>(wy) * WW + wx] : "grass";
+            }
+            SetTerrain(section.solved, ground, side, side);
+        }
         std::string file = id;
         std::replace(file.begin(), file.end(), '/', '-');
         std::replace(file.begin(), file.end(), '#', '-');
         Draw(ontology, section.solved, out / (file + ".png"), 2000);
+        std::ofstream(out / (file + "-spec.json")) << section.spec.dump(2);
+        std::ofstream(out / (file + "-solved.json")) << section.solved.dump(2);
+        DrawLayout(ontology, section.spec, section.solved, (name.empty() ? id : name) + " (" + kind + ")", out / (file + "-layout.png"), 1400);
         int buildings = 0;
         for (const auto& o : section.solved.value("objects", json::array())) buildings += o.value("layer", "") == "building" && o.value("primary", false);
         int zones = 0;
@@ -245,13 +492,24 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             const ModuleDef* m = ontology.Module(c.value("module", ""));
             zones += m && m->level == PlaceLevel::Zone;
         }
-        PutSection(together, section.solved, x, y, id);
-        sections.push_back({{"id", id}, {"name", name}, {"kind", kind}, {"class", cls}, {"bounds", bounds}, {"zones", zones}, {"buildings", buildings},
+        PutSection(together, section.solved, x, y, id, &land);
+        sections.push_back({{"id", id}, {"name", name}, {"kind", kind}, {"class", cls}, {"bounds", json{x, y, w, h}}, {"zones", zones}, {"buildings", buildings},
                             {"problems", section.problems.size()}});
         std::cout << "  " << id << " " << name << ": " << cls << " " << kind << " " << w << "x" << h << ", " << zones << " zones, "
                   << buildings << " buildings, " << section.problems.size() << " problems\n";
     }
     std::ofstream(out / "sections.json") << sections.dump(2);
+    // The world's layout: its zones (each settled land named by its place), then the whole world with its sections in.
+    std::map<std::string, std::string> worldNames;
+    for (const auto& r : world.solved.value("regions", json::array())) {
+        const std::string id = r.value("id", "");
+        if (id.rfind("heartland-", 0) != 0 || id.find('/') != std::string::npos) continue;
+        const int index = std::atoi(id.substr(10).c_str()) - 1;
+        if (index >= 0 && index < static_cast<int>(sites.size())) worldNames[id] = sites[index].value("name", id) + "'s land";
+    }
+    DrawLayout(ontology, world.spec, world.solved, world.brief.value("name", "The world") + ": the world plan", out / "world-layout.png", 2400, worldNames);
+    DrawLayout(ontology, world.spec, together, world.brief.value("name", "The world") + ": the world with its sections", out / "together-layout.png", 3600,
+               worldNames);
     std::ofstream(out / "together.solved.json") << together.dump(2);
     Draw(ontology, together, out / "together.png", 5000);
     return 0;

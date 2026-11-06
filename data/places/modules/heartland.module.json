@@ -78,6 +78,15 @@
         "slot": "tree",
         "density": "trees"
       }
-    ]
+    ],
+    "edge": {
+      "organic": true,
+      "core": 0.85,
+      "claim": true,
+      "description": "a wandering edge, round a middle big enough for its sites, which is its before anything grows"
+    }
+  },
+  "prefersSite": {
+    "edge": -1.5
   }
 }

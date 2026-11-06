@@ -102,9 +102,27 @@ It makes the biomes, the relief, the coast and water, the sites with their footp
 (the network solver, bridges where they cross rivers), and the forests. Nothing is detailed yet: no buildings,
 no props, no zones inside sites.
 
+### Sections are the places' land, organic
+
+The world plan gives each place (each site) a **land of its own**: a settled zone, one per place, spread apart over the
+world with forests, hills, water and roads between (`heartland`, its compile's `edge`: an organic edge round a middle
+that is claimed first and big enough for its site, which starts only where that square is clear of river and road; it
+keeps inland, `prefersSite.edge: -1.5`, so the woods along the world's edges run on unbroken). Natural zones (classes
+`NatureArea`, `WaterBody`) grow with a wandering edge (smooth noise on their growth), so forests, coasts and seas have
+bays and tongues, not growth circles.
+
+A **section is a place's land**, not a rectangle: it is planned as a place of its kind on its land's square, with the
+cells that aren't its land given as `outside` (nothing planned on them) and its ways in on its land's edge
+(`CompileOptions.outside`, `entrances`). Inside, what's built keeps together in the middle (`centre`), its own woods,
+meadows and water go round it towards the land's edge (`edge`), each with its organic edge: no forest of a section meets
+a square corner. A site's own size has room round it for that land (its compile's `padding`, 1.35).
+
+Its square's cells outside its land get **the world's ground** after the solve: the land round the place, as the world
+plan has it, for its block-out (Paint) and its background (Assembled).
+
 ### Cutting it into sections
 
-Every world cell belongs to exactly one section:
+Every world cell belongs to exactly one section (the first rule below is now the land of each place, above):
 
 1. Each **site** becomes a site section: its footprint's bounding rectangle, grown to whole cells and by its
    margin.
@@ -168,10 +186,18 @@ for pixel: the Mark step, the occluders and the interiors are unchanged.
 
 ### Sections are painted the same way
 
-A world is painted section by section, each in its tiles. A section's block-out extends its margin into its
-neighbours (drawn from their plans, or from the world plan when they aren't planned yet), so neighbouring
-paintings overlap by the margin and are cross-faded there like tiles. Because the margin is the world plan's on
-both sides (§5), the two paintings agree where they meet.
+An image is always a rectangle; a section's isn't. So a world is painted in layers, each a rectangle, joined by masks:
+
+1. **The base**: the whole world from the world plan, in tiles (its wild land, water, forests, the land round every
+   place).
+2. **Each section**, on its square: its land in detail and the world's land round it (its block-out carries both), the
+   base painting of that square given to the painter as a reference so the land round the place matches. It goes over
+   the base with a mask that is whole on its land and fades to nothing across a ragged band along its land's edge
+   (2.6–9.4 cells, smooth noise): in that band both show the same land, so the fade doesn't show.
+3. Neighbouring sections overlap only on world land, so the order they're laid in doesn't matter.
+
+The Assembled backgrounds are made and joined the same way. Mark, the occluders and the scene are per section, on its own
+land.
 
 ### Backgrounds (Assembled)
 
