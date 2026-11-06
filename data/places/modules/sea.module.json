@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "sea",
+  "name": "Sea",
+  "level": "zone",
+  "description": "Open salt water along one side of the land: the coast's other side, with its waves and shallows.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "WaterBody",
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        8000,
+        60000
+      ],
+      "min": 800,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "shore": {
+      "type": "enum",
+      "values": [
+        "sand",
+        "rocks",
+        "cliffs"
+      ],
+      "default": "sand",
+      "ask": true,
+      "description": "what the land is like where it meets the sea"
+    }
+  },
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "edge": 3.0
+  },
+  "compile": {
+    "fill": "water",
+    "background": []
+  }
+}

@@ -1271,7 +1271,18 @@ void Solver::Partition(const json& s, int region) {
             if (zones[k].box[0] < 0 && zones[k].painted.empty()) order.push_back(k);
         }
         auto centreWish = [&](size_t k) { return zones[k].prefers.value("centre", 0.0) - zones[k].prefers.value("edge", 0.0); };
+        // A zone another is placed by (the sea a coast is near) is seeded before it, so the other's relation has
+        // somewhere to go.
+        auto targeted = [&](size_t k) {
+            for (const auto& z : zones) {
+                for (const auto& r : z.rel) {
+                    if (r.value("to", "") == zones[k].id && z.id != zones[k].id) return true;
+                }
+            }
+            return false;
+        };
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (targeted(a) != targeted(b)) return targeted(a);
             if (zones[a].flexible != zones[b].flexible) return !zones[a].flexible;
             if (centreWish(a) != centreWish(b)) return centreWish(a) > centreWish(b);
             return zones[a].quota > zones[b].quota;
@@ -1597,9 +1608,12 @@ void Solver::Partition(const json& s, int region) {
             const int c = available[i];
             if (!seedable(zones[k], c)) continue;
             double apart = 1e9;
+            bool used = false; // never on another zone's seed: it would have no land to start from
             for (const auto& z : zones) {
                 if (z.seed >= 0) apart = std::min(apart, std::hypot(c % W - z.seed % W, c / W - z.seed / W));
+                used = used || (z.seed == c && &z != &zones[k]);
             }
+            if (used) continue;
             const double v = interest(zones[k], c) - (apart < minApart ? 4.0 * (1 - apart / minApart) : 0) + 0.01 * rng.Unit();
             if (v > best) {
                 best = v;
@@ -1645,8 +1659,14 @@ void Solver::Partition(const json& s, int region) {
         }
         z.seed = best;
     }
+    // Each seed is its zone's from the start: a zone growing towards another (a coast near the sea) doesn't take the
+    // other's seed before it has grown at all.
+    std::vector<int> seedOf(W * H, -1);
     for (size_t k = 0; k < zones.size(); ++k) {
-        if (zones[k].seed >= 0 && zones[k].box[0] < 0) frontier[k].push({0, zones[k].seed});
+        if (zones[k].seed >= 0 && zones[k].box[0] < 0) {
+            frontier[k].push({0, zones[k].seed});
+            seedOf[zones[k].seed] = static_cast<int>(k);
+        }
     }
     while (true) {
         int pick = -1;
@@ -1680,7 +1700,7 @@ void Solver::Partition(const json& s, int region) {
             }
             if (!In(nx, ny)) continue;
             const int n = Cell(nx, ny);
-            if (!usable[n] || taken[n] >= 0) continue;
+            if (!usable[n] || taken[n] >= 0 || (seedOf[n] >= 0 && seedOf[n] != pick)) continue;
             // Compact zones: closeness to the seed matters most; interest breaks ties.
             // A zone with relations grows by them too (along the river: a strip).
             const double distance = std::hypot(nx - z.seed % W, ny - z.seed / W);
@@ -1690,7 +1710,11 @@ void Solver::Partition(const json& s, int region) {
     }
     for (const auto& z : zones) {
         if (z.cells.empty()) {
-            Problem("S-UNSAT", s, "no room for zone " + z.id);
+            int usableCells = 0;
+            for (int c : z.painted) usableCells += usable[c];
+            Problem("S-UNSAT", s, "no room for zone " + z.id +
+                                      (!z.painted.empty() ? " (" + std::to_string(usableCells) + " of its " + std::to_string(z.painted.size()) + " painted cells free)"
+                                       : z.seed < 0 ? " (nowhere to start it)" : " (its start was taken)"));
             continue;
         }
         AddRegion(z.id, z.node, s.value("id", ""), region, z.cells, z.module);

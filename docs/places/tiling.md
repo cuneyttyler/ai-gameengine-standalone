@@ -31,7 +31,7 @@ Two things make it work:
 
 | Term | What |
 |---|---|
-| **World** | A scene built from many sections. Its build type is `region` (the world plan's root). |
+| **World** | A scene built from many sections. Its build type is `world` (the ontology's, §3a). |
 | **World plan** | The region's solved plan: the sections' bounds and kinds, the roads, rivers, lakes, coast, forests and relief, in world cells. |
 | **Section** | One place of one build type, built by a normal place build inside a rectangle of the world. |
 | **Site section** | A section for one of the world plan's sites: a village, a town, a camp, a castle, a dungeon's entrance… |
@@ -45,17 +45,44 @@ Two things make it work:
 Next to the method (**Assembled**, **Paint**) the panel asks what to build:
 
 - **A single place**: as today; the build type comes from the request (village, camp, dungeon…).
-- **An open world**: a region made of sections (this document).
+- **An open world**: a world made of sections (this document).
 
 Above the request: *"Select build method and type first."* Then a request such as *"A big island with several
 villages connected through long-distance roads, forests, camps and other related things"* builds a world.
+
+The panel follows the ontology: "An open world" is offered when a build type has `"scope": "world"`; the Place menu
+lists the others; a world's size choices, its asked fields (landform, relief, woods, biomes) and its parts are its
+world type's; a build whose type is a world has the ② World step, whatever started it.
+
+## 3a. The ontology of a world
+
+Everything a world is made of is defined in `data/places`, as for any place:
+
+| What | Where | |
+|---|---|---|
+| The **world** build type | `buildtypes.json` `world` | `"scope": "world"`; its words (open world, island, archipelago, continent…), unit (sites), scale classes (island 250–400 cells a side, land 400–700, continent 700–1400), paint guide, and its **`sections`**: `from` (the modules each made a section: `site`), `wild` (the build type of the land between: `wilderness`), `wildSide` (64), `margin` (2), `carried` (what a section keeps of the world plan) |
+| The **world** root | `modules/world.module.json` | sites (count), area; `landform` (inland, coastal, island, archipelago, peninsula), biome mix, climate, relief (flat → mountainous), woods; its children below |
+| **Sea** | `modules/sea.module.json` | salt water along one side (prefers the edge); its shore: sand, rocks, cliffs |
+| **Ocean** | `modules/ocean.module.json` | deep water off the land; its compile's `ring` puts it all round the land when the landform is an island or an archipelago (the land's ways in move inside the ring) |
+| **Coast** | `modules/coast.module.json` | the strip between land and sea: sand, shingle, rocks or cliffs; near the place's water (its first: the sea) |
+| **Mountains** | `modules/mountains.module.json` | high rock (`mountain` terrain: not walkable), peaks rocky, snowy or volcanic, boulders and scree |
+| **Hills** | `modules/hills.module.json` | rolling high ground, walkable, rocks and scattered trees |
+| **Marsh** | `modules/marsh.module.json` | wet low ground by the water: mud, reeds, pools |
+| **Forest**, **river**, **lake**, **road**, **biome**, **heartland**, **site**, **landmark** | existing modules | a lake is now laid out as a zone of water at a place's top level (it was never filled there) |
+| Classes | `classes.json` | `World`, `Section`; sea and ocean are `WaterBody` and `NatureArea` |
+| Vocabulary | `vocabularies.json` `landform` | inland, coastal, island, archipelago, peninsula, with the words for each |
+| Rules | `rules.json` `world-*` | an island has ocean round it; a coast lies by the sea; mountains block the way; every site is reached by a road |
+
+A zone's compile `fill` may now be one terrain (`"water"`) as well as a field's mapping. A region can have the new
+land and water too. Planned from a Brief alone (no AI: `tools/plan_blockout --brief`), a coastal world and an island
+both come out whole (`builder_tests/world_test`).
 
 ## 4. The steps
 
 | Step | Assembled | Paint |
 |---|---|---|
 | ① Confirm | the world's Brief: its size, its sites and their kinds, its climate, relief, woods, water, coast | same |
-| ② **Sections** | the world plan, as an image with the sections drawn on it, and the list: each section's name, kind, size and what it carries. *Lay out the zones* lays the sections out one by one | same |
+| ② **World** | the world plan, as an image with the sections drawn on it, and the list: each section's name, kind, size and what it carries. *Lay out the zones* lays the sections out one by one | same |
 | ③ Layout | the section list above; below, the selected section's layout image on the left and its description on the right (the page as today) | same |
 | ④ Plan | the section list above; below, the selected section's plan image and information | same |
 | ⑤ | **Assets**: the backgrounds first, every section's, joined into one; then the assets, shared across sections | **Paint**: each section painted in its tiles, then joined |
@@ -166,7 +193,7 @@ One scene holds the whole world:
 places/<world-id>/
   world.json          the world: its Brief, its plan's summary, its sections (id, kind, name, bounds, margin, stage)
   world.solved.json   the world plan
-  world.png           the world plan drawn, with the sections on it (the Sections page)
+  world.png           the world plan drawn, with the sections on it (the World page)
   sections/<section-id>/   a normal place folder: brief, spec, layout, plan, block-out, painting, marks…
 ```
 
@@ -180,4 +207,4 @@ A section's folder is a place's folder, so everything that works on one place wo
   (about 20 minutes, 4 at a time).
 - **Load**: the jobs run a few at a time, so a long world build doesn't hold the machine at full load.
 - **Later**: sections of other shapes than rectangles; a world map view; streaming; roads drawn by hand on the
-  Sections page.
+  World page.

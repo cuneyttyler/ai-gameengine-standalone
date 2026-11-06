@@ -95,7 +95,7 @@ TerrainGrid ReadTerrain(const json& solved) {
 }
 
 // Terrain nothing walks on: water, and a dungeon's rock between its rooms.
-bool SolidTerrain(const std::string& t) { return t == "water" || t == "rock-wall"; }
+bool SolidTerrain(const std::string& t) { return t == "water" || t == "rock-wall" || t == "mountain"; }
 
 // The project terrain a layout terrain is painted with: by name, then by kin.
 std::string MatchTerrain(const TerrainSet& set, const std::string& wanted) {
@@ -108,6 +108,8 @@ std::string MatchTerrain(const TerrainSet& set, const std::string& wanted) {
         {"water", {"water", "river", "lake", "sea", "pond"}},
         {"water-shallow", {"shallow", "water", "puddle"}},
         {"rock-wall", {"rock wall", "cave wall", "cliff", "wall", "rock"}},
+        {"mountain", {"mountain", "rock", "cliff", "scree", "stone"}},
+        {"snow", {"snow", "ice", "frost"}},
         {"stone-floor", {"stone floor", "flagstone", "dungeon floor", "floor", "stone", "cobble"}},
         {"cave-floor", {"cave floor", "cave", "rock floor", "dirt", "earth"}},
         {"wood-floor", {"wood floor", "plank", "wooden floor", "floorboard", "wood", "floor"}},
@@ -163,7 +165,7 @@ ImageData PlaceholderImage(const std::string& kind, const std::string& key) {
             {"grass", {104, 158, 84}}, {"dirt", {176, 146, 102}}, {"cobble", {150, 150, 146}}, {"water", {72, 128, 186}},
             {"water-shallow", {104, 150, 186}}, {"rock-wall", {58, 56, 54}}, {"stone-floor", {143, 139, 132}},
             {"cave-floor", {125, 111, 95}}, {"wood-floor", {176, 138, 94}}, {"mud", {138, 111, 78}}, {"sand", {228, 210, 154}},
-            {"snow", {238, 242, 245}}};
+            {"snow", {238, 242, 245}}, {"mountain", {128, 120, 110}}};
         auto it = ground.find(key);
         const Rgb g = it == ground.end() ? c : it->second;
         Fill(image, 0, 0, 32, 32, g);

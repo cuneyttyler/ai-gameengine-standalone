@@ -1,0 +1,109 @@
+{
+  "schema": "aige.module/1",
+  "id": "coast",
+  "name": "Coast",
+  "level": "zone",
+  "description": "The strip of land along a sea: beaches, dunes, rocks or cliffs, with what the sea leaves there.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        1500,
+        12000
+      ],
+      "min": 150,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "shore": {
+      "type": "enum",
+      "values": [
+        "sand",
+        "shingle",
+        "rocks",
+        "cliffs"
+      ],
+      "default": "sand",
+      "ask": true
+    }
+  },
+  "slots": {
+    "rock": {
+      "role": "rock",
+      "essential": false,
+      "primary": true
+    },
+    "boulder": {
+      "role": "boulder",
+      "essential": false
+    },
+    "reed": {
+      "role": "reed",
+      "essential": false
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "edge": 2.0
+  },
+  "compile": {
+    "fill": {
+      "field": "shore",
+      "values": {
+        "sand": "sand",
+        "shingle": "sand",
+        "rocks": "sand",
+        "cliffs": "mountain"
+      }
+    },
+    "background": [
+      {
+        "slot": "rock",
+        "density": {
+          "field": "shore",
+          "values": {
+            "sand": 0.01,
+            "shingle": 0.04,
+            "rocks": 0.08,
+            "cliffs": 0.03
+          }
+        }
+      },
+      {
+        "slot": "boulder",
+        "density": {
+          "field": "shore",
+          "values": {
+            "sand": 0.0,
+            "shingle": 0.01,
+            "rocks": 0.04,
+            "cliffs": 0.02
+          }
+        }
+      },
+      {
+        "slot": "reed",
+        "density": 0.01
+      }
+    ]
+  },
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.water"
+      ],
+      "weight": 2.0,
+      "hard": true
+    }
+  ]
+}

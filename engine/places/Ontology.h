@@ -192,6 +192,12 @@ struct BuildType {
     // How it's laid out: "site" (zones partitioned, parcels along streets),
     // "dungeon" (levels of rooms and corridors) or "interior" (floors of rooms).
     std::string layout = "site";
+    // A single place, or an open world made of sections (docs/places/tiling.md): "place" or "world".
+    std::string scope = "place";
+    // A world's sections (tiling.md §5): {from: [modules each a section], wild: the build type of the land between,
+    // wildSide: its sections' largest side in cells, margin: the cells neighbours share, carried: what a section keeps
+    // of the world plan}. Null for a place.
+    nlohmann::json sections;
     std::vector<std::string> words;      // words a request names it by ("cave", "fortress")
     bool isDefault = false;              // the one a request that names none gets
     int rank = 0;                        // a request naming several: the one holding the others wins (a region's towns)

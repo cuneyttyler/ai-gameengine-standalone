@@ -3279,15 +3279,25 @@ across them. And paintings and backgrounds are made of **tiles**, as many as the
   first."* above the request. An open world is built as a `region`.
 - A world build (`WorldBuild`) owns the world's Brief and plan and a place build per section; the panel's state
   says which section is selected, and each page shows it.
-- Its steps: Assembled: Confirm, **Sections**, Layout, Plan, Assets, Build. Paint: Confirm, **Sections**, Layout,
+- Its steps: Assembled: Confirm, **World**, Layout, Plan, Assets, Build. Paint: Confirm, **World**, Layout,
   Plan, Paint, Mark, Assets, Animate, Build.
 - Tests: the scope reaches the build; a world's steps per method; the request parsed as a region.
+
+### 31.2a The ontology of a world (done)
+
+- A `world` build type (`"scope": "world"`, its `sections`: from, wild, wildSide, margin, carried) and root module
+  (landform, relief, woods, biomes); sea, ocean (ringing an island), coast, mountains (not walkable), hills and marsh;
+  lakes laid out at a place's top level; the `World` and `Section` classes, the `landform` vocabulary, world rules.
+- The Build panel follows it: "An open world" when a world type exists; the Place menu the others; ② World for a
+  build whose type is a world.
+- The solver: a zone never starts on another's seed, and a zone others are placed by is seeded first.
+- Tested from a Brief alone (`tools/plan_blockout --brief`): a coastal world and an island plan whole.
 
 ### 31.3 The world plan and its sections
 
 - The region root solved over the whole world (sites, roads, rivers, lakes, coast, forests, relief), then cut into
   sections: each site's rectangle (with its margin), the rest in wild sections of at most 64 cells a side.
-- The **Sections** page: the world plan drawn with the sections on it, and their list (name, kind, size, what each
+- The **World** page: the world plan drawn with the sections on it, and their list (name, kind, size, what each
   carries). *Lay out the zones* lays the sections out one by one.
 - Stored as `places/<world>/world.json`, `world.solved.json`, `world.png`, and a place folder per section.
 - Tests: every world cell in exactly one section; sites whole in their sections; small leftovers merged.

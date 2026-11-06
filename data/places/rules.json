@@ -158,5 +158,36 @@
     "text": "Streets have sidewalks on both sides, with lamps, trees and bins along them.",
     "source": "Jacobs 1961",
     "appliesTo": "class:District"
+  },
+  {
+    "id": "world-ocean-round-islands",
+    "text": "An island or an archipelago has ocean all round it.",
+    "source": "AIGE open worlds (docs/places/tiling.md)",
+    "appliesTo": "ocean"
+  },
+  {
+    "id": "world-coast-by-the-sea",
+    "text": "A coast lies between the land and the sea.",
+    "source": "AIGE open worlds (docs/places/tiling.md)",
+    "appliesTo": "coast",
+    "relation": {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.water"
+      ]
+    }
+  },
+  {
+    "id": "world-mountains-block",
+    "text": "Mountains block the way: a road crosses them only through a pass.",
+    "source": "AIGE open worlds (docs/places/tiling.md)",
+    "appliesTo": "mountains"
+  },
+  {
+    "id": "world-sites-on-roads",
+    "text": "Every site of a world is reached by a road.",
+    "source": "AIGE open worlds (docs/places/tiling.md)",
+    "appliesTo": "site"
   }
 ]

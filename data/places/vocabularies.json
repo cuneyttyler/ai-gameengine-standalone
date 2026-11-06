@@ -1842,5 +1842,48 @@
         "no empty space"
       ]
     }
+  ],
+  "landform": [
+    {
+      "id": "inland",
+      "alt": [
+        "landlocked",
+        "inland",
+        "no sea"
+      ]
+    },
+    {
+      "id": "coastal",
+      "alt": [
+        "coast",
+        "coastal",
+        "by the sea",
+        "seaside",
+        "shore"
+      ]
+    },
+    {
+      "id": "island",
+      "alt": [
+        "island",
+        "isle"
+      ]
+    },
+    {
+      "id": "archipelago",
+      "alt": [
+        "archipelago",
+        "islands",
+        "isles"
+      ]
+    },
+    {
+      "id": "peninsula",
+      "alt": [
+        "peninsula",
+        "cape",
+        "headland"
+      ]
+    }
   ]
 }

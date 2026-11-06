@@ -1,0 +1,88 @@
+{
+  "schema": "aige.module/1",
+  "id": "mountains",
+  "name": "Mountains",
+  "level": "zone",
+  "description": "High rocky ground no one walks over: peaks, cliffs and scree, crossed only where a pass or a road goes through.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        3000,
+        30000
+      ],
+      "min": 300,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "peaks": {
+      "type": "enum",
+      "values": [
+        "rocky",
+        "snowy",
+        "volcanic"
+      ],
+      "default": "rocky",
+      "ask": true
+    }
+  },
+  "slots": {
+    "boulder": {
+      "role": "boulder",
+      "essential": false,
+      "primary": true
+    },
+    "rock": {
+      "role": "rock",
+      "essential": false
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "edge": 1.0,
+    "high-ground": 1.5
+  },
+  "compile": {
+    "fill": {
+      "field": "peaks",
+      "values": {
+        "rocky": "mountain",
+        "snowy": "mountain",
+        "volcanic": "mountain"
+      }
+    },
+    "background": [
+      {
+        "slot": "boulder",
+        "density": 0.05
+      },
+      {
+        "slot": "rock",
+        "density": 0.08
+      },
+      {
+        "slot": "tree",
+        "density": {
+          "field": "peaks",
+          "values": {
+            "rocky": 0.02,
+            "snowy": 0.0,
+            "volcanic": 0.0
+          }
+        }
+      }
+    ]
+  }
+}

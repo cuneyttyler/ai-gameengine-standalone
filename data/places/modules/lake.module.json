@@ -59,5 +59,12 @@
         "d": 2
       }
     }
-  ]
+  ],
+  "compile": {
+    "fill": "water",
+    "background": []
+  },
+  "prefersSite": {
+    "water": 0.5
+  }
 }

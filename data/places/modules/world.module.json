@@ -1,0 +1,161 @@
+{
+  "schema": "aige.module/1",
+  "id": "world",
+  "name": "World",
+  "level": "site",
+  "description": "An open world: one scene made of many sections (villages, towns, camps, castles, dungeons and the wild land between), planned whole first so that its roads, rivers, coasts and forests run on across them (docs/places/tiling.md).",
+  "buildTypes": [
+    "world"
+  ],
+  "classes": [
+    "World"
+  ],
+  "quantity": {
+    "sites": {
+      "type": "count",
+      "default": [
+        4,
+        12
+      ],
+      "min": 1,
+      "max": 200,
+      "ask": true,
+      "description": "its settled places: villages, towns, camps, castles, dungeon entrances; each a section"
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        90000,
+        360000
+      ],
+      "min": 10000,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "landform": {
+      "type": "enum",
+      "vocabulary": "landform",
+      "default": "inland",
+      "ask": true,
+      "description": "the shape of the land: inland, a coast along one side, an island, an archipelago, a peninsula"
+    },
+    "biome-mix": {
+      "type": "mix",
+      "vocabulary": "biome-kind",
+      "default": {
+        "forest": 0.4,
+        "plains": 0.4,
+        "hills": 0.2
+      },
+      "ask": true
+    },
+    "climate": {
+      "type": "enum",
+      "vocabulary": "climate",
+      "default": "temperate"
+    },
+    "relief": {
+      "type": "enum",
+      "values": [
+        "flat",
+        "gentle",
+        "hilly",
+        "mountainous"
+      ],
+      "default": "gentle",
+      "ask": true,
+      "description": "the lie of the land: level, low rolling hills, high ground, or mountain ranges"
+    },
+    "woods": {
+      "type": "enum",
+      "values": [
+        "none",
+        "few",
+        "some",
+        "dense"
+      ],
+      "default": "some",
+      "ask": true,
+      "description": "how wooded the wild land is"
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "heartland": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 8
+    },
+    "biome-zone": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 16
+    },
+    "forest": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 16
+    },
+    "mountains": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    },
+    "hills": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 8
+    },
+    "marsh": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "sea": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 2
+    },
+    "ocean": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 1
+    },
+    "coast": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "river": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 4
+    },
+    "lake": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 8
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    }
+  },
+  "compile": {
+    "ground": "grass",
+    "roads": {
+      "width": 2,
+      "surface": "dirt"
+    }
+  }
+}

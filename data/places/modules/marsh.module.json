@@ -1,0 +1,62 @@
+{
+  "schema": "aige.module/1",
+  "id": "marsh",
+  "name": "Marsh",
+  "level": "zone",
+  "description": "Wet low ground by the water: mud, reeds and pools, a few twisted trees.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        1500,
+        15000
+      ],
+      "min": 150,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "reed": {
+      "role": "reed",
+      "essential": false,
+      "primary": true
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "water": 1.5
+  },
+  "compile": {
+    "fill": "mud",
+    "background": [
+      {
+        "slot": "reed",
+        "density": 0.12
+      },
+      {
+        "slot": "tree",
+        "density": 0.03
+      },
+      {
+        "slot": "bush",
+        "density": 0.03
+      }
+    ]
+  }
+}

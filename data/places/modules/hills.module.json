@@ -1,0 +1,70 @@
+{
+  "schema": "aige.module/1",
+  "id": "hills",
+  "name": "Hills",
+  "level": "zone",
+  "description": "Rolling high ground: grassy slopes with rocks and scattered trees, walkable all over.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        3000,
+        30000
+      ],
+      "min": 300,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "rock": {
+      "role": "rock",
+      "essential": false,
+      "primary": true
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    },
+    "boulder": {
+      "role": "boulder",
+      "essential": false
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "high-ground": 1.0
+  },
+  "compile": {
+    "fill": "grass",
+    "background": [
+      {
+        "slot": "rock",
+        "density": 0.03
+      },
+      {
+        "slot": "tree",
+        "density": 0.03
+      },
+      {
+        "slot": "bush",
+        "density": 0.02
+      },
+      {
+        "slot": "boulder",
+        "density": 0.01
+      }
+    ]
+  }
+}

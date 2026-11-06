@@ -2,6 +2,7 @@
 
 #include "places/Expr.h"
 #include "places/PlaceValidate.h"
+#include "places/Solver.h"
 
 #include <algorithm>
 #include <deque>
@@ -604,8 +605,22 @@ void Compiler::Root(const json& root) {
         }
     }
     Emit({{"op", "fill"}, {"id", "site/ground"}, {"node", groundNode}, {"in", "site"}, {"terrain", ground}});
-    Emit({{"op", "anchor"}, {"id", "site/entrance-w"}, {"node", id}, {"at", {0, s / 2}}, {"kind", "entrance"}});
-    Emit({{"op", "anchor"}, {"id", "site/entrance-e"}, {"node", id}, {"at", {s - 1, s / 2 + s / 10}}, {"kind", "entrance"}});
+    // Land ringed by water (an island's ocean: a child whose compile rings it for the root's landform): the ways in are
+    // on the land, inside the ring, not at the map's edge out in the sea.
+    int inset = 0;
+    if (m) {
+        const json landform = FieldOf(root, *m, "landform");
+        for (const auto& c : children) {
+            const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+            const json ring = cm && cm->compile.is_object() ? cm->compile.value("ring", json()) : json();
+            if (!ring.is_object() || !landform.is_string()) continue;
+            for (const auto& l : ring.value("landform", json::array())) {
+                if (l == landform) inset = std::max(inset, static_cast<int>(std::ceil(ring.value("width", 0.14) * 1.45 * s)) + 3);
+            }
+        }
+    }
+    Emit({{"op", "anchor"}, {"id", "site/entrance-w"}, {"node", id}, {"at", {inset, s / 2}}, {"kind", "entrance"}});
+    Emit({{"op", "anchor"}, {"id", "site/entrance-e"}, {"node", id}, {"at", {s - 1 - inset, s / 2 + s / 10}}, {"kind", "entrance"}});
 
     // The place's water, for the relations that name it ("along parent.water": the docks zone, each dock).
     water_.clear();
@@ -729,7 +744,9 @@ void Compiler::Root(const json& root) {
     std::vector<std::pair<const json*, const ModuleDef*>> zones;
     for (const auto& c : children) {
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
-        if (cm == nullptr || cm->level != PlaceLevel::Zone) continue;
+        // The zones, and the place's still water (a lake: laid out as a zone of water; a river is a path).
+        const bool stillWater = cm && cm->level == PlaceLevel::Site && cm->id != "river" && ontology_.IsA(cm->id, "WaterBody");
+        if (cm == nullptr || (cm->level != PlaceLevel::Zone && !stillWater)) continue;
         const auto area = Range(c, *cm, "area");
         json prefers = json::object();
         for (const auto& [criterion, weight] : cm->prefersSite) prefers[criterion] = weight;
@@ -765,9 +782,30 @@ void Compiler::Root(const json& root) {
         if (auto it = options_.keepSeeds.find(c.value("id", "")); it != options_.keepSeeds.end()) {
             zone["seed"] = {it->second.first, it->second.second};
         }
+        // A ring round the whole land (an island's ocean: its compile's ring, when the root's landform is one it names):
+        // the cells within its width of the edge, the shore wobbling.
+        const json ring = cm->compile.is_object() ? cm->compile.value("ring", json()) : json();
+        const json landform = m ? FieldOf(root, *m, "landform") : json();
+        bool ringed = false;
+        if (ring.is_object() && landform.is_string()) {
+            for (const auto& l : ring.value("landform", json::array())) ringed = ringed || l == landform;
+        }
         // Painted by the user (① Confirm's brush): exactly those cells. Else as ① Confirm's
         // layout left it (its kept cells): the plan fills the zone, it doesn't move it.
         if (const json paint = c.value("paint", json()); paint.is_array() && !paint.empty()) zone["paint"] = paint;
+        else if (ringed) {
+            const double width = ring.value("width", 0.14) * s;
+            std::vector<int> cells;
+            for (int y = 0; y < s; ++y) {
+                for (int x = 0; x < s; ++x) {
+                    const double edge = std::min({x, y, s - 1 - x, s - 1 - y});
+                    const double wobble = width * (0.25 * std::sin(x * 0.07 + y * 0.03) + 0.2 * std::cos(y * 0.09 - x * 0.04));
+                    if (edge < width + wobble) cells.push_back(y * s + x);
+                }
+            }
+            zone["paint"] = EncodeCells(cells, s);
+            zone["area"] = static_cast<int>(cells.size());
+        }
         else if (const json kept = c.value("layoutCells", json()); kept.is_array() && !kept.empty()) zone["paint"] = kept;
         // The AI's sketch of it (cells of this site): where it grows, not its border.
         if (const json sketch = c.value("sketchCells", json()); sketch.is_array() && !sketch.empty()) zone["sketch"] = sketch;
@@ -899,7 +937,10 @@ void Compiler::Landscape(const std::string& root, const std::string& zonesIn, co
 void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix) {
     const std::string zoneId = zone.value("id", "");
     const json hints = m.compile.is_object() ? m.compile : json::object();
-    if (const json fill = hints.value("fill", json()); fill.is_object()) {
+    // Its ground: one terrain ("water": a sea, a lake), or by one of its fields (a biome's).
+    if (const json fill = hints.value("fill", json()); fill.is_string()) {
+        Emit({{"op", "fill"}, {"id", zoneId + "/ground"}, {"node", zoneId}, {"in", zoneId}, {"terrain", fill}});
+    } else if (fill.is_object()) {
         const json v = FieldOf(zone, m, fill.value("field", ""));
         const json values = fill.value("values", json::object());
         if (v.is_string() && values.contains(v.get<std::string>())) {

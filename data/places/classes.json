@@ -46,7 +46,7 @@
   },
   "WaterBody": {
     "label": "Body of water",
-    "description": "A river, lake or pond."
+    "description": "A river, lake, pond, sea or ocean."
   },
   "WaterSource": {
     "label": "Water source",
@@ -54,7 +54,7 @@
   },
   "NatureArea": {
     "label": "Nature area",
-    "description": "A forest, meadow or rock field."
+    "description": "A forest, meadow, rock field, hills, mountains, marsh or coast."
   },
   "Crossing": {
     "label": "Crossing",
@@ -166,5 +166,13 @@
     ],
     "label": "Park",
     "description": "A public green: lawns, trees, paths, benches."
+  },
+  "World": {
+    "label": "World",
+    "description": "An open world: one scene made of many sections, planned whole first."
+  },
+  "Section": {
+    "label": "Section",
+    "description": "One place of a world, of one build type, built in its rectangle of the world plan and keeping what crosses it (roads, rivers, forests)."
   }
 }

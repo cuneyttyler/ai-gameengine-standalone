@@ -840,7 +840,12 @@
       "river",
       "lake",
       "road",
-      "forest"
+      "forest",
+      "mountains",
+      "hills",
+      "marsh",
+      "sea",
+      "coast"
     ],
     "scale": [
       {
@@ -906,6 +911,146 @@
         "settlements linked by winding roads; bridges where roads cross rivers",
         "forests, hills and water in natural shapes, never a grid",
         "landmarks at meaningful spots; each settlement readable at a glance"
+      ]
+    }
+  },
+  {
+    "id": "world",
+    "name": "Open world",
+    "scope": "world",
+    "paint": "An open world's section at the isometric angle, part of a much bigger map: the land as the plan has it (grass, forest floor, sand, mud, snow, mountain rock, water), woods as dense masses of overlapping crowns, rivers, lakes and the sea with banks, beaches and shallows, mountains as high rock with cliffs and scree, roads of packed earth winding between, settlements where the plan has them. Small natural things may be added (stones, logs, bushes, flowers).",
+    "root": "world",
+    "words": [
+      "open world",
+      "open-world",
+      "world",
+      "overworld",
+      "island",
+      "islands",
+      "archipelago",
+      "continent",
+      "peninsula",
+      "big region",
+      "whole land",
+      "realm"
+    ],
+    "unit": {
+      "field": "sites",
+      "class": "Site",
+      "label": "sites"
+    },
+    "stages": [
+      "the world plan (land, water, sites, roads)",
+      "sections",
+      "each section laid out",
+      "each section planned",
+      "backgrounds or paintings",
+      "assets",
+      "build"
+    ],
+    "components": [
+      "heartland",
+      "biome-zone",
+      "site",
+      "landmark",
+      "forest",
+      "mountains",
+      "hills",
+      "marsh",
+      "sea",
+      "ocean",
+      "coast",
+      "river",
+      "lake",
+      "road"
+    ],
+    "scale": [
+      {
+        "class": "island",
+        "buildings": [
+          3,
+          8
+        ],
+        "side": [
+          250,
+          400
+        ],
+        "zones": [
+          3,
+          8
+        ]
+      },
+      {
+        "class": "land",
+        "buildings": [
+          6,
+          16
+        ],
+        "side": [
+          400,
+          700
+        ],
+        "zones": [
+          6,
+          14
+        ]
+      },
+      {
+        "class": "continent",
+        "buildings": [
+          14,
+          60
+        ],
+        "side": [
+          700,
+          1400
+        ],
+        "zones": [
+          10,
+          30
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "climate": "climate",
+        "landform": "landform"
+      },
+      "features": [
+        "river",
+        "lake",
+        "sea",
+        "mountains",
+        "coast"
+      ]
+    },
+    "sections": {
+      "from": [
+        "site"
+      ],
+      "wild": "wilderness",
+      "wildSide": 64,
+      "margin": 2,
+      "carried": [
+        "road",
+        "river",
+        "lake",
+        "sea",
+        "ocean",
+        "coast",
+        "forest",
+        "mountains",
+        "hills",
+        "marsh",
+        "biome-zone"
+      ]
+    },
+    "look": {
+      "reference": "open-world RPG maps (Baldur's Gate's areas, Divinity: Original Sin's overworld)",
+      "goals": [
+        "villages and towns joined by long winding roads; bridges where roads cross rivers, passes through mountains",
+        "forests, hills, mountains and water in natural shapes, never a grid, running on across the sections",
+        "coasts with beaches or cliffs; an island ringed by ocean"
       ]
     }
   },

@@ -39,6 +39,7 @@ Rgb TerrainColour(const std::string& t) {
     if (t == "cobble" || t == "cobblestone" || t == "paving" || t == "stone" || t == "flagstone") return {138, 134, 126};
     if (t == "floor" || t == "stone-floor" || t == "wood-floor" || t == "planks") return {128, 112, 92};
     if (t == "rock-wall" || t == "rock" || t == "cliff") return {48, 46, 50};
+    if (t == "mountain") return {122, 114, 104}; // high rock: not the dark of a dungeon's empty rock
     if (t == "void") return {16, 16, 20};
     if (t == "farmland" || t == "field" || t == "tilled") return {118, 92, 60};
     if (t == "snow") return {226, 230, 236};

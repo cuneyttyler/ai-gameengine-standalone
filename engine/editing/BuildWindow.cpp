@@ -546,7 +546,9 @@ json BuildChoices(const Ontology& ontology) {
             }
         }
         types.push_back({{"id", id}, {"name", build.name}, {"unit", build.unit.label}, {"default", build.isDefault}, {"classes", classes},
-                         {"fields", fields}, {"features", features}, {"parts", parts}});
+                         {"fields", fields}, {"features", features}, {"parts", parts},
+                         // A single place or an open world (its menu in the Build panel), and a world's sections.
+                         {"scope", build.scope}, {"sections", build.sections}});
     }
     // The settlement first, then by name.
     std::stable_sort(types.begin(), types.end(), [](const json& a, const json& b) {

@@ -1,0 +1,50 @@
+{
+  "schema": "aige.module/1",
+  "id": "ocean",
+  "name": "Ocean",
+  "level": "zone",
+  "description": "Deep open water beyond the land: around an island or an archipelago, or off a whole coast.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "WaterBody",
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        30000,
+        200000
+      ],
+      "min": 3000,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "prefersSite": {
+    "edge": 4.0
+  },
+  "compile": {
+    "fill": "water",
+    "background": [],
+    "ring": {
+      "landform": [
+        "island",
+        "archipelago"
+      ],
+      "width": 0.14,
+      "description": "round the whole land when the world is an island or an archipelago"
+    }
+  }
+}

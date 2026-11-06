@@ -503,10 +503,22 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     // Not the Brief's: how many looks each kind of thing gets (Matched art).
     variety_ = choices_.value("variety", "");
     choices_.erase("variety");
-    // An open world (tiling.md §3): a region, made of sections. Not the Brief's either.
+    // An open world (tiling.md §3): built as the ontology's world type (scope "world"), made of sections. Not the
+    // Brief's either.
     scope_ = choices_.value("scope", "") == "world" ? "world" : "place";
     choices_.erase("scope");
-    if (scope_ == "world") choices_["buildType"] = "region";
+    if (scope_ == "world") {
+        const json chosen = choices_.value("buildType", json());
+        const BuildType* type = chosen.is_string() ? host_.ontology().Build(chosen.get<std::string>()) : nullptr;
+        if (type == nullptr || type->scope != "world") {
+            for (const auto& [id, build] : host_.ontology().Builds()) {
+                if (build.scope == "world") {
+                    choices_["buildType"] = id;
+                    break;
+                }
+            }
+        }
+    }
     method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
     if (method_ != "Paint") method_ = "Assembled";
     fromPicture_ = false;
@@ -5499,7 +5511,12 @@ json PlaceBuild::State() {
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
     state["method"] = method_; // Assembled or Paint: which steps it has
-    state["scope"] = scope_;   // place or world: a world has ② Sections
+    // Place or world: its build type's (the ontology's), else as it was started. A world has ② World.
+    {
+        const BuildType* type = brief_.is_object() ? host_.ontology().Build(brief_.value("buildType", "")) : nullptr;
+        state["scope"] = type ? type->scope : scope_;
+        if (type) state["buildType"] = type->id;
+    }
     state["paintModel"] = PaintModel();
     state["paintFixed"] = brief_.value("buildType", "") == "dungeon"; // painted by FLUX-3-Image, whatever the project says
     state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint

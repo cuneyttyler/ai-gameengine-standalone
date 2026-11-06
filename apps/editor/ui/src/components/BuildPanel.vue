@@ -85,6 +85,8 @@ interface ChoiceType {
   fields: Choice[]
   features: { id: string; label: string }[]
   parts: { id: string; label: string; level: string; description: string }[]
+  scope?: 'place' | 'world' // the ontology's: a single place, or an open world made of sections
+  sections?: { from?: string[]; wild?: string; wildSide?: number; margin?: number; carried?: string[] } | null
 }
 
 interface BuildWindow {
@@ -136,7 +138,8 @@ interface PaintState {
 interface BuildState {
   paint?: PaintState
   method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
-  scope?: 'place' | 'world' // a single place, or an open world of sections (docs/places/tiling.md)
+  scope?: 'place' | 'world' // a single place, or an open world of sections (docs/places/tiling.md): its build type's
+  buildType?: string // its build type (the ontology's)
   paintModel?: string // who paints it (Paint)
   paintFixed?: boolean // a dungeon: always FLUX-3-Image, whatever the project's paint model
   projectMethod?: 'Assembled' | 'Paint'
@@ -291,7 +294,7 @@ const SOURCES = [
 const DENSITIES = ['none', 'rare', 'some', 'common', 'abundant']
 const ALL_STEPS = [
   { id: 'confirm', label: '① Confirm' },
-  { id: 'sections', label: '② Sections' },
+  { id: 'world', label: '② World' },
   { id: 'layout', label: '② Layout' },
   { id: 'plan', label: '③ Plan' },
   { id: 'paint', label: '④ Paint' },
@@ -303,20 +306,22 @@ const ALL_STEPS = [
 // A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint: Confirm, Layout, Plan, Paint,
 // Mark, Assets, Animate, Result: the doors and used things animated once their art is there).
 const buildMethod = computed(() => state.value?.method ?? newMethod.value)
-// An open world (docs/places/tiling.md §4) has ② Sections after Confirm: the world plan and the sections it's cut into.
+// An open world (docs/places/tiling.md §4) has ② World after Confirm: the world plan and the sections it's cut into.
 const buildScope = computed(() => (state.value ? state.value.scope ?? 'place' : newScope.value))
 // From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
 const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
-  (st.id !== 'sections' || buildScope.value === 'world') &&
+  (st.id !== 'world' || buildScope.value === 'world') &&
   !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦⑧⑨'[i]} ${st.label.slice(2)}`,
 })))
-// What a new build is: a single place, or an open world (a region made of sections).
+// What a new build is: a single place, or an open world made of sections (the ontology's build types say which).
 const newScope = ref<'place' | 'world'>('place')
-const SCOPES = [
+const ALL_SCOPES = [
   { id: 'place', label: 'A single place', title: 'One place of one kind: a village, a camp, a castle, a dungeon… (the kind from your words, or chosen below)' },
-  { id: 'world', label: 'An open world', title: 'A big region made of many places (sections), as in open-world RPGs: villages, camps, castles and dungeons joined by long roads, rivers and forests, planned together so they connect' },
+  { id: 'world', label: 'An open world', title: 'A big world made of many places (sections), as in open-world RPGs: villages, camps, castles and dungeons joined by long roads, rivers, coasts and forests, planned together so they connect' },
 ] as const
+// An open world only when the ontology has a world build type.
+const SCOPES = computed(() => ALL_SCOPES.filter((s) => s.id === 'place' || worldTypes.value.length > 0))
 // Who makes a build's art and paints its background (Build ▸ Assets), "" for the project's (Project Settings ▸ AI).
 const ART_MODELS = [
   { id: 'auto', label: 'Auto (follows the language model)' },
@@ -503,8 +508,13 @@ const featuresChosen = ref<string[]>([])
 const countLow = ref('')
 const countHigh = ref('')
 const choiceType = computed(() => choiceTypes.value.find((t) => t.id === chosenType.value))
-// An open world is a region: its size and fields are the region's.
-watch(newScope, (s) => setType(s === 'world' ? 'region' : ''))
+// The build types by scope (the ontology's): the Place menu lists the single places; an open world is a world type.
+const placeTypes = computed(() => choiceTypes.value.filter((t) => (t.scope ?? 'place') === 'place'))
+const worldTypes = computed(() => choiceTypes.value.filter((t) => t.scope === 'world'))
+const worldSections = computed(() => choiceTypes.value.find((t) => t.id === state.value?.buildType)?.sections ??
+  worldTypes.value[0]?.sections ?? null)
+// An open world's size and fields are its world type's.
+watch(newScope, (s) => setType(s === 'world' ? (worldTypes.value[0]?.id ?? '') : ''))
 function setType(id: string): void {
   chosenType.value = id
   chosen.value = {}
@@ -536,7 +546,7 @@ const variety = ref('')
 function choices(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (variety.value && variety.value !== 'normal') out.variety = variety.value
-  if (newScope.value === 'world') out.scope = 'world' // built as a region (PlaceBuild::Start)
+  if (newScope.value === 'world') out.scope = 'world' // built as the ontology's world type (PlaceBuild::Start)
   if (chosenType.value) out.buildType = chosenType.value
   for (const [path, value] of Object.entries(chosen.value)) out[path] = value
   const lo = Number(countLow.value), hi = Number(countHigh.value || countLow.value)
@@ -681,7 +691,7 @@ const showAssets = computed(
       (['built', 'building'].includes(stage.value) && viewing.value === 'assets')),
 )
 // ④ Paint and ⑤ Mark: pages of the planned place (the plan approved), before its art and its build.
-const atPaint = computed(() => viewing.value === 'paint' || viewing.value === 'mark' || viewing.value === 'sections')
+const atPaint = computed(() => viewing.value === 'paint' || viewing.value === 'mark' || viewing.value === 'world')
 const paint = computed<PaintState>(() => state.value?.paint ?? {})
 const paintCall = computed(() => aiCalls.value.find((c) => c.path === '/places/paint' && c.phase !== 'done' && c.phase !== 'failed'))
 const paintNotes = ref('')
@@ -806,7 +816,7 @@ const activeStep = computed(() => {
 })
 const REACHED: Record<string, string[]> = {
   confirm: ['layout', 'planning', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
-  sections: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
+  world: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   layout: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   plan: ['plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   paint: ['planned', 'sourcing', 'sourced', 'building', 'built'],
@@ -824,7 +834,7 @@ function stepDisabled(id: string): boolean {
 }
 function step(id: string): void {
   if (viewing.value === 'mark' && id !== 'mark') markEditor.value?.save()
-  if (id === 'paint' || id === 'mark' || id === 'animate' || id === 'sections') {
+  if (id === 'paint' || id === 'mark' || id === 'animate' || id === 'world') {
     viewing.value = id
     return
   }
@@ -1567,7 +1577,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <label>Place <span class="help" title="What kind of place: a settlement, a dungeon, an interior… Decided by the AI from your words unless chosen">?</span></label>
           <select :value="chosenType" @change="setType(($event.target as HTMLSelectElement).value)">
             <option value="">Decided by the AI</option>
-            <option v-for="t in choiceTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
+            <option v-for="t in placeTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
         </div>
         <div v-if="choiceType" class="form-cell">
@@ -1922,13 +1932,18 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
     <!-- ⑤ Result, while it's built: each step of putting the place into the scene. -->
     <!-- ④ Paint: the place painted whole from its plan (docs/places/painted-places.md), or skipped for its kit. -->
-    <div v-else-if="viewing === 'sections' && state" class="body window sections-view">
+    <div v-else-if="viewing === 'world' && state" class="body window world-view">
       <section class="note">
-        <h4>Sections of {{ state.name || 'the world' }}</h4>
+        <h4>{{ state.name || 'The world' }}</h4>
         <p>
-          An open world is planned whole first: where each place stands and where the roads, rivers and forests run. It's
-          then cut into sections, each a place of its own kind (a village, a camp, a castle, the wild land between), built
-          in detail where the world put it, so that everything meets across them (docs/places/tiling.md).
+          An open world is planned whole first: where each place stands and where the roads, rivers, coasts and forests
+          run. It's then cut into sections, each a place of its own kind, built in detail where the world put it, so that
+          everything meets across them.
+        </p>
+        <p v-if="worldSections" class="dim">
+          Sections: each {{ (worldSections.from ?? ['site']).join(', ') }} of the world, and the land between as
+          {{ worldSections.wild ?? 'wilderness' }} of at most {{ worldSections.wildSide ?? 64 }} cells a side; neighbours share
+          {{ worldSections.margin ?? 2 }} cells. Each keeps the world's {{ (worldSections.carried ?? []).join(', ') }}.
         </p>
       </section>
       <section v-if="state.sites?.length" class="plan">
