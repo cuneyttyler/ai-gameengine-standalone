@@ -206,7 +206,25 @@ private:
     double ParcelArea(const json& zone) const;
 };
 
+// A site built later as a place of its own (a world's or a region's: its compile is nested): as big as a place of its
+// build type and scale class is (the build type's scale table: a large village 110-160 cells a side), unless its size
+// was set. Null for any other parcel.
+static json NestedSiteSize(const Ontology& ontology, const json& parcel, const ModuleDef& m) {
+    if (!m.compile.is_object() || !m.compile.value("nested", false)) return json();
+    if (parcel.contains("quantity") && parcel["quantity"].is_object() && parcel["quantity"].contains("size")) return json();
+    const json type = FieldOf(parcel, m, "build-type"), cls = FieldOf(parcel, m, "scale-class");
+    const BuildType* build = type.is_string() ? ontology.Build(type.get<std::string>()) : nullptr;
+    if (build == nullptr) return json();
+    const ScaleClass* scale = cls.is_string() ? build->Scale(cls.get<std::string>()) : nullptr;
+    if (scale == nullptr && !build->scale.empty()) scale = &build->scale[build->scale.size() / 2];
+    if (scale == nullptr || scale->side.second <= 0) return json();
+    // Its class's range, the middle up: room to come out smaller where its land is cut (a river, a road).
+    const int lo = scale->side.first, mid = static_cast<int>(std::lround((scale->side.first + scale->side.second) / 2.0));
+    return json{{"w", json::array({lo, mid})}, {"h", json::array({lo, mid})}};
+}
+
 json Compiler::LotSize(const json& parcel, const ModuleDef& m, int index, int instances) const {
+    if (const json site = NestedSiteSize(ontology_, parcel, m); site.is_object()) return site;
     json lot = SizeOf(parcel, m, json{{"w", 5}, {"h", 6}});
     const auto [extra, front] = Extras(parcel, index, instances);
     // Deep enough for its house, its front row and the gardens and yards it gets:
@@ -240,10 +258,13 @@ double Compiler::ParcelArea(const json& zone) const {
             continue;
         }
         if (pm->level != PlaceLevel::Parcel) continue;
+        // Spread apart (a world's sites: its zone's compile `spread`): each with the gap it keeps round it.
+        const ModuleDef* zm = ontology_.Module(zone.value("module", ""));
+        const double gap = zm && zm->compile.is_object() && zm->compile.value("placement", "") == "scattered" ? zm->compile.value("spread", 0.0) : 0.0;
         const int repeat = std::max(1, p.value("repeat", 1));
         for (int k = 0; k < repeat; ++k) {
             const json lot = LotSize(p, *pm, k, repeat);
-            total += mid(lot["w"]) * mid(lot["h"]);
+            total += (mid(lot["w"]) + gap) * (mid(lot["h"]) + gap);
         }
     }
     return total;
@@ -467,7 +488,8 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
         for (int k = 0; k < repeat; ++k) {
             const std::string instance = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
             Emit({{"op", "region"}, {"id", instance}, {"node", c.value("id", "")}, {"in", zoneId}, {"shape", "rect"},
-                  {"size", SizeOf(c, *cm, json{{"w", 6}, {"h", 6}})}, {"module", cm->id}, {"spread", hints.value("spread", 12)},
+                  {"size", NestedSiteSize(ontology_, c, *cm).is_object() ? NestedSiteSize(ontology_, c, *cm) : SizeOf(c, *cm, json{{"w", 6}, {"h", 6}})},
+                  {"module", cm->id}, {"spread", hints.value("spread", 12)},
                   {"group", zoneId}, {"essential", true}});
             Relations(*cm, c.value("id", ""), instance, zoneId, "", "");
             Parcel(c, *cm, instance, k);

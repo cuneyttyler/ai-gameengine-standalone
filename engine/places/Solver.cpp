@@ -2145,8 +2145,12 @@ void Solver::NestedRegion(const json& s, int container) {
         double best = -1e18;
         int bx = -1, by = -1;
         int tried = 0;
-        for (int y = parent.y0; y + h <= parent.y1; ++y) {
-            for (int x = parent.x0; x + w <= parent.x1; ++x) {
+        // Spread out (a world's sites over its land): the candidates sampled across the whole container, not the first
+        // few from its top-left, so the group can spread over all of it.
+        const long long positions = static_cast<long long>(std::max(1, parent.x1 - parent.x0 - w + 1)) * std::max(1, parent.y1 - parent.y0 - h + 1);
+        const int stride = spread > 0 ? std::max(1, static_cast<int>(std::sqrt(positions / std::max(1.0, options_.maxCandidates * 0.8)))) : 1;
+        for (int y = parent.y0; y + h <= parent.y1; y += stride) {
+            for (int x = parent.x0; x + w <= parent.x1; x += stride) {
                 const int free = sat[(y + h) * (W + 1) + x + w] - sat[y * (W + 1) + x + w] - sat[(y + h) * (W + 1) + x] + sat[y * (W + 1) + x];
                 if (free != w * h) continue;
                 if (++tried > options_.maxCandidates) break;
