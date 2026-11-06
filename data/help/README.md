@@ -19,3 +19,10 @@ added from the engine's own descriptions at run time, so they aren't written her
   guesses; leave out what you can't confirm.
 - Example questions a section answers can follow its text as a line `Questions: how do I ...? where is ...?` (they
   help retrieval).
+- Each section ends with one or more worked examples, each a `### Example: <what it does>` subsection, as in the
+  User Guide: a concrete case with real-sounding names ("an inn where you can cook", "Vara Bell, the innkeeper"),
+  numbered steps with the exact clicks, labels and values (1. In the Project panel, click Records ▸ Packages, then
+  New…), and the result to expect. Where it fits: the words to type in the AI panel (as a quote), a record's or
+  procedure's JSON, or a Lua snippet, in fenced code blocks. Examples may take a section past 400 words.
+- `index.json` gives the website's docs (/docs) their order: the areas, their titles and intros, and each area's
+  pages in reading order. A new file is listed there too.

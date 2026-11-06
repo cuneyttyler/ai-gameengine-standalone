@@ -33,6 +33,14 @@ cd ../backend && .venv/Scripts/python app.py
 Flask serves `frontend/dist` and the API from one port. Behind a real server, run it with a WSGI server
 (for example `waitress-serve --port 8000 app:app` or gunicorn) rather than Flask's development server.
 
+## Documentation (/docs)
+
+`/docs` is the editor's documentation, read from its knowledge base in `../data/help` (the same files the editor's AI
+panel answers questions from): `index.json` orders the areas, groups and pages; each page's `## ` headings are its
+sections and `### Example: ...` headings its worked examples. `backend/docs.py` serves them (`/api/docs`,
+`/api/docs/<area>/<page>`, `/api/docs-search?q=`), rereading a file when it changes; `frontend/src/docs/DocsApp.vue`
+shows them with the sidebar. Edit the Markdown and reload: no rebuild needed.
+
 ## Editing the content
 
 Change the text in `backend/content.py`, and the site follows (no frontend rebuild needed). Facts come from

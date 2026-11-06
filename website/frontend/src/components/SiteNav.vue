@@ -9,6 +9,7 @@ const links = [
   { href: '#manual', label: 'By hand' },
   { href: '#library', label: 'Library' },
   { href: '#roadmap', label: 'Roadmap' },
+  { href: '/docs', label: 'Docs' },
 ]
 const scrolled = ref(false)
 const open = ref(false)

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
+import docs
 from content import CONTENT
 
 HERE = Path(__file__).resolve().parent
@@ -25,6 +26,28 @@ _lock = threading.Lock()
 @app.get("/api/content")
 def content():
     return jsonify(CONTENT)
+
+
+@app.get("/api/docs")
+def docs_tree():
+    """The documentation's areas, groups, pages and their sections (the sidebar)."""
+    return jsonify(docs.tree())
+
+
+@app.get("/api/docs/<area>/<page>")
+def docs_page(area: str, page: str):
+    """One page: its sections and subsections as HTML (from data/help)."""
+    if not re.fullmatch(r"[a-z0-9-]+", area) or not re.fullmatch(r"[a-z0-9-]+", page):
+        abort(404)
+    found = docs.page(area, page)
+    if found is None:
+        abort(404)
+    return jsonify(found)
+
+
+@app.get("/api/docs-search")
+def docs_search():
+    return jsonify({"hits": docs.search(str(request.args.get("q", ""))[:200])})
 
 
 @app.post("/api/signup")

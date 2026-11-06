@@ -1,0 +1,147 @@
+{
+  "title": "AIGE Documentation",
+  "intro": "How to make games with the AIGE editor: the editor itself, scenes and their things, art and animation, the gameplay systems and the AI that helps with all of them. Every page has worked examples.",
+  "areas": [
+    {
+      "id": "shell",
+      "title": "Getting started",
+      "intro": "The editor's window, its menus, tools and settings, and how to play-test and ship a game.",
+      "groups": [
+        {"title": "The editor", "pages": [
+          {"id": "projects", "nav": "Projects"},
+          {"id": "panels-and-layout", "nav": "Panels and layout"},
+          {"id": "viewport", "nav": "The viewport"},
+          {"id": "toolbar-and-tools", "nav": "Toolbar and tools"},
+          {"id": "menus", "nav": "Menus"},
+          {"id": "shortcuts", "nav": "Keyboard shortcuts"},
+          {"id": "undo-and-clipboard", "nav": "Undo and clipboard"},
+          {"id": "status-and-notifications", "nav": "Status and notifications"}
+        ]},
+        {"title": "Settings", "pages": [
+          {"id": "preferences", "nav": "Preferences"},
+          {"id": "project-settings", "nav": "Project Settings"},
+          {"id": "input-settings", "nav": "Input settings"}
+        ]},
+        {"title": "Testing and shipping", "pages": [
+          {"id": "play-mode", "nav": "Play mode"},
+          {"id": "exporting", "nav": "Exporting a game"}
+        ]}
+      ]
+    },
+    {
+      "id": "scene",
+      "title": "Scenes and entities",
+      "intro": "Scenes, the things in them and their components, prefabs, assets, ground, buildings and paths.",
+      "groups": [
+        {"title": "Scenes", "pages": [
+          {"id": "scenes", "nav": "Scenes and gateways"},
+          {"id": "scene-tree", "nav": "Scene panel and tree"},
+          {"id": "backgrounds", "nav": "Background images"},
+          {"id": "painted-places", "nav": "Painted places"}
+        ]},
+        {"title": "Entities", "pages": [
+          {"id": "inspector", "nav": "The Inspector"},
+          {"id": "components-guide", "nav": "Components guide"},
+          {"id": "prefabs", "nav": "Prefabs"}
+        ]},
+        {"title": "Assets and ground", "pages": [
+          {"id": "assets", "nav": "The Assets panel"},
+          {"id": "project-panel", "nav": "The Project panel"},
+          {"id": "ground-and-tiles", "nav": "Ground and tiles"}
+        ]},
+        {"title": "Places", "pages": [
+          {"id": "buildings-and-interiors", "nav": "Buildings and interiors"},
+          {"id": "markers-and-paths", "nav": "Markers and paths"}
+        ]}
+      ]
+    },
+    {
+      "id": "generate",
+      "title": "Art and animation",
+      "intro": "Generating art, characters and animations, character sheets, the Animator, effects and animated parts.",
+      "groups": [
+        {"title": "Generating", "pages": [
+          {"id": "generate-panel", "nav": "The Generate panel"},
+          {"id": "art", "nav": "Art"},
+          {"id": "characters", "nav": "Characters"},
+          {"id": "animate", "nav": "Animate"}
+        ]},
+        {"title": "Animation", "pages": [
+          {"id": "character-sheets", "nav": "Character sheets"},
+          {"id": "animations-tab", "nav": "Animations and the sheet editor"},
+          {"id": "animator", "nav": "The Animator"},
+          {"id": "effects", "nav": "Effects"},
+          {"id": "interior-parts", "nav": "Animated parts and doors"}
+        ]},
+        {"title": "Models and help", "pages": [
+          {"id": "models-and-providers", "nav": "Art and animation models"},
+          {"id": "troubleshooting", "nav": "Troubleshooting"}
+        ]}
+      ]
+    },
+    {
+      "id": "systems",
+      "title": "Gameplay",
+      "intro": "Records, character AI and packages, story, interaction, combat, scripting and the game's interface.",
+      "groups": [
+        {"title": "Game data", "pages": [
+          {"id": "records", "nav": "Records"},
+          {"id": "record-types", "nav": "Record types"}
+        ]},
+        {"title": "Characters and AI", "pages": [
+          {"id": "behaviour-component", "nav": "Behaviour"},
+          {"id": "ai-packages", "nav": "AI packages"},
+          {"id": "package-templates", "nav": "Package templates"},
+          {"id": "custom-procedures", "nav": "Custom procedures"},
+          {"id": "paths", "nav": "Paths"}
+        ]},
+        {"title": "Story", "pages": [
+          {"id": "dialogue", "nav": "Dialogue"},
+          {"id": "quests", "nav": "Quests"},
+          {"id": "schedules-and-cutscenes", "nav": "Routines and cutscenes"}
+        ]},
+        {"title": "Interaction and combat", "pages": [
+          {"id": "actions-and-reactions", "nav": "Actions and Reactions"},
+          {"id": "crafting", "nav": "Crafting"},
+          {"id": "combat-and-magic", "nav": "Combat and magic"},
+          {"id": "difficulty", "nav": "Difficulty"}
+        ]},
+        {"title": "Scripting", "pages": [
+          {"id": "scripting", "nav": "Scripting with Lua"},
+          {"id": "lua-api", "nav": "Lua API"}
+        ]},
+        {"title": "The game", "pages": [
+          {"id": "game-ui", "nav": "Game UI"},
+          {"id": "game-flow", "nav": "Game flow, saves and audio"}
+        ]}
+      ]
+    },
+    {
+      "id": "ai",
+      "title": "AI",
+      "intro": "The AI panel, building places with the Build panel, designing a game with the Planner, the World Bible and the AI's models and keys.",
+      "groups": [
+        {"title": "The AI panel", "pages": [
+          {"id": "ai-panel", "nav": "The AI panel"},
+          {"id": "ai-panel-review", "nav": "Reviewing proposals"},
+          {"id": "ai-panel-tasks", "nav": "Bigger tasks"},
+          {"id": "ai-panel-tools-and-context", "nav": "Context and tools"},
+          {"id": "ai-requests-tips", "nav": "Tips and problems"}
+        ]},
+        {"title": "Building places", "pages": [
+          {"id": "build-panel", "nav": "The Build panel"},
+          {"id": "build-methods", "nav": "Build methods"},
+          {"id": "revising-places", "nav": "Revising a place"}
+        ]},
+        {"title": "Planner and story", "pages": [
+          {"id": "planner", "nav": "The Planner"},
+          {"id": "world-bible", "nav": "The World Bible"},
+          {"id": "story-graph", "nav": "The story graph"}
+        ]},
+        {"title": "Setup", "pages": [
+          {"id": "ai-providers-and-keys", "nav": "Providers, models and keys"}
+        ]}
+      ]
+    }
+  ]
+}
