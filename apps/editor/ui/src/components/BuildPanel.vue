@@ -200,6 +200,7 @@ interface BuildState {
       space?: { cells: number; needed: number; ok: boolean }
     }[]
     stale?: boolean
+    pending?: boolean // ① Confirm before the zones are laid out (they are on "Lay out the zones")
     quality?: { zone: string; check: string; text: string }[]
     sketched?: boolean
     main?: unknown
@@ -291,16 +292,17 @@ const ALL_STEPS = [
   { id: 'plan', label: '③ Plan' },
   { id: 'paint', label: '④ Paint' },
   { id: 'mark', label: '⑤ Mark' },
-  { id: 'animate', label: '⑥ Animate' },
   { id: 'assets', label: '⑥ Assets' },
-  { id: 'result', label: '⑦ Result' },
+  { id: 'animate', label: '⑦ Animate' },
+  { id: 'result', label: '⑧ Result' },
 ]
-// A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint adds Paint and Mark).
+// A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint: Confirm, Layout, Plan, Paint,
+// Mark, Assets, Animate, Result: the doors and used things animated once their art is there).
 const buildMethod = computed(() => state.value?.method ?? newMethod.value)
 // From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
 const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
   !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
-  ...st, label: `${'①②③④⑤⑥⑦'[i]} ${st.label.slice(2)}`,
+  ...st, label: `${'①②③④⑤⑥⑦⑧'[i]} ${st.label.slice(2)}`,
 })))
 // Who makes a build's art and paints its background (Build ▸ Assets), "" for the project's (Project Settings ▸ AI).
 const ART_MODELS = [
@@ -317,7 +319,7 @@ function modelName(id?: string): string {
 // The build methods (Project Settings ▸ Places ▸ method), in words.
 const METHODS = [
   { id: 'Assembled', label: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.' },
-  { id: 'Paint', label: 'Paint', title: "The place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build." },
+  { id: 'Paint', label: 'Paint', title: "The place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Animate, Build." },
 ] as const
 // The method a new build starts with: the open scene's type (its menu's Type, or set here: the scene changes too).
 const newMethod = ref<'Assembled' | 'Paint'>('Assembled')
@@ -683,6 +685,22 @@ function setMethod(method: 'Assembled' | 'Paint'): void {
   if (method === 'Assembled' && atPaint.value) viewing.value = ''
 }
 // ⑤ Mark's Continue: saved and confirmed (a Planner build waiting on it goes on), then ⑥ Assets.
+// Paint: the plan approved, then ④ Paint shown and painting begun (when the plan is in: build:approve makes it "planned").
+const paintWhenPlanned = ref(false)
+function approveAndPaint(): void {
+  paintWhenPlanned.value = true
+  sendToHost({ type: 'build:approve' })
+}
+function goPaint(): void {
+  viewing.value = 'paint'
+  if (!paint.value.file && !paint.value.painting && !state.value?.busy) startPaint()
+}
+watch(stage, (s) => {
+  if (s === 'planned' && paintWhenPlanned.value) {
+    paintWhenPlanned.value = false
+    goPaint()
+  }
+})
 function confirmMarks(): void {
   markEditor.value?.save()
   sendToHost({ type: 'build:confirmMarks' })
@@ -751,6 +769,7 @@ const neededBySource = computed(() => {
 })
 const activeStep = computed(() => {
   if (atPaint.value) return viewing.value
+  if (viewing.value === 'animate' && buildMethod.value === 'Paint') return 'animate'
   const s = stage.value
   if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
   if (atConfirm.value) return confirmTab.value === 'layout' ? 'layout' : 'confirm'
@@ -767,6 +786,7 @@ const REACHED: Record<string, string[]> = {
   paint: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   mark: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   assets: ['planned', 'sourcing', 'sourced', 'building', 'built'],
+  animate: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   result: ['building', 'built'],
 }
 function stepDisabled(id: string): boolean {
@@ -1666,6 +1686,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
     </div>
 
+    <!-- ② Layout before the zones are laid out: they're laid out when asked. -->
+    <div v-else-if="atConfirm && confirmTab === 'layout' && state?.layout?.pending" class="body window">
+      <section class="note">
+        <p>The zones aren't laid out yet. Check what will be built on ① Confirm, then lay them out: the zones, roads and walls
+        are planned from it, and you can revise them here.</p>
+      </section>
+      <div class="actions">
+        <button @click="confirmTab = 'contents'">← ① Confirm</button>
+        <button class="primary" :disabled="errors.length > 0" @click="saveDirections(); sendToHost({ type: 'build:replanLayout' })">Lay out the zones →</button>
+      </div>
+    </div>
     <!-- ① Confirm: the layout first (the zones and where they go), and what the place holds. -->
     <div
       v-else-if="atConfirm && confirmTab === 'layout' && state?.layout"
@@ -1904,18 +1935,22 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           {{ paint.marks?.occluders ?? 0 }} occluders ({{ paint.marks?.edited ?? 0 }} edited) · {{ paint.marks?.blocked ?? 0 }} cells blocked
         </span>
         <button title="Pre-fill from the plan again; what you edited stays" @click="markEditor?.prefill(false)">Pre-fill again</button>
-        <button class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">Continue →</button>
-        <button title="The painted buildings' doors, animated (they open as someone comes near)" @click="viewing = 'animate'">⑥ Animate the doors →</button>
+        <button class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">⑥ Assets →</button>
       </div>
     </div>
 
-    <!-- ⑥ Animate (Paint): each painted building's door found in the painting and animated; put over it when built. -->
+    <!-- ⑦ Animate (Paint): after the art, each painted building's door found in the painting and the used things
+         (chests, levers) animated; the doors go over the painting when the place is built. -->
     <div v-else-if="viewing === 'animate' && state && paint.file" class="body window">
-      <AnimatePartsView only="door" />
+      <AnimatePartsView />
       <div class="actions">
-        <button @click="viewing = 'mark'">← ⑤ Mark</button>
-        <span class="dim">The doors go over the painting when the place is built; used things (chests, levers) are animated on the Assets page.</span>
-        <button class="primary" @click="confirmMarks">Continue to the art →</button>
+        <button @click="viewing = 'assets'">← ⑥ Assets</button>
+        <span class="dim">{{ state?.status }}</span>
+        <button v-if="stage === 'sourced' || stage === 'built' || (stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length)" class="primary"
+                :disabled="state.busy" title="Puts the place into the scene, verifies it and repairs what it can (what isn't animated can be later)"
+                @click="sendToHost({ type: 'build:build' }); viewing = ''">
+          {{ stage === 'built' && state?.inScene ? 'Build again' : '⑧ Build →' }}
+        </button>
       </div>
     </div>
 
@@ -1932,9 +1967,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     <div v-else-if="showAssets && (win || state?.sourcing || state?.sourced)" class="body window assets-view">
       <div class="confirm-tabs">
         <button :class="{ active: assetsTab === 'how' }" @click="assetsTab = 'how'">How each is found</button>
-        <button :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
+        <button v-if="buildMethod !== 'Paint'" :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
         <button :class="{ active: assetsTab === 'found' }" :disabled="!artStarted" @click="assetsTab = 'found'">The assets</button>
-        <button :class="{ active: assetsTab === 'animate' }" :disabled="!artStarted" title="Doors of buildings and things that are used (chests, gates, levers), animated" @click="assetsTab = 'animate'">Animate</button>
+        <button v-if="buildMethod !== 'Paint'" :class="{ active: assetsTab === 'animate' }" :disabled="!artStarted" title="Doors of buildings and things that are used (chests, gates, levers), animated" @click="assetsTab = 'animate'">Animate</button>
         <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part'
           : assetsTab === 'background' ? 'the whole ground in one picture, painted first'
           : assetsTab === 'animate' ? 'the doors and the things that are used, animated' : 'what was found and made, each refinable' }}</span>
@@ -2015,7 +2050,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </select>
           </template>
         </div>
-        <div class="row set-all">
+        <div v-if="buildMethod !== 'Paint'" class="row set-all">
           <span class="dim" title="Who paints the place's background (its ground, painted whole); Project Settings ▸ AI ▸ background by default">Background painted by</span>
           <select :value="state.models?.background ?? ''" @change="sendToHost({ type: 'build:models', models: { background: ($event.target as HTMLSelectElement).value } })">
             <option value="">the project's ({{ modelName(state.projectModels?.background) }})</option>
@@ -2025,7 +2060,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <table class="components needs">
           <thead><tr><th></th><th>Needed</th><th>For</th><th>Gets</th><th>From</th><th>Why</th><th></th></tr></thead>
           <tbody>
-            <tr class="background-row" title="The place's ground in one picture, matched to the grid: each cell shows its own square of it">
+            <tr v-if="buildMethod !== 'Paint'" class="background-row" title="The place's ground in one picture, matched to the grid: each cell shows its own square of it">
               <td class="thumb">
                 <img v-if="state.background" :src="urlOf(state.background.path)" alt="" class="zoomable" @click="zoom(state.background.path, 'Background')" />
               </td>
@@ -2036,7 +2071,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <td class="dim">roads, paths, floors and grass painted as one picture, from the description below</td>
               <td></td>
             </tr>
-            <tr class="background-row">
+            <tr v-if="buildMethod !== 'Paint'" class="background-row">
               <td></td>
               <td colspan="6">
                 <textarea
@@ -2097,7 +2132,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <div class="actions">
           <button @click="viewing = 'plan'">← Plan</button>
           <span class="dim">{{ state?.status }}</span>
-          <span v-if="state?.matched" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
+          <span v-if="state?.matched && buildMethod !== 'Paint'" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
             {{ state.matched.state === 'making' ? 'Making the art…'
               : state.matched.state === 'made' ? 'Cutting the pieces…'
               : state.matched.state === 'failed' ? `The art failed: ${state.matched.error ?? ''}`
@@ -2310,8 +2345,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             Stop: use placeholders
           </button>
           <button v-if="stage === 'sourced' || stage === 'built'" :class="{ primary: stage === 'sourced' }"
-                  title="The doors of buildings and the things that are used, animated before the build" @click="assetsTab = 'animate'">
-            To Animate →
+                  title="The doors of buildings and the things that are used, animated before the build"
+                  @click="buildMethod === 'Paint' ? (viewing = 'animate') : (assetsTab = 'animate')">
+            {{ buildMethod === 'Paint' ? '⑦ Animate →' : 'To Animate →' }}
           </button>
           <button v-else-if="stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length" class="primary"
                   title="Puts the place into the scene, verifies it and repairs what it can"
@@ -2611,12 +2647,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div v-if="!showResult" class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
-        <button v-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
+        <button v-if="stage === 'plan' && buildMethod === 'Paint'" class="primary" title="Approve the plan and paint the place from it"
+                @click="approveAndPaint()">
+          Paint →
+        </button>
+        <button v-else-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
           Approve plan
         </button>
         <template v-else-if="['planned', 'sourcing', 'sourced', 'built'].includes(stage)">
           <span class="dim">{{ stage === 'planned' ? state.status : '' }}</span>
-          <button class="primary" title="Where the art comes from, then the build" @click="viewing = 'assets'">Assets →</button>
+          <button v-if="buildMethod === 'Paint'" class="primary" title="④ Paint: the place painted whole from the plan" @click="goPaint()">④ Paint →</button>
+          <button v-else class="primary" title="Where the art comes from, then the build" @click="viewing = 'assets'">Assets →</button>
         </template>
         <span v-else-if="stage === 'building'" class="dim">{{ state.status }}</span>
       </div>
@@ -2952,7 +2993,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div v-else-if="atConfirm" class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <span v-if="state?.layout?.stale" class="dim">These changed what the zones were planned from:</span>
-        <button v-if="state?.layout?.stale" class="primary" :disabled="errors.length > 0" @click="sendToHost({ type: 'build:replanLayout' }); confirmTab = 'layout'">
+        <button v-if="state?.layout?.pending" class="primary" :disabled="errors.length > 0" title="② Layout: the zones and where they go, laid out now"
+                @click="saveDirections(); sendToHost({ type: 'build:replanLayout' }); confirmTab = 'layout'">
+          Lay out the zones →
+        </button>
+        <button v-else-if="state?.layout?.stale" class="primary" :disabled="errors.length > 0" @click="sendToHost({ type: 'build:replanLayout' }); confirmTab = 'layout'">
           Lay out the zones again →
         </button>
         <button v-else class="primary" :disabled="errors.length > 0" title="② Layout: the zones and where they go" @click="confirmTab = 'layout'">

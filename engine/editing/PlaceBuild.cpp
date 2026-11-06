@@ -1185,10 +1185,12 @@ void PlaceBuild::FinishInterpreting() {
     }
     Log({{"step", "merged"}, {"brief", brief_}, {"drafts", good.size()}, {"disputed", disputed}});
     if (host_.layoutStep) {
-        // ① Confirm: the layout first. The zones are planned at once; the questions are asked beside them.
+        // ① Confirm: what will be built, checked first; the zones are laid out when "Lay out the zones" is pressed
+        // (ReplanLayout), not at once. The questions are asked meanwhile.
         round_ = 2;
         WriteJson(Folder() / "brief.json", brief_);
-        StartPlanning();
+        stage_ = "layout";
+        status_ = "Check what will be built, then lay out the zones.";
         AskQuestions();
     }
 }
@@ -5203,7 +5205,7 @@ std::string PlaceBuild::Open(const std::string& id) {
     if (stage.empty() || stage == "cancelled" || stage == "failed") {
         stage = solved_.is_object()  ? "planned"
                 : spec_.is_object()   ? "plan"
-                : brief_.is_object() && fs::exists(folder / "brief.json") ? "assets"
+                : brief_.is_object() && fs::exists(folder / "brief.json") ? (host_.layoutStep ? "layout" : "assets")
                 : !drafts_.empty()    ? "request"
                                       : "interpreting";
     }
@@ -5353,7 +5355,10 @@ json PlaceBuild::State() {
     const bool planStands = host_.layoutStep && LayoutFrozen() &&
                             (stage_ == "plan" || stage_ == "planned" || stage_ == "sourced" || stage_ == "built" ||
                              (stage_ == "revising" && beforeRevision_ != "layout"));
-    if (stage_ == "layout" || (stage_ == "revising" && beforeRevision_ == "layout") || planStands) {
+    // ① Confirm before the zones are laid out: nothing to show on ② Layout yet but the button that lays them out.
+    const bool laidOut = spec_.is_object() && spec_.contains("root");
+    if (stage_ == "layout" && !laidOut) state["layout"] = {{"zones", json::array()}, {"pending", true}, {"stale", false}};
+    if ((stage_ == "layout" || (stage_ == "revising" && beforeRevision_ == "layout") || planStands) && laidOut) {
         const Ontology& ontology = host_.ontology();
         std::map<std::string, std::string> names;
         for (const auto& c : spec_["root"].value("children", json::array())) {
