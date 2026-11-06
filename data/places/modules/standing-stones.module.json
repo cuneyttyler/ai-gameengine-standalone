@@ -6,7 +6,8 @@
   "description": "A ring of old standing stones.",
   "buildTypes": [
     "wilderness",
-    "region"
+    "region",
+    "forest"
   ],
   "classes": [
     "PointOfInterest"

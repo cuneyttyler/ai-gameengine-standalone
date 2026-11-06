@@ -320,9 +320,6 @@
       "wilderness",
       "wild",
       "wilds",
-      "woods",
-      "woodland",
-      "forest",
       "nature",
       "swamp",
       "marsh",
@@ -440,6 +437,118 @@
         "rivers and lakes with soft shores and shallows; rocks and cliffs where the land rises",
         "winding paths, never a grid; landmarks (a ruin, a shrine, an old tree) where paths meet",
         "nothing artificial or regular; clutter (stones, logs, mushrooms) in natural clusters"
+      ]
+    }
+  },
+  {
+    "id": "forest",
+    "name": "Forest",
+    "scope": "place",
+    "paint": "A forest at the isometric angle: dense masses of overlapping tree crowns of varied species and size, their edges ragged and natural, never straight; a forest floor of moss, leaves and roots under and between them; glades and clearings of grass and flowers where the plan opens them, ponds and streams with mossy banks, rocks and fallen logs, narrow trails winding through. Small natural things may be added (mushrooms, ferns, stumps, bushes).",
+    "root": "woodland",
+    "words": [
+      "forest",
+      "forests",
+      "woods",
+      "woodland",
+      "wood",
+      "grove",
+      "thicket",
+      "copse"
+    ],
+    "unit": {
+      "field": "pois",
+      "class": "PointOfInterest",
+      "label": "points of interest"
+    },
+    "stages": [
+      "its stands of trees",
+      "glades and water",
+      "trails",
+      "what's hidden in it",
+      "dressing"
+    ],
+    "components": [
+      "forest",
+      "meadow",
+      "pond",
+      "lake",
+      "rock-field",
+      "clearing",
+      "nature-scatter",
+      "ruin-site",
+      "shrine-site",
+      "standing-stones",
+      "campsite",
+      "cave-entrance",
+      "trail-network"
+    ],
+    "scale": [
+      {
+        "class": "grove",
+        "buildings": [
+          0,
+          1
+        ],
+        "side": [
+          40,
+          90
+        ],
+        "zones": [
+          2,
+          3
+        ]
+      },
+      {
+        "class": "wood",
+        "buildings": [
+          0,
+          3
+        ],
+        "side": [
+          90,
+          180
+        ],
+        "zones": [
+          3,
+          6
+        ]
+      },
+      {
+        "class": "great-forest",
+        "buildings": [
+          1,
+          6
+        ],
+        "side": [
+          180,
+          400
+        ],
+        "zones": [
+          5,
+          10
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "kind": [
+          "deciduous",
+          "conifer",
+          "mixed"
+        ]
+      },
+      "features": [
+        "pond",
+        "lake",
+        "rock-field"
+      ]
+    },
+    "look": {
+      "reference": "Age of Empires II forests, Divinity: Original Sin's woods",
+      "goals": [
+        "dense natural forest with ragged, organic edges; trees of varied species and size",
+        "glades and clearings breaking it, water with soft mossy banks, trails winding through"
       ]
     }
   },
@@ -1026,7 +1135,8 @@
     },
     "sections": {
       "from": [
-        "site"
+        "site",
+        "forest"
       ],
       "wild": "wilderness",
       "wildSide": 64,
@@ -1038,12 +1148,21 @@
         "sea",
         "ocean",
         "coast",
-        "forest",
         "mountains",
         "hills",
         "marsh",
         "biome-zone"
-      ]
+      ],
+      "kinds": {
+        "forest": "forest"
+      },
+      "withoutParts": [
+        "forest"
+      ],
+      "fields": {
+        "woods": "none"
+      },
+      "fieldsDescription": "each section's own root set so: no woods of its own (the world's forests are sections of their own)"
     },
     "look": {
       "reference": "open-world RPG maps (Baldur's Gate's areas, Divinity: Original Sin's overworld)",

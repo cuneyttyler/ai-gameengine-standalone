@@ -6,7 +6,8 @@
   "description": "A small wayside shrine.",
   "buildTypes": [
     "wilderness",
-    "region"
+    "region",
+    "forest"
   ],
   "classes": [
     "PointOfInterest"

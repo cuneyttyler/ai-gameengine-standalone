@@ -43,7 +43,8 @@
         "camp",
         "farmland",
         "dungeon",
-        "wilderness"
+        "wilderness",
+        "forest"
       ],
       "default": "settlement",
       "ask": true
@@ -58,7 +59,10 @@
         "city",
         "small",
         "medium",
-        "large"
+        "large",
+        "grove",
+        "wood",
+        "great-forest"
       ],
       "default": "village",
       "ask": true

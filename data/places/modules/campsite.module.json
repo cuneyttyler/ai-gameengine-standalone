@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "A traveller's camp: a tent or two round a fire.",
   "buildTypes": [
-    "wilderness"
+    "wilderness",
+    "forest"
   ],
   "classes": [
     "PointOfInterest"

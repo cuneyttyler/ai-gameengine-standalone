@@ -174,5 +174,9 @@
   "Section": {
     "label": "Section",
     "description": "One place of a world, of one build type, built in its rectangle of the world plan and keeping what crosses it (roads, rivers, forests)."
+  },
+  "Woodland": {
+    "label": "Woodland",
+    "description": "A forest built as a place of its own (a world's forest section)."
   }
 }

@@ -117,6 +117,12 @@ cells that aren't its land given as `outside` (nothing planned on them) and its 
 meadows and water go round it towards the land's edge (`edge`), each with its organic edge: no forest of a section meets
 a square corner. A site's own size has room round it for that land (its compile's `padding`, 1.35).
 
+**Forests are sections of their own.** The world type's `sections` says which zones of the world plan are sections and
+built as what (`kinds`: a `forest` zone is built as a `forest`), what no other section has in it (`withoutParts`:
+`forest`), and what each section's own root is set to (`fields`: `woods: none`, no edge woods of its own). A forest
+section is a place of the `forest` build type (root `woodland`): stands of trees with organic edges, glades, ponds, rocks,
+trails and what's hidden there (a ruin, a shrine, a camp), its size class by its land (grove, wood, great forest).
+
 Its square's cells outside its land get **the world's ground** after the solve: the land round the place, as the world
 plan has it, for its block-out (Paint) and its background (Assembled).
 

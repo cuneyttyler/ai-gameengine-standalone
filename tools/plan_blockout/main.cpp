@@ -356,6 +356,7 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     // The AI plans the sections when the test asks ("ai": "sections"), on the service's port.
     const bool aiSections = brief.value("test", json::object()).value("ai", "") == "sections";
     const bool reuse = brief.value("test", json::object()).value("reuse", false); // the sections planned last time
+    const json testBrief = brief.value("test", json::object());
     gAiPort = aiSections ? brief.value("test", json::object()).value("port", 8765) : 0;
     // The world's side, when the test sets it (else from its area and what it holds).
     CompileOptions worldOptions;
@@ -397,6 +398,19 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
                                               {"quantity", json::object()}, {"children", json::array()}}});
             kept.push_back(h);
         }
+        // The test's forests: that many forest zones in the world plan, each to become a section of its own.
+        const int forests = testBrief.value("forests", 0);
+        if (forests > 0) {
+            json others = json::array();
+            for (const auto& c : kept) {
+                if (c.value("module", "") != "forest") others.push_back(c);
+            }
+            for (int f = 1; f <= forests; ++f) {
+                others.push_back({{"id", "forest-" + std::to_string(f)}, {"module", "forest"}, {"quality", json::object()},
+                                  {"quantity", {{"area", {{"area", 9000 + 4000 * (f % 3)}}}}}, {"children", json::array()}});
+            }
+            kept = others;
+        }
         children = kept;
     });
     for (const auto& p : world.problems) problems << "world " << p << "\n";
@@ -414,19 +428,46 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     json sections = json::array();
     const int WW = b[2], WH = b[3];
     const std::vector<std::string> worldGround = TerrainCells(world.solved, WW, WH);
+    // The world type's sections (the ontology's): which zones of the plan are sections of their own and built as what
+    // (a forest as a forest), and what no section has in it (forests: they're sections of their own).
+    const BuildType* worldType = ontology.Build(world.brief.value("buildType", ""));
+    const json sectionsDef = worldType && worldType->sections.is_object() ? worldType->sections : json::object();
+    const json kinds = sectionsDef.value("kinds", json::object());
+    const json withoutParts = sectionsDef.value("withoutParts", json::array());
+    int forestCount = 0;
+    static const char* kWoodNames[] = {"Mirkwold", "the Greenhollow", "Ashenleigh Wood", "the Thornwood", "Elderglade", "Fernmoor Wood",
+                                       "the Old Weald", "Brackenridge", "Mossdeep", "the Silverbirches"};
     for (const auto& r : world.solved.value("regions", json::array())) {
         const std::string landId = r.value("id", "");
-        if (landId.rfind("heartland-", 0) != 0 || landId.find('/') != std::string::npos) continue;
-        const int index = std::atoi(landId.substr(10).c_str()) - 1;
-        if (index < 0 || index >= static_cast<int>(sites.size())) continue;
-        const json& site = sites[index];
-        const std::string kind = site.value("build-type", "settlement"), cls = site.value("scale-class", ""), name = site.value("name", "");
+        if (landId.find('/') != std::string::npos) continue;
+        json site;
+        if (landId.rfind("heartland-", 0) == 0) {
+            const int index = std::atoi(landId.substr(10).c_str()) - 1;
+            if (index < 0 || index >= static_cast<int>(sites.size())) continue;
+            site = sites[index];
+            // No forests in it: the world's forests are sections of their own.
+            json components = site.value("components", json::object());
+            for (const auto& part : withoutParts) components[part.get<std::string>()] = {{"enabled", false}};
+            site["components"] = components;
+        } else if (const std::string module = r.value("module", ""); kinds.contains(module)) {
+            site = {{"build-type", kinds[module]}, {"name", kWoodNames[forestCount++ % 10]}};
+        } else {
+            continue;
+        }
+        std::string kind = site.value("build-type", "settlement"), cls = site.value("scale-class", ""), name = site.value("name", "");
         std::vector<int> landCells = DecodeCells(r.value("cells", json::array()), WW);
         if (landCells.empty()) continue;
         int lx0 = WW, ly0 = WH, lx1 = 0, ly1 = 0;
         for (int c : landCells) lx0 = std::min(lx0, c % WW), ly0 = std::min(ly0, c / WW), lx1 = std::max(lx1, c % WW + 1), ly1 = std::max(ly1, c / WW + 1);
         const int side = std::max(lx1 - lx0, ly1 - ly0);
         const int x = lx0, y = ly0, w = side, h = side;
+        if (cls.empty()) {
+            if (const BuildType* bt = ontology.Build(kind)) {
+                for (const auto& s : bt->scale) {
+                    if (side >= s.side.first) cls = s.id; // the biggest its land reaches
+                }
+            }
+        }
         std::vector<uint8_t> land(static_cast<size_t>(side) * side, 0);
         for (int c : landCells) land[static_cast<size_t>(c / WW - ly0) * side + c % WW - lx0] = 1;
         std::vector<int> outsideCells;
@@ -465,7 +506,13 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             section.solved = json::parse(a);
             section.spec = json::parse(b2);
         } else {
-            section = PlanPlace(ontology, sectionBrief, id, options, {}, aiSections);
+            // A section's own root as the world type says (sections.fields: no woods of its own); a forest is its woods.
+            const json fields = sectionsDef.value("fields", json::object());
+            const bool forest = kinds.contains(r.value("module", ""));
+            section = PlanPlace(ontology, sectionBrief, id, options, [&](json& spec) {
+                if (forest) return;
+                for (const auto& [k, v] : fields.items()) spec["root"]["quality"][k] = v;
+            }, aiSections);
         }
         for (const auto& p : section.problems) problems << id << " " << p << "\n";
         // Round its land, the world's ground (for its block-out and background: the land it sits in).
