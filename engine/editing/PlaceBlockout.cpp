@@ -22,6 +22,9 @@ thread_local int tDrawObject = 0;
 
 using Rgb = std::array<int, 3>;
 
+// A dungeon's walls in the block-out: a colour no ground or thing has.
+constexpr Rgb kDungeonWall{78, 100, 150};
+
 struct Pt {
     double x, y;
 };
@@ -311,8 +314,9 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
                 }
                 if (!edge) continue;
                 ++wallCells;
-                const double up = th * 0.9;
-                const Rgb stone{118, 114, 106};
+                // Full walls (a storey high), in a colour of their own: walls, not blocks of floor.
+                const double up = th * 2.2;
+                const Rgb stone = kDungeonWall;
                 draws.push_back({static_cast<double>(x + y), [=, &canvas, &P] {
                                      const Pt a = P(x, y + 1), b = P(x + 1, y + 1), c = P(x + 1, y);
                                      canvas.Fill({a, b, {b.x, b.y - up}, {a.x, a.y - up}}, Shade(stone, 1.0));  // south-west face
@@ -578,10 +582,13 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         }
         // Underground: the raised rock beside the floors is the walls.
         if (wallCells > 0) {
-            strips.push_back({{"kind", "stone wall (the walls round each room and corridor)"}, {"shape", "raised grey stone blocks along the floors' edges"},
-                              {"hex", Hex({118, 114, 106})}, {"count", wallCells}});
+            strips.push_back({{"kind", "stone wall (the full-height walls round each room and corridor)"},
+                              {"shape", "tall slate-blue walls along the floors' edges"}, {"colour", "slate blue"}, {"hex", Hex(kDungeonWall)},
+                              {"count", wallCells}});
         }
         *legend = {{"things", entries}, {"ground", ground}, {"lines", strips}, {"placed", placed}, {"size", {width, height}},
+                   // Its measure (drawn as the floors' grid underground): cells across and down, a cell about 2 m (a person).
+                   {"scale", {{"across", cw}, {"down", ch}, {"metresPerCell", 2}, {"grid", indoor}}},
                    // The view (a cell (x, y) at height up lands at P below), for reading the image back by cells.
                    {"view", {{"x0", x0}, {"y0", y0}, {"x1", x1}, {"y1", y1}, {"tw", tw}, {"th", th}, {"top", top}}}};
         if (ids != nullptr) {

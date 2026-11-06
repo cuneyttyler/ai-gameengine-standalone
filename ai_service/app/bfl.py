@@ -228,7 +228,10 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
         text += " COLOUR KEY: " + "; ".join(f"{t.get('colour')} {t.get('shape')} = {t.get('what')}" for t in things)[:2600] + "."
     lines = (legend or {}).get("lines", [])
     if lines:
-        text += " " + "; ".join(f"{l.get('shape')} = {l.get('kind')}" for l in lines) + "."
+        text += " " + "; ".join(f"{l.get('shape')}" + (f" ({l['hex']})" if l.get("hex") else "") + f" = {l.get('kind')}"
+                                for l in lines) + "."
+    if scale_sentence(legend):
+        text += " " + scale_sentence(legend).strip()
     # The ground: black cells (rock, void) are left out: they're empty (EMPTY_RULE).
     grounds = [g for g in (legend or {}).get("ground", []) if not g.get("empty")]
     if grounds:
@@ -258,6 +261,20 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
     text += (" Ground with natural variation and no visible cells or grid; one light from the upper left; one palette "
              "everywhere. No text, no labels, no UI, no characters.")
     return text
+
+
+def scale_sentence(legend: dict | None) -> str:
+    """The block-out's measure (its legend's scale): how big the whole place is, so a model paints it at its size (klein
+    otherwise reads a whole dungeon level as one room)."""
+    s = (legend or {}).get("scale") or {}
+    across, down, m = int(s.get("across") or 0), int(s.get("down") or 0), float(s.get("metresPerCell") or 2)
+    if not s.get("grid") or across <= 0 or down <= 0:
+        return ""
+    return (f"SCALE: the image shows the whole level, {across} by {down} grid squares; each grid square on the floor is one "
+            f"flagstone about {m:g} m across (one person stands in one), so the level is about {across * m:g} m by "
+            f"{down * m:g} m and holds many rooms. Keep that scale: count the squares; a wall that runs 20 squares in the "
+            f"image is {20 * m:g} m long and stays exactly that long in the painting; flagstones, torches, doors and "
+            "things stay small, at that scale. ")
 
 
 def counts_sentence(legend: dict | None) -> str:
@@ -300,10 +317,11 @@ def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = Non
     grounds = [g for g in (legend or {}).get("ground", []) if not g.get("empty")]
     if grounds and not objects:
         text += "In the draft: " + ", ".join(f"{g.get('hex')} = {g.get('terrain')}" for g in grounds) + ". "
-    # Walls and fences drawn in it (a dungeon's raised stone blocks): what they are.
+    # Walls and fences drawn in it (a dungeon's slate-blue walls): what they are; and its measure.
     lines = (legend or {}).get("lines", [])
     if lines:
         text += "In the draft: " + "; ".join(f"{l.get('shape')} = {l.get('kind')}" for l in lines) + ". "
+    text += scale_sentence(legend)
     things = [t for t in (legend or {}).get("things", []) if t.get("kind")] if objects else []
     if things:
         text += "In the draft: " + ", ".join(f"{t['colour']} = {t['kind']}" for t in things[:14]) + ". "
