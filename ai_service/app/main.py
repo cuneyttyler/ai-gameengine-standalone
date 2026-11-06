@@ -237,6 +237,7 @@ class PaintRequest(BaseModel):
     model: str = "flux-3-image"        # flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein (Project Settings ▸ AI ▸ paint)
     seed: int = 7
     reference: str = ""                # in dir: a picture the painting is made after (docs/places/scene-types.md)
+    objects: bool = True               # the block-out shows its things (props, doors) as coloured markers; else its ground only
 
 
 class InteriorsRequest(BaseModel):
@@ -997,11 +998,21 @@ def create_app(
             return {"ok": False, "errors": [f"Unknown paint model {request.model}: one of {', '.join(PAINT_MODELS)}"]}
         report(0, 1, f"Painting the place from its plan ({PAINT_MODELS[request.model]})")
         started = _time.monotonic()
+        # Its kind's paint prompt (the ontology's) and its own words (the LLM's, from the request): both with the plan.
+        from .bfl import paint_guide, write_place_words
+        guide = paint_guide(str(request.place.get("type") or ""))
+        query = ""
+        try:
+            query = str(json.loads((folder / "request.json").read_text(encoding="utf-8")).get("query", ""))
+        except (OSError, ValueError):
+            pass
+        written = write_place_words(state["provider"], query, guide, request.place, request.story, request.look, request.legend)
         try:
             reference = (folder / request.reference) if request.reference else None
             png, prompt = paint_place(key, request.model, (folder / request.blockout).read_bytes(), request.legend,
                                       request.place, request.story, request.look, request.notes, request.seed,
-                                      reference.read_bytes() if reference and reference.is_file() else None)
+                                      reference.read_bytes() if reference and reference.is_file() else None,
+                                      guide, written, request.objects)
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
         (folder / "painting.png").write_bytes(png)

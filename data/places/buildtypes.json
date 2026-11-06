@@ -2,6 +2,7 @@
   {
     "id": "settlement",
     "name": "Settlement",
+    "paint": "A lived-in settlement seen from above at the isometric angle: houses, shops and halls with real roofs (tiles, thatch, slate) and walls of their region's materials, set along the plan's streets; streets and squares paved or packed earth, worn where people walk; gardens, yards and fields behind the houses; trees and hedges as the plan has them. Small life may be added where it fits (barrels by a door, carts, wash lines, market stalls in a square).",
     "root": "settlement",
     "stages": [
       "site & terrain",
@@ -196,6 +197,7 @@
   {
     "id": "farmland",
     "name": "Farmland",
+    "paint": "Open farmland at the isometric angle: fields of crops in rows following the plan's fields, pastures with grass, hedges, fences and dry-stone walls along the plan's lines, farm tracks of packed earth with ruts, farmsteads with barns and yards. Small farm life may be added where it fits (hay bales, carts, troughs, scarecrows).",
     "root": "farmland",
     "words": [
       "farmland",
@@ -312,6 +314,7 @@
   {
     "id": "wilderness",
     "name": "Wilderness",
+    "paint": "Untamed land at the isometric angle: ground with natural variation (grass, moss, rock, sand, mud) following the plan's ground, woods as dense masses of overlapping crowns, rivers and lakes with banks and shallows, paths worn into the ground. Points of interest stand where the plan has them. Small natural things may be added (stones, fallen logs, bushes, flowers).",
     "root": "wilderness",
     "words": [
       "wilderness",
@@ -443,6 +446,7 @@
   {
     "id": "camp",
     "name": "Camp",
+    "paint": "A camp at the isometric angle: tents and lean-tos of canvas and hide where the plan has them, campfires with rings of stones, packed earth trampled around them, crates and sacks of supplies. Small camp life may be added (bedrolls, racks, cooking pots, firewood).",
     "root": "camp",
     "words": [
       "camp",
@@ -559,6 +563,7 @@
   {
     "id": "harbour",
     "name": "Harbour",
+    "paint": "A harbour at the isometric angle: water with depth and ripples, quays and piers of stone and timber along the plan's edges, warehouses and harbour buildings, boats moored where the plan has water by the quays. Small harbour life may be added (crates, barrels, nets, ropes, bollards).",
     "root": "harbour",
     "words": [
       "harbour",
@@ -674,6 +679,7 @@
   {
     "id": "castle",
     "name": "Castle",
+    "paint": "A castle at the isometric angle: thick curtain walls and towers of dressed stone where the plan has them, battlements along their tops, gatehouses, keep and halls inside, courtyards of flagstones or packed earth. Small life may be added (carts, barrels, weapon racks, banners).",
     "root": "castle",
     "words": [
       "castle",
@@ -804,6 +810,7 @@
   {
     "id": "region",
     "name": "Region",
+    "paint": "A region seen as a painted map at the isometric angle: settlements, forests, hills, rivers and roads as the plan lays them out, each at the scale of the whole region.",
     "root": "region",
     "rank": 2,
     "words": [
@@ -905,6 +912,7 @@
   {
     "id": "dungeon",
     "name": "Dungeon",
+    "paint": "An underground dungeon at the isometric angle. ONLY the stone-floor areas are the dungeon: rooms and corridors cut into solid rock. Paint each floor area as worn flagstones or rough-hewn stone. Walls of heavy dressed stone stand ONLY along the edges of the floor areas: the walls along each area's upper-left and upper-right edges rise up into the black above that edge; along its lower edges only a low lip of stone, so the floor stays seen. A corridor is exactly as wide as its strip of floor; rooms and corridors keep exactly the shapes of their floor areas, joined where their floors meet and nowhere else. Do NOT add doors, arches or doorways anywhere: doors are placed separately. Torchlight from sconces on the walls; dust, cracks, puddles and moss on the floors. Small dungeon things may be added on the floors (bones, rubble, broken crates, chains).",
     "root": "dungeon",
     "layout": "dungeon",
     "words": [
@@ -1058,6 +1066,7 @@
   {
     "id": "interior",
     "name": "Interior",
+    "paint": "A building's inside, cut away and seen from above at the isometric angle: floors of boards, tiles or flagstones as the plan's rooms have them, walls only along the rooms' edges (the back walls rising, the front ones cut low), furniture that fits each room's purpose. Do not add doors or openings the plan doesn't have.",
     "root": "building-interior",
     "layout": "interior",
     "rank": 1,
@@ -1231,6 +1240,7 @@
   {
     "id": "courtyard",
     "name": "Courtyard",
+    "paint": "A walled courtyard at the isometric angle: paving or gravel following the plan, the surrounding walls and arcades where the plan has them, planters, a well or fountain where the plan places one. Small things may be added (benches, pots, a bucket).",
     "root": "courtyard-complex",
     "layout": "interior",
     "rank": 0,
@@ -1368,6 +1378,7 @@
   {
     "id": "modern-city",
     "name": "City (modern)",
+    "paint": "A modern city block at the isometric angle: asphalt streets with lane markings and kerbs as the plan has them, pavements, buildings with flat roofs and rooftop details, parking, trees in pits. Small city life may be added (street lights, benches, bins, parked cars).",
     "root": "city",
     "stages": [
       "site & terrain",
