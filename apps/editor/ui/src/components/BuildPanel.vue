@@ -1672,7 +1672,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </ul>
         </li>
       </ol>
-      <p class="dim">Then ① Confirm opens: what the place holds, and its layout to adjust.</p>
+      <p class="dim">{{ stage === 'interpreting' ? 'Then ① Confirm opens: what the place holds. The zones are laid out when you press Lay out the zones.'
+        : 'Then ② Layout opens: the zones and where they go, to adjust.' }}</p>
       <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
     </div>
     <div v-else-if="stage === 'interpreting'" class="body start">

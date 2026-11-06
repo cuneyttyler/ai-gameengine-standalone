@@ -2319,8 +2319,8 @@ json PlaceBuild::ConfirmProgress() {
     // 3. The readings compared: where they differ is what's left to decide.
     add("compare", "Comparing the readings", reading ? "waiting" : "done",
         reading ? json::array({"What they disagree on is marked for you to decide."}) : json::array());
-    // 4. The zones: what they are and where they go.
-    {
+    // 4. The zones: what they are and where they go (with a layout step, only once Lay out the zones is pressed).
+    if (!(host_.layoutStep && reading)) {
         json detail = json::array();
         if (zonesPlanning && waiting("plan-root") > 0) {
             detail.push_back("The AI plans the zones (wards, farmland), the roads and walls, and where each goes.");
@@ -2338,7 +2338,7 @@ json PlaceBuild::ConfirmProgress() {
         add("zones", "Laying out the zones", zonesPlanning ? "active" : laidOut ? "done" : "waiting", detail);
     }
     // 5. The map of them.
-    add("layout", "Placing the zones on the map", laidOut ? "done" : "waiting", json::array());
+    if (!(host_.layoutStep && reading)) add("layout", "Placing the zones on the map", laidOut ? "done" : "waiting", json::array());
     // How far: each step done counts one, the active one half.
     double done = 0;
     std::string active;
@@ -5358,7 +5358,16 @@ json PlaceBuild::State() {
                              (stage_ == "revising" && beforeRevision_ != "layout"));
     // ① Confirm before the zones are laid out: nothing to show on ② Layout yet but the button that lays them out.
     const bool laidOut = spec_.is_object() && spec_.contains("root");
-    if (stage_ == "layout" && !laidOut) state["layout"] = {{"zones", json::array()}, {"pending", true}, {"stale", false}};
+    if (stage_ == "layout" && !laidOut) {
+        state["layout"] = {{"zones", json::array()}, {"pending", true}, {"stale", false}};
+        // ① Confirm's Contents: what the place will hold, its questions and directions (as once the zones are laid out).
+        state["questions"] = questions_;
+        state["directions"] = directions_;
+        state["decisionAnswers"] = decisionAnswers_;
+        state["name"] = brief_.value("name", id_);
+        const Catalog catalog = host_.catalog ? host_.catalog() : Catalog{};
+        state["window"] = BriefWindow(host_.ontology(), brief_, &merge_, &catalog, host_.isoGrid ? host_.isoGrid() : true, 2);
+    }
     if ((stage_ == "layout" || (stage_ == "revising" && beforeRevision_ == "layout") || planStands) && laidOut) {
         const Ontology& ontology = host_.ontology();
         std::map<std::string, std::string> names;
