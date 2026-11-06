@@ -1,12 +1,16 @@
 <script setup lang="ts">
 // A picture's thumbnail; an animation sheet's shows its first frame only (not every pose at once).
-import { computed, onMounted } from 'vue'
-import { requestAssetFrames, sheetFrames } from '../assetFrames'
+import { computed, onMounted, watchEffect } from 'vue'
+import { derivedFrames, ensureFrame, requestAssetFrames, sheetFrames } from '../assetFrames'
 
 const props = defineProps<{ path: string; src: string; size?: number }>()
 onMounted(requestAssetFrames)
 const box = computed(() => props.size ?? 56)
-const sheet = computed(() => sheetFrames.value[props.path])
+// The Assets list's frame, else the one read from the sheet file next to the picture (a character's idle, facing us).
+const sheet = computed(() => sheetFrames.value[props.path] ?? derivedFrames.value[props.path] ?? undefined)
+watchEffect(() => {
+  if (!sheetFrames.value[props.path] && !(props.path in derivedFrames.value)) ensureFrame(props.path)
+})
 const style = computed((): Record<string, string> => {
   const s = sheet.value
   if (!s) return {}

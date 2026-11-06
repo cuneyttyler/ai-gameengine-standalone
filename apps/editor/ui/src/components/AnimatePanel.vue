@@ -4,6 +4,7 @@
 // them in a row, in assets/textures/generated/animations/<name>/.
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
+import FrameThumb from './FrameThumb.vue'
 import { confirmDialog } from '../dialogs'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -213,7 +214,7 @@ function when(iso: string): string {
             :title="`${c.character?.name ?? c.path}: animated in every direction, added to its sheet`"
             @click="pickCharacter(c.path)"
           >
-            <img :src="url(c.texture)" alt="" loading="lazy" />
+            <FrameThumb :path="c.texture" :src="url(c.texture)" :size="50" />
           </button>
           <div class="group muted small">Images</div>
         </template>
