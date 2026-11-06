@@ -2,17 +2,29 @@
 // A prefab's sprite, cropped to its UV region (e.g. one tile of a tileset)
 // and scaled to fit a square box. Textures are served from the open project
 // (apps/editor/main.cpp maps it to aige-project.local).
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
+import { derivedFrames, ensureFrame, sheetFrames } from '../assetFrames'
 import type { Prefab } from '../editorState'
 
 const props = defineProps<{ prefab: Prefab; box: number }>()
 
 const PROJECT_HOST = 'https://aige-project.local/'
 
+// A character's (or another animation sheet's) picture: its idle frame facing the camera, read from the sheet; the
+// region saved in the prefab goes stale once the sheet grows (a walk added below the poses).
+const sheet = computed(() => (props.prefab.texture ? sheetFrames.value[props.prefab.texture] ?? derivedFrames.value[props.prefab.texture] : undefined))
+watchEffect(() => {
+  const t = props.prefab.texture
+  if (t && !sheetFrames.value[t] && !(t in derivedFrames.value)) ensureFrame(t)
+})
+
 const style = computed(() => {
   const p = props.prefab
-  const [u0, v0, u1, v1] = p.uv
-  const [w, h] = p.size
+  const s = sheet.value
+  const [u0, v0, u1, v1] = s
+    ? [s.frame[0] / s.width, s.frame[1] / s.height, (s.frame[0] + s.frame[2]) / s.width, (s.frame[1] + s.frame[3]) / s.height]
+    : p.uv
+  const [w, h] = s ? [s.frame[2], s.frame[3]] : p.size
   if (!p.texture || w <= 0 || h <= 0) {
     return null
   }
@@ -30,7 +42,7 @@ const style = computed(() => {
     backgroundImage: `url("${url}")`,
     backgroundSize: `${backgroundWidth}px ${backgroundHeight}px`,
     backgroundPosition: `${-Math.min(u0, u1) * backgroundWidth}px ${-Math.min(v0, v1) * backgroundHeight}px`,
-    transform: u0 > u1 ? 'scaleX(-1)' : undefined,
+    transform: (s ? p.uv[0] > p.uv[2] : u0 > u1) ? 'scaleX(-1)' : undefined,
   }
 })
 </script>
