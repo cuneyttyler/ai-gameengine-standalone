@@ -5141,7 +5141,8 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
         build_ = MakeBuild();
         const nlohmann::json brief = place.value("brief", nlohmann::json::object());
         why = build_->StartFromBrief(brief.value("name", place.value("id", "")), brief);
-        if (why.empty()) build_->SetMethod(PlanBuildMethod()); // the plan's method
+        // Into the open scene: its type when it has one (its menu's Type), else the plan's method.
+        if (why.empty()) build_->SetMethod(!OpenSceneType().empty() ? SceneMethod() : PlanBuildMethod());
         post_({{"type", "build:open"}});
         PostBuild();
     } else {
@@ -6304,7 +6305,8 @@ void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choic
         }
     } else {
         why = build_->Start(query, choices);
-        if (why.empty() && !method.empty()) build_->SetMethod(method); // the Build panel's choice
+        // The Build panel's choice; else (a build asked for elsewhere: the AI panel, a planned site) the open scene's type.
+        if (why.empty()) build_->SetMethod(!method.empty() ? method : SceneMethod());
         if (why.empty() && !picture.empty()) {
             if (const std::string bad = build_->SetReference(pictureFile); !bad.empty()) post_({{"type", "notify"}, {"text", "No reference: " + bad}});
         }

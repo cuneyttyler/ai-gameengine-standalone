@@ -536,6 +536,11 @@ function countOf(v: unknown): string {
   return ''
 }
 sendToHost({ type: 'build:choicesRequest' })
+// Another scene opened: a new build's method is its type again (the method chosen here was for the scene before).
+watch(() => editorState.sceneName, () => {
+  newMethodTouched.value = false
+  sendToHost({ type: 'build:choicesRequest' })
+})
 
 onHostMessage((message) => {
   if (message.type === 'build:state') {
