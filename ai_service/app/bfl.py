@@ -12,6 +12,7 @@ Models (POST /v1/<model>, then the polling URL):
 from __future__ import annotations
 
 import base64
+import json
 import time
 
 import httpx
@@ -390,11 +391,88 @@ PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro"
                 "flux-3-to-pro": "FLUX-3-Image-to-Pro", "flux-3-to-klein": "FLUX-3-Image-to-Klein"}
 
 
+# Tiles (docs/places/tiling.md §6): a model image holds about TILE_SPAN cells across its diamond at the block-out's
+# density, so a bigger place is painted in n × n tiles, n = ceil((W + H) / TILE_SPAN), each overlapping its neighbours
+# by TILE_OVERLAP of the image, painted at full size and joined by cross-fading the overlaps.
+TILE_SPAN = 60
+TILE_OVERLAP = 0.12
+TILES_AT_ONCE = 4
+TILE_NOTE = ("THIS IMAGE IS ONE PART of a bigger map, cut out of it: paint it right up to its cut edges, the parts cut "
+             "off by an edge just continuing past it; no frame, border, vignette or new edge of the map at a cut.")
+
+
+def tile_count(across: int, down: int) -> int:
+    """Tiles per side for a place of `across` × `down` cells (1: one image)."""
+    import math
+    return max(1, math.ceil((max(0, across) + max(0, down)) / TILE_SPAN))
+
+
+def tile_boxes(width: int, height: int, n: int, overlap: float = TILE_OVERLAP) -> list[tuple[int, int, int, int]]:
+    """The n × n tiles of a width × height image, row by row: (x0, y0, x1, y1), each its share of the image plus half
+    the overlap past each inner edge."""
+    if n <= 1:
+        return [(0, 0, width, height)]
+    ox, oy = round(width * overlap / 2), round(height * overlap / 2)
+    xs = [round(width * i / n) for i in range(n + 1)]
+    ys = [round(height * i / n) for i in range(n + 1)]
+    return [(max(0, xs[c] - ox), max(0, ys[r] - oy), min(width, xs[c + 1] + ox), min(height, ys[r + 1] + oy))
+            for r in range(n) for c in range(n)]
+
+
+def _ramp(size: int, before: int, after: int):
+    """Weights along one side of a tile: 0 → 1 over the `before` pixels it shares with the tile before it, 1 inside,
+    1 → 0 over the `after` pixels it shares with the one after."""
+    import numpy as np
+    w = np.ones(size)
+    if before > 0:
+        w[:before] = np.linspace(0, 1, before + 2)[1:-1]
+    if after > 0:
+        w[size - after:] = np.minimum(w[size - after:], np.linspace(1, 0, after + 2)[1:-1])
+    return w
+
+
+def join_tiles(tiles: list, boxes: list[tuple[int, int, int, int]], width: int, height: int):
+    """The tiles (PIL images of any size: each resized to its box) as one width × height image, the parts neighbouring
+    tiles share cross-faded."""
+    import numpy as np
+    from PIL import Image
+    acc = np.zeros((height, width, 3))
+    wsum = np.zeros((height, width, 1))
+    for (x0, y0, x1, y1), im in zip(boxes, tiles):
+        w, h = x1 - x0, y1 - y0
+        im = im.convert("RGB")
+        if im.size != (w, h):
+            im = im.resize((w, h), Image.LANCZOS)
+        # How far the tiles beside it reach into it (on its rows / its columns).
+        rows = [b for b in boxes if b[1] < y1 and b[3] > y0 and b != (x0, y0, x1, y1)]
+        cols = [b for b in boxes if b[0] < x1 and b[2] > x0 and b != (x0, y0, x1, y1)]
+        left = max([b[2] - x0 for b in rows if b[0] < x0 < b[2] <= x1] or [0])
+        right = max([x1 - b[0] for b in rows if x0 <= b[0] < x1 < b[2]] or [0])
+        top = max([b[3] - y0 for b in cols if b[1] < y0 < b[3] <= y1] or [0])
+        bottom = max([y1 - b[1] for b in cols if y0 <= b[1] < y1 < b[3]] or [0])
+        weight = (_ramp(h, top, bottom)[:, None] * _ramp(w, left, right)[None, :])[:, :, None]
+        acc[y0:y1, x0:x1] += np.asarray(im, dtype=float) * weight
+        wsum[y0:y1, x0:x1] += weight
+    return Image.fromarray(np.clip(acc / np.maximum(wsum, 1e-9), 0, 255).round().astype(np.uint8))
+
+
+def _tile_legend(legend: dict | None, n: int) -> dict:
+    """The legend as one of n × n tiles sees it: its scale a tile's share of the place's."""
+    out = json.loads(json.dumps(legend or {}))
+    s = out.get("scale")
+    if isinstance(s, dict) and n > 1:
+        share = 1 / n + TILE_OVERLAP
+        s["across"] = max(1, round((s.get("across") or 0) * share))
+        s["down"] = max(1, round((s.get("down") or 0) * share))
+    return out
+
+
 def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
                 notes: str = "", seed: int = 7, reference: bytes | None = None, guide: str | None = None, written: str = "",
-                objects: bool = True) -> tuple[bytes, str]:
+                objects: bool = True, report=None) -> tuple[bytes, str]:
     """A place painted from its block-out by one of PAINT_MODELS; the painting at the block-out's own size (so its
-    pixels line up with the block-out's id map) and the prompt(s).
+    pixels line up with the block-out's id map) and the prompt(s). A place more than TILE_SPAN cells across its diamond
+    (its legend's scale) is painted in tiles (tile_count) and joined; `report(done, total, text)` hears each tile.
     - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
     - flux-2-klein-4b: klein copies a flat input it's told about: the block-out as a rough draft, scaled up, a short key.
     - flux-2-pro / flux-2-max: the block-out with the colour key and the counts, as FLUX.3 Image (prompt upsampling off);
@@ -402,44 +480,76 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     - flux-3-to-klein / flux-3-to-pro: FLUX.3 Image paints the plan, then klein or FLUX.2 pro repaints its look, the
       block-out beside it (pro) saying what each building is."""
     import io
+    from concurrent.futures import ThreadPoolExecutor
     from PIL import Image
     src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
-    size = _four_mp(src.width, src.height)
     # The ontology's guide for its kind unless one is given; the place's own words; the key only for things shown.
     guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
-    keyed = (blockout_prompt(place, story, look, legend, notes, guide, written, objects) + " " +
-             (counts_sentence(legend) if objects else "")).strip()
-    draft = draft_prompt(place, story, look, legend, notes, guide, written, objects)
+    scale = (legend or {}).get("scale") or {}
+    n = tile_count(int(scale.get("across") or 0), int(scale.get("down") or 0)) if scale else 1
+    tiled = _tile_legend(legend, n) if n > 1 else legend
+    keyed = (blockout_prompt(place, story, look, tiled, notes, guide, written, objects) + " " +
+             (counts_sentence(tiled) if objects else "")).strip()
+    draft = draft_prompt(place, story, look, tiled, notes, guide, written, objects)
+    if n > 1:
+        # The counts are the whole place's: a part has only some of them.
+        keyed = keyed.replace("Exactly ", "Of the whole map's ") + " " + TILE_NOTE
+        draft += " " + TILE_NOTE
     # A picture given to paint after (the Build panel's "as a reference"): its look, on the plan's layout.
     refs = [reference] if reference else []
     after = (" The second image is a picture of how this place should look: paint it in that picture's look, palette and "
              "details (or as that picture, changed as the notes say), but keep the first image's layout exactly.") if reference else ""
     keyed += after
     draft += after
-    if model in ("flux-2-pro", "flux-2-max"):
-        png, prompt = BflPainter(key, model).repaint(blockout_png, keyed, references=refs, seed=seed, **size), keyed
-    elif model == "flux-2-klein-4b":
-        big = src.resize((4096, round(4096 * src.height / src.width)), Image.LANCZOS)
+
+    def one(part):
+        """One image painted from `part` (a PIL block-out, the whole or a tile): the painting (PIL) and its prompt(s)."""
         buf = io.BytesIO()
-        big.save(buf, format="PNG")
-        png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, references=refs, seed=seed, **size), draft
-    else:
-        png, prompt = BflPainter(key, "flux-3-image").repaint(blockout_png, keyed, references=refs, seed=seed, **size), keyed
-        if model == "flux-3-to-klein":
-            png = BflPainter(key, "flux-2-klein-4b").repaint(png, draft, seed=seed, **size)
-            prompt += "\n---\n" + draft
-        elif model == "flux-3-to-pro":
-            things = "; ".join(f"{t['colour']} = {t['kind']}" for t in (legend or {}).get("things", []) if t.get("kind"))
-            refine = ("Refine this painted isometric game map into finished, hand-crafted art: richer materials, light and "
-                      "detail, one consistent palette. Keep the camera, the layout and every building, road, river, fence and "
-                      "tree exactly where it is. The second image is the place's colour-coded plan, aligned with the first: "
-                      f"each coloured box marks one building or thing ({things}). Draw each as the kind its colour says; never "
-                      "draw the second image's colours. " + counts_sentence(legend) + " No text, no UI, no characters.")
-            png = BflPainter(key, "flux-2-pro").repaint(png, refine, references=[blockout_png], seed=seed, **size)
-            prompt += "\n---\n" + refine
-    painted = Image.open(io.BytesIO(png)).convert("RGB")
+        part.save(buf, format="PNG")
+        part_png = buf.getvalue()
+        size = _four_mp(part.width, part.height)
+        if model in ("flux-2-pro", "flux-2-max"):
+            png, prompt = BflPainter(key, model).repaint(part_png, keyed, references=refs, seed=seed, **size), keyed
+        elif model == "flux-2-klein-4b":
+            big = part.resize((4096, round(4096 * part.height / part.width)), Image.LANCZOS)
+            buf = io.BytesIO()
+            big.save(buf, format="PNG")
+            png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, references=refs, seed=seed, **size), draft
+        else:
+            png, prompt = BflPainter(key, "flux-3-image").repaint(part_png, keyed, references=refs, seed=seed, **size), keyed
+            if model == "flux-3-to-klein":
+                png = BflPainter(key, "flux-2-klein-4b").repaint(png, draft, seed=seed, **size)
+                prompt += "\n---\n" + draft
+            elif model == "flux-3-to-pro":
+                things = "; ".join(f"{t['colour']} = {t['kind']}" for t in (legend or {}).get("things", []) if t.get("kind"))
+                refine = ("Refine this painted isometric game map into finished, hand-crafted art: richer materials, light and "
+                          "detail, one consistent palette. Keep the camera, the layout and every building, road, river, fence and "
+                          "tree exactly where it is. The second image is the place's colour-coded plan, aligned with the first: "
+                          f"each coloured box marks one building or thing ({things}). Draw each as the kind its colour says; never "
+                          "draw the second image's colours. " + counts_sentence(tiled) + " No text, no UI, no characters." +
+                          (" " + TILE_NOTE if n > 1 else ""))
+                png = BflPainter(key, "flux-2-pro").repaint(png, refine, references=[part_png], seed=seed, **size)
+                prompt += "\n---\n" + refine
+        return Image.open(io.BytesIO(png)).convert("RGB"), prompt
+
+    boxes = tile_boxes(src.width, src.height, n)
+    done = [0]
+
+    def tile(box):
+        result = one(src.crop(box))
+        done[0] += 1
+        if report and n > 1:
+            report(done[0], len(boxes), f"Painted tile {done[0]} of {len(boxes)}")
+        return result
+
+    if report and n > 1:
+        report(0, len(boxes), f"Painting in {n} × {n} tiles ({len(boxes)} images, {TILES_AT_ONCE} at a time)")
+    with ThreadPoolExecutor(min(TILES_AT_ONCE, len(boxes))) as pool:
+        results = list(pool.map(tile, boxes))
+    painted = join_tiles([r[0] for r in results], boxes, src.width, src.height) if n > 1 else results[0][0]
     if painted.size != src.size:
         painted = painted.resize(src.size, Image.LANCZOS)
     out = io.BytesIO()
     painted.save(out, format="PNG")
+    prompt = results[0][1] + (f"\n---\n(painted in {n} × {n} tiles)" if n > 1 else "")
     return out.getvalue(), prompt

@@ -204,6 +204,14 @@ std::set<std::string> PaintedObjectIds(const Ontology* ontology, const json& sol
     return out;
 }
 
+int PaintWidth(int across, int down) {
+    return std::clamp((std::max(1, across) + std::max(1, down)) * kPaintCell / 2, 1024, 16000);
+}
+
+int PaintTiles(int across, int down) {
+    return std::max(1, (std::max(0, across) + std::max(0, down) + kPaintTileSpan - 1) / kPaintTileSpan);
+}
+
 json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::path& folder, int width) {
     // Only what's painted: the things the player uses are sprites over the painting, so they aren't in it.
     json painted = solved;
@@ -215,6 +223,7 @@ json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::pat
         ids.push_back(o.value("id", ""));
     }
     const auto b = OccupiedBounds(solved);
+    if (width <= 0) width = PaintWidth(b[2] - b[0], b[3] - b[1]);
     json legend;
     ImageData idMap;
     const ImageData image = RenderPlanBlockout(painted, b[0], b[1], b[2], b[3], width, ontology, &legend, &idMap, true);

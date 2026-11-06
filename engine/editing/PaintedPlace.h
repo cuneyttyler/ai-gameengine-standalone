@@ -38,10 +38,20 @@ bool PaintedObject(const Ontology* ontology, const nlohmann::json& object);
 // The ids of the plan's objects that are in the painting.
 std::set<std::string> PaintedObjectIds(const Ontology* ontology, const nlohmann::json& solved);
 
+// A painting's density (docs/places/tiling.md §6): pixels across a cell's diamond. A place of W × H cells is drawn
+// (W + H) × kPaintCell / 2 px wide, so it's painted in as many tiles as its cells need.
+inline constexpr int kPaintCell = 80;
+// The block-out's width for a place of `across` × `down` cells, at kPaintCell (within what an image can be).
+int PaintWidth(int across, int down);
+// How many tiles a side its painting is made of: one image holds about kPaintTileSpan cells across its diamond
+// (the AI service's bfl.TILE_SPAN, which decides; this says it).
+inline constexpr int kPaintTileSpan = 60;
+int PaintTiles(int across, int down);
+
 // ④ Paint, before the provider paints: the block-out of the painted things (blockout.png, its id map and legend)
-// drawn `width` px across and painting.json started ({size, view, objects: the ids in the id map's order}).
-// Returns painting.json.
-nlohmann::json PrepareBlockout(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder, int width = 2560);
+// drawn `width` px across (0: PaintWidth of its cells) and painting.json started ({size, view, objects: the ids in
+// the id map's order}). Returns painting.json.
+nlohmann::json PrepareBlockout(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder, int width = 0);
 
 // painting.json, or null.
 nlohmann::json LoadPainting(const std::filesystem::path& folder);

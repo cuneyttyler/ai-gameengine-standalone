@@ -7,6 +7,7 @@
 #include "editing/BuildWindow.h"
 #include "editing/MatchedArt.h"
 #include "editing/PaintedPlace.h"
+#include "editing/PlaceScene.h"
 #include "gameplay/Settings.h"
 #include "places/Arrange.h"
 #include "places/Compile.h"
@@ -439,6 +440,7 @@ void PlaceBuild::Save() const {
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
                                           {"method", method_},
+                                          {"scope", scope_},
                                           {"fromPicture", fromPicture_},
                                           {"reference", reference_},
                                           {"models", {{"art", artModel_}, {"background", backgroundModel_}}},
@@ -501,6 +503,10 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     // Not the Brief's: how many looks each kind of thing gets (Matched art).
     variety_ = choices_.value("variety", "");
     choices_.erase("variety");
+    // An open world (tiling.md §3): a region, made of sections. Not the Brief's either.
+    scope_ = choices_.value("scope", "") == "world" ? "world" : "place";
+    choices_.erase("scope");
+    if (scope_ == "world") choices_["buildType"] = "region";
     method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
     if (method_ != "Paint") method_ = "Assembled";
     fromPicture_ = false;
@@ -543,6 +549,7 @@ std::string PlaceBuild::StartFromPicture(const std::string& words, const fs::pat
     choices_ = json::object();
     variety_.clear();
     method_ = "Paint";
+    scope_ = "place";
     fromPicture_ = true;
     reference_.clear();
     query_ = words.find_first_not_of(" \t\r\n") != std::string::npos ? words : picture.stem().string();
@@ -4939,7 +4946,10 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"model", PaintModel()}};
     if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
     painting_ = true;
-    status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting)…";
+    const auto bounds = OccupiedBounds(solved_);
+    const int tiles = PaintTiles(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+    status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting" +
+              (tiles > 1 ? ", in " + std::to_string(tiles) + " × " + std::to_string(tiles) + " tiles" : std::string()) + ")…";
     Log({{"step", "paint"}, {"notes", notes}});
     Save();
     return {};
@@ -5138,6 +5148,7 @@ std::string PlaceBuild::Open(const std::string& id) {
         // Its method; a build from before methods: Paint if it was painted and not skipped, else Assembled.
         fromPicture_ = session.value("fromPicture", false);
         reference_ = session.value("reference", std::string());
+        scope_ = session.value("scope", std::string()) == "world" ? "world" : "place";
         if (session.contains("method") && session["method"].is_string()) {
             method_ = session["method"].get<std::string>();
         } else {
@@ -5488,6 +5499,7 @@ json PlaceBuild::State() {
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
     state["method"] = method_; // Assembled or Paint: which steps it has
+    state["scope"] = scope_;   // place or world: a world has ② Sections
     state["paintModel"] = PaintModel();
     state["paintFixed"] = brief_.value("buildType", "") == "dungeon"; // painted by FLUX-3-Image, whatever the project says
     state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint

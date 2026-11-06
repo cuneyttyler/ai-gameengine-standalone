@@ -1012,7 +1012,7 @@ def create_app(
             png, prompt = paint_place(key, request.model, (folder / request.blockout).read_bytes(), request.legend,
                                       request.place, request.story, request.look, request.notes, request.seed,
                                       reference.read_bytes() if reference and reference.is_file() else None,
-                                      guide, written, request.objects)
+                                      guide, written, request.objects, report)
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
         (folder / "painting.png").write_bytes(png)

@@ -263,6 +263,8 @@ public:
     // How it's built (docs/places/painted-places.md): "Assembled" (Confirm, Layout, Plan, Assets, Build) or "Paint"
     // (Confirm, Layout, Plan, Paint, Mark, Assets, Build). From the project's setting when started; "" when set.
     const std::string& Method() const { return method_; }
+    // A single place, or an open world made of sections (docs/places/tiling.md §3): "place" or "world".
+    const std::string& Scope() const { return scope_; }
     std::string SetMethod(const std::string& method);
     // This build's art provider and background model (Build ▸ Assets); "" for the project's (Project Settings ▸ AI).
     void SetModels(const nlohmann::json& models);
@@ -405,6 +407,7 @@ private:
     bool painting_ = false;      // ④ Paint: asked, not answered
     bool makingInteriors_ = false; // the interiors (docs/places/interiors.md §7): asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
+    std::string scope_ = "place";      // place or world (Scope)
     bool fromPicture_ = false;   // StartFromPicture: no Layout, Plan or Paint
     std::string reference_;      // SetReference: the picture ④ Paint paints after, in the build's folder
     std::string artModel_, backgroundModel_; // SetModels

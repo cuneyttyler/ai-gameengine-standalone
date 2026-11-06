@@ -3254,6 +3254,77 @@ In this order:
    quest accepted by words, an invented item refused, a dead character spoken of as dead), and an evaluation set
    recorded against live models.
 
+## Phase 31 — Open worlds: sections and tiles (`docs/places/tiling.md`)
+
+**Status (2026-11-06): started.** The Build panel builds one place of one kind. Here it also builds an **open
+world**: one scene made of any number of **sections**, each a place of its own kind (villages, camps, castles,
+dungeons, and the wild land between), planned inside one **world plan** so that roads, rivers and forests meet
+across them. And paintings and backgrounds are made of **tiles**, as many as the place's cells need.
+
+### 31.1 Tiled painting, by cell count
+
+- The Paint method's block-out is drawn at the project's density (`paintCell`, 80 px across a cell: `(W + H) × 40`
+  px wide), so the painting is as big as its cells need, and the block-out, id map and painting stay the same size.
+- The painting is made of `n × n` tiles, `n = ceil((W + H) / 60)`, each cut from the block-out with a 12% overlap,
+  painted at the model's full size (4 at a time, one seed) and joined by cross-fading the overlaps.
+- Each tile's prompt says it is one part of a bigger map (paint to the cut edges, no frame), its part's scale, and
+  the counts as "of the whole map's".
+- The Paint page says how many tiles and shows their progress.
+- Tests: the tile count from the cells; the boxes cover the image with their overlap; the join of flat tiles is
+  seamless (pixel test); the prompt's tile note.
+
+### 31.2 An open world, chosen in the Build panel
+
+- Next to the method, the panel asks **A single place** or **An open world**, with *"Select build method and type
+  first."* above the request. An open world is built as a `region`.
+- A world build (`WorldBuild`) owns the world's Brief and plan and a place build per section; the panel's state
+  says which section is selected, and each page shows it.
+- Its steps: Assembled: Confirm, **Sections**, Layout, Plan, Assets, Build. Paint: Confirm, **Sections**, Layout,
+  Plan, Paint, Mark, Assets, Animate, Build.
+- Tests: the scope reaches the build; a world's steps per method; the request parsed as a region.
+
+### 31.3 The world plan and its sections
+
+- The region root solved over the whole world (sites, roads, rivers, lakes, coast, forests, relief), then cut into
+  sections: each site's rectangle (with its margin), the rest in wild sections of at most 64 cells a side.
+- The **Sections** page: the world plan drawn with the sections on it, and their list (name, kind, size, what each
+  carries). *Lay out the zones* lays the sections out one by one.
+- Stored as `places/<world>/world.json`, `world.solved.json`, `world.png`, and a place folder per section.
+- Tests: every world cell in exactly one section; sites whole in their sections; small leftovers merged.
+
+### 31.4 Sections carry the world plan
+
+- A section's compile gets its carried things as fixed statements, solved first: its terrain and relief, its road
+  and river cells with their edge entries, its masses (lakes, coast, forests), and its margin, which is the world
+  plan's exactly.
+- The Layout and Plan pages list the sections above and show the selected one below, as today.
+- Tests: a road crossing two sections has the same cells on both sides; nothing tall in a margin; a section
+  revised keeps its carried things.
+
+### 31.5 Assembled worlds
+
+- Backgrounds per section, in tiles, their block-outs extended by the margin and cross-faded with their neighbours'.
+- One asset plan for the world (a kind used in many sections made once); every section built into the one scene,
+  under a group entity per section, its background as its own sprites.
+- Tests: the backgrounds' join; assets shared; the scene's sections at their origins.
+
+### 31.6 Painted worlds
+
+- Each section painted in its tiles, its block-out extended by its margin into its neighbours, the paintings
+  cross-faded over the margins.
+- The Mark page lists the sections on the left and shows the selected section's marks on the right.
+- Tests: neighbours' paintings agree over the margin; marks per section line up in world cells.
+
+### 31.7 The AI panel
+
+- New ops: build an open world, list its sections, select one, lay out / plan / paint a section again.
+- Its prompt and context: the world's sections and their stages; what a world is and when to suggest one.
+- Checks: a section op names a section the world has.
+
+Done when: a request like "a big island with several villages joined by long roads, forests and camps" builds one
+scene of sections, by either method, whose roads, rivers and forests run on across every seam, each painting at
+the detail its cells need.
+
 ---
 
 ## Later

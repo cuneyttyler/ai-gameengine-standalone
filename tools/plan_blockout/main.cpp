@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
         ImageData bareIds;
         WritePng(out / (packing + "-blockout-plain.png"), RenderPlanBlockout(bare, b[0], b[1], b[2], b[3], 2000, &ontology, &bareLegend, &bareIds));
         // As the editor's Paint method prepares it (PrepareBlockout): only the things painted in, in their own colours.
-        PrepareBlockout(solved.document, &ontology, out / (packing + "-editor"), 2000);
+        PrepareBlockout(solved.document, &ontology, out / (packing + "-editor"));
         std::cout << packing << ": bounds " << b.dump() << ", " << solved.document.value("regions", json::array()).size()
                   << " regions\n";
     }
