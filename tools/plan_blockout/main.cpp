@@ -572,7 +572,8 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
                     json open = json::array();
                     if (inner(run.front())) open.push_back("start");
                     if (inner(run.back())) open.push_back("end");
-                    carried.push_back({{"cells", run}, {"width", p.value("width", 2)}, {"terrain", p.value("terrain", "road")}, {"open", open}});
+                    // In the planned place, an ordinary road (the world's road colour is only for the world plan).
+                    carried.push_back({{"cells", run}, {"width", p.value("width", 2)}, {"terrain", "dirt"}, {"open", open}});
                 }
                 run = json::array();
             };
@@ -652,6 +653,14 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
         if (index >= 0 && index < static_cast<int>(sites.size())) worldNames[id] = sites[index].value("name", id) + "'s land";
     }
     DrawLayout(ontology, world.spec, world.solved, world.brief.value("name", "The world") + ": the world plan", out / "world-layout.png", 2400, worldNames);
+    // The planned world: its world roads as ordinary roads (their own colour is the world plan's alone).
+    {
+        std::vector<std::string> ground = TerrainCells(together, WW, WH);
+        for (auto& g : ground) {
+            if (g == "road") g = "dirt";
+        }
+        SetTerrain(together, ground, WW, WH);
+    }
     DrawLayout(ontology, world.spec, together, world.brief.value("name", "The world") + ": the world with its sections", out / "together-layout.png", 3600,
                worldNames);
     std::ofstream(out / "together.solved.json") << together.dump(2);
