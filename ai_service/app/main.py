@@ -1031,7 +1031,16 @@ def create_app(
         made = paint_interiors(BflPainter(key, "flux-3-image"), folder, request.items,
                                {"place": request.place, "story": request.story, "look": request.look}, request.seed, vision=state["vision"])
         report(1, 1, f"Interiors: {len(made)} of {len(request.items)} made")
-        return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}}
+        # Each building's check (the vision model's look at its place) and layout, as written beside its floors.
+        checks = {}
+        for item in request.items:
+            info = folder / "marks" / f"{item['id']}-interior.json"
+            if info.is_file():
+                try:
+                    checks[item["id"]] = json.loads(info.read_text(encoding="utf-8")).get("check", {})
+                except ValueError:
+                    pass
+        return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}, "checks": checks}
 
     @app.post("/images/background")
     def images_background(request: SceneBackgroundRequest) -> dict:

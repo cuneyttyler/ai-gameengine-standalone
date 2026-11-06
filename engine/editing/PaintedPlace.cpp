@@ -534,6 +534,9 @@ std::vector<std::vector<bool>> MarkedBlocked(const json& marks, int w, int h) {
             set(dx, dy, false);
             continue;
         }
+        // Painted from a layout: its room's own walls and ways in (TileGrid::AddRoom opens what's inside it, whatever the
+        // marks say), so the marks stay as they are: no ring of footprint walls.
+        if (o.contains("layout")) continue;
         for (int y = y0; y <= y1; ++y) {
             for (int x = x0; x <= x1; ++x) set(x, y, false);
         }
@@ -658,6 +661,15 @@ int PairInteriorMarks(const json& solved, const fs::path& folder, const Ontology
         else o["floors"] = upper;
         o["cells"] = {x, y, x + w - 1, y + h - 1};
         o["door"] = object.value("facing", std::string("s"));
+        // Its layout and exterior (written beside its floors: docs/places/interiors.md §7): its walls, ways in and stairs
+        // where its rooms are painted, and the building editor's outside tab.
+        o.erase("layout"), o.erase("exterior");
+        if (const json info = ReadJson(folder / "marks" / (id + "-interior.json")); info.is_object()) {
+            if (info.value("layout", std::string()).size() > 0) o["layout"] = info["layout"];
+            if (info.value("exterior", std::string()).size() > 0 && fs::exists(folder / info.value("exterior", std::string()), ec)) {
+                o["exterior"] = info["exterior"];
+            }
+        }
         ++count;
     }
     WriteJsonFile(folder / "marks.json", marks);
@@ -836,6 +848,10 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
             interior.door = o.value("door", std::string("s"));
             interior.cells = std::to_string(x0) + "," + std::to_string(y0) + "," + std::to_string(x1) + "," + std::to_string(y1);
             interior.hides = "painting#" + id + "/";
+            // Painted from a layout: its walls, ways in and stairs where its rooms are (TileGrid::AddRoom, InteriorRoom),
+            // and its exterior picture for the building editor (never drawn: the painting is its outside).
+            interior.layout = o.value("layout", std::string());
+            if (o.contains("exterior")) interior.exteriorTexture = relative + "/" + o.value("exterior", std::string());
             for (size_t at = 0; at < o.value("floors", std::string()).size();) { // the upper floors, as the scene names them
                 const std::string all = o.value("floors", std::string());
                 const size_t end = all.find(';', at);

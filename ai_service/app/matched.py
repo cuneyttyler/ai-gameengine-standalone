@@ -1399,6 +1399,28 @@ def paint_interiors(painter, folder: Path, items: list[dict], context: dict, see
             mask = mask.resize((w, h), Image.NEAREST)
         exterior = whole.crop((x, y, x + w, y + h))
         exterior.putalpha(mask)
+        # Checked first (docs/places/interiors.md §7): the vision model looks at the building's place with a margin
+        # round it. No building there (the painting left it out, or moved it far): no interior. One reaching well past
+        # its outline: made from the outline as it is, and said, so the outline is widened in ⑤ Mark.
+        check: dict = {}
+        mx, my = w // 2, h // 2
+        crop_box = (max(0, x - mx), max(0, y - my), min(whole.width, x + w + mx), min(whole.height, y + h + my))
+        from .vision import locate_building
+        seen = locate_building(vision, whole.crop(crop_box)) if vision is not None else None
+        if seen is not None:
+            check["building"] = bool(seen.get("building"))
+            if not check["building"]:
+                (folder / "marks").mkdir(exist_ok=True)
+                (folder / "marks" / f"{item['id']}-interior.json").write_text(json.dumps({"check": check}), encoding="utf-8")
+                return None
+            if seen.get("box"):
+                bx, by, bw, bh = seen["box"]
+                bx, by = bx + crop_box[0], by + crop_box[1]
+                check["box"] = [bx, by, bw, bh]
+                # How much of the building found lies outside its outline's box.
+                ix = max(0, min(bx + bw, x + w) - max(bx, x))
+                iy = max(0, min(by + bh, y + h) - max(by, y))
+                check["outside"] = round(1 - (ix * iy) / max(1, bw * bh), 2)
         storeys = int(item.get("storeys") or 0) or count_storeys(vision, exterior)  # the Build panel's, else counted
         kind, about = role_description(str(item.get("role") or ""))
         floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), storeys, vision=vision, kind=kind,
@@ -1406,10 +1428,18 @@ def paint_interiors(painter, folder: Path, items: list[dict], context: dict, see
         if not floors or floors[0] is None:
             return None
         (folder / "marks").mkdir(exist_ok=True)
+        made = 0
         for k, floor in enumerate(floors, 1):
             if floor is None:
                 break
             floor.save(folder / "marks" / floor_name(item["id"], k))
+            made = k
+        # Its exterior on its own (the building editor's outside tab) and its layout (where its rooms and stairs are
+        # painted: the game's walls, ways in and stairs follow it, as an Assembled building's do).
+        exterior.save(folder / "marks" / f"{item['id']}-exterior.png")
+        (folder / "marks" / f"{item['id']}-interior.json").write_text(json.dumps({
+            "layout": floor_layout(exterior, made), "storeys": made, "exterior": f"marks/{item['id']}-exterior.png", "check": check,
+        }), encoding="utf-8")
         return item["id"]
     with ThreadPoolExecutor(2) as pool:
         return [i for i in pool.map(make, items) if i]

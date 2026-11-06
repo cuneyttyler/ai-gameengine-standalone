@@ -354,6 +354,43 @@ def locate_doors(provider: Provider, picture: Image.Image) -> list[list[int]]:
     return [[round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)] for x0, y0, x1, y1 in _boxes(answer, shown.width, shown.height)]
 
 
+LOCATE_BUILDING = """The picture is part of a painted 2D isometric game place. Is there a building in its middle (a house, a shop, a
+hall: something with walls and a roof one could go into; not a tree, a tent's cloth alone, a wall or a fence)? If so, give
+the smallest box round that one building, its roof and walls included, as [x0, y0, x1, y1] in thousandths of the picture
+(0-1000; x from the left edge, y from the top edge). Answer as JSON exactly:
+{"building": true, "box_2d": [x0, y0, x1, y1]}, or {"building": false} when there's none in its middle."""
+
+
+def locate_building(provider: Provider, picture: Image.Image) -> dict | None:
+    """Whether a crop of a painting (a planned building's place, with a margin round it) shows a building in its middle,
+    and its box [x, y, w, h] in the crop's pixels: {"building": bool, "box": [...]?}. None when the answer can't be read
+    (no vision model, an answer not JSON), so the caller goes on unchecked."""
+    if provider is None:
+        return None
+    shown = picture.convert("RGBA")
+    k = min(1.0, 1024 / max(shown.width, shown.height))
+    if k < 1:
+        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
+    flat = Image.new("RGB", shown.size, (255, 255, 255))
+    flat.paste(shown, (0, 0), shown)
+    buffer = io.BytesIO()
+    flat.save(buffer, "PNG")
+    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    content = [{"type": "text", "text": LOCATE_BUILDING}, {"type": "image_url", "image_url": url}]
+    try:
+        text = provider.complete([{"role": "user", "content": content}]).text
+        answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+        return None
+    if not isinstance(answer, dict) or not answer.get("building"):
+        return {"building": False}
+    boxes = _boxes(answer, shown.width, shown.height)
+    if not boxes:
+        return {"building": True}
+    x0, y0, x1, y1 = boxes[0]
+    return {"building": True, "box": [round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)]}
+
+
 def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect: list[int] | None = None) -> dict:
     """The moving parts (doors, gates, shutters…) in a project picture, or in `rect` of it: their boxes in the
     picture's own pixels (the rect's offset added back)."""

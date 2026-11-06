@@ -759,6 +759,15 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
         const int paired = PairInteriorMarks(solved_, Folder(), &host_.ontology());
         if (body.value("ok", false)) {
             status_ = std::to_string(paired) + " buildings with interiors.";
+            // The vision model's look at each building's place: none there, or one well past its outline.
+            for (const auto& [id, check] : body.value("checks", json::object()).items()) {
+                if (check.contains("building") && !check.value("building", true)) {
+                    Notice("No building was seen where " + id + " should be in the painting: it has no interior (check it in ⑤ Mark).");
+                } else if (check.value("outside", 0.0) > 0.25) {
+                    Notice(id + "'s building reaches past its outline (" + std::to_string(static_cast<int>(check.value("outside", 0.0) * 100)) +
+                           "% outside): widen it in ⑤ Mark and make its interior again.");
+                }
+            }
         } else {
             Notice("The interiors weren't made: " + FirstError(body));
         }

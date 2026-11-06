@@ -23,6 +23,12 @@ TileGrid TileGrid::Build(Registry& registry, const IsoParams* iso) {
     // Layer cells are read in place, not copied: a built place has far more
     // of them than hand-painted tiles.
     if (const TileLayers* layers = FindLayers(registry)) grid.layers_ = layers->Ordered();
+    // A painted place's buildings painted from a layout (docs/places/interiors.md §7: no Obstacle, its footprint in
+    // Interior.cells): their rooms' walls and ways in, inside them walkable, as an Assembled building's.
+    for (auto [entity, interior] : registry.view<Interior>(entt::exclude<Obstacle>).each()) {
+        if (interior.cells.empty() || interior.layout.empty() || interior.texture.empty() || interior.kind == "scene") continue;
+        if (RoomFrame room; iso && InteriorRoom(registry, entity, interior, *iso, room)) grid.AddRoom(registry, entity, interior, room);
+    }
     // Obstacles make the cell they stand in solid (the tile entity stays
     // what At() reports).
     for (auto [entity, obstacle, world] : registry.view<Obstacle, WorldTransform2D>().each()) {
@@ -247,6 +253,24 @@ void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interi
             } else if (ways.empty()) {
                 open[best].push_back({lo, hi});
             }
+        }
+    }
+    // No way in drawn and no door of its own (a painted place's building: its doors are overlays on the painting): the
+    // middle of the side it faces (Interior.door), a cell wide, as its footprint's ring had.
+    if (std::all_of(std::begin(open), std::end(open), [](const auto& gaps) { return gaps.empty(); }) && (!doors || doors->feet.empty())) {
+        const float fx = interior.door == "e" ? 1.0f : interior.door == "w" ? -1.0f : 0.0f;
+        const float fy = interior.door == "n" ? -1.0f : interior.door == "e" || interior.door == "w" ? 0.0f : 1.0f;
+        int best = -1;
+        float bestDot = -2.0f;
+        for (int side = 0; side < 4; ++side) {
+            const float sx = (corners[side][0][0] + corners[side][1][0]) * 0.5f - mx, sy = (corners[side][0][1] + corners[side][1][1]) * 0.5f - my;
+            const float length = std::max(1e-4f, std::hypot(sx, sy));
+            if (const float dot = (sx * fx + sy * fy) / length; dot > bestDot) bestDot = dot, best = side;
+        }
+        if (best >= 0) {
+            const float length = std::hypot(corners[best][1][0] - corners[best][0][0], corners[best][1][1] - corners[best][0][1]);
+            const float half = std::min(0.5f, 0.5f / std::max(0.5f, length));
+            open[best].push_back({0.5f - half, 0.5f + half});
         }
     }
     // Each side a thin wall just outside it, but its open stretches.

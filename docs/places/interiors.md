@@ -297,25 +297,38 @@ A pair stays a pair:
 
 ## 7. The Paint method
 
-A painted place has no building assets: the buildings are part of the one painting. The interior is still an edit of
-the building's own pixels, so it lines up the same way.
+A painted place has no building assets: the buildings are part of the one painting. Each building is cut out of it and
+given its interiors exactly as an Assembled building is (§2), so its floors, walls, ways in, stairs and solid things work
+the same way and the building editor (§5c) edits them.
 
-1. **After ⑤ Mark.** For each building whose role has an interior, its region is its occluder mask, or failing that
-   its object's pixels in `blockout-ids.png`. That region's box is cut from `painting.png`.
-2. **Edit.** BFL repaints the crop on the same canvas with the same `INTERIOR_PROMPT`, and the result is masked to the
-   region (`marks/<id>-interior.png`). ⑤ Mark's Continue asks for it (`PlaceBuild::PaintInteriors`, `/places/interiors`,
-   the occluders `InteriorRequests` picks) while ⑥ Assets goes on; Build waits for it. When it comes,
-   `PairInteriorMarks` gives each occluder with a picture its `interior`, `cells` (its building's footprint) and `door`
-   (its facing) in marks.json.
-3. **Scene.** An entity at the building's place gets a sprite of the cutaway and an `Interior` whose exterior is
-   *nothing*: outside, the painting shows through, and inside, the cutaway covers it.
-   - A new `Interior.hides` lists the occluder ids to hide while the interior shows, so the house front stops being
-     drawn over the player.
-   - An `Interior` with `cells` (its footprint, since it has no Obstacle) is a painted one: `ApplyInteriors` draws its
-     sprite only while shown (alpha), and hides every sprite whose PlaceNode statement starts with `hides`
-     (`painting#<id>/`, its occluder's strips).
-4. **Walk.** The building's walk cells become its walls with a doorway, as in §4. The door side comes from the plan
-   object's `facing`.
+1. **Found** (after ⑤ Mark): each occluder whose plan object is a building with a *cutaway* interior (Build ▸ Assets ▸
+   Interiors), its region its occluder's mask and box (the outline drawn or checked in Mark, its base line along the
+   building's front edges), `InteriorRequests`.
+2. **Checked** (`vision.locate_building`): the vision model is shown its place in the painting with half its size as a
+   margin round it. No building there (the painting left it out or moved it far): no interior, and the build says so.
+   One reaching more than a quarter past its outline: made from the outline as it is, and the build says so (widen it in
+   ⑤ Mark, then make it again). Without a vision model it goes on unchecked.
+3. **Cut out** (`paint_interiors`): the box cut from `painting.png`, its mask as its alpha: the building on its own, saved
+   as `marks/<id>-exterior.png` (the building editor's outside tab; never drawn in the scene).
+4. **Its interiors** as Assembled (§2: `count_storeys` unless Build ▸ Assets ▸ Interiors gives its floors, `make_floors`):
+   `marks/<id>-interior.png`, `-interior-2.png`…, each the box's size so they lie exactly over the painted building, and
+   its **layout** (`floor_layout`). Written with its check as `marks/<id>-interior.json` {layout, storeys, exterior,
+   check}. ⑤ Mark's Continue asks for them (`PlaceBuild::PaintInteriors`, `/places/interiors`) while ⑥ Assets goes on;
+   Build waits for them. When they come, `PairInteriorMarks` gives each occluder its `interior`, `floors`, `cells` (its
+   building's footprint), `door` (its facing), `layout` and `exterior` in marks.json.
+5. **Scene** (`AddPaintingEntities`): an entity at the building's place with a sprite of the floor showing and an
+   `Interior` with its floors, `layout`, `exteriorTexture` and `cells` (no Obstacle: its outside is the painting).
+   - `Interior.hides` lists its occluder's strips, hidden while the interior shows, so the house front stops being drawn
+     over the player; `ApplyInteriors` draws its sprite only while shown.
+   - **Walls and ways in** (`TileGrid::Build` → `AddRoom`, as §4's "painted from a layout"): its room's own walls, open at
+     its ways in (the building editor's), else the middle of the side it faces (its doors are overlays on the painting,
+     not its own parts); inside them walkable whatever the marks say. The marks' walk cells for it stay as drawn (no ring
+     of footprint walls, `MarkedBlocked`).
+   - **Stairs** where its rooms paint them (`UpdateInteriors` with `InteriorRoom`); H / Shift+H show it as any other.
+6. **Edited** in Inspector ▸ Building Plan ▸ Edit building…: its exterior and floors as tabs, Solid, Stairs and Ways in
+   (saved on the entity; a rebuild of the place makes the entity again from its marks).
+
+A building made before its layout was kept (no `-interior.json`): its footprint's cells and their ring of walls, as before.
 
 ## 8. AI panel
 
