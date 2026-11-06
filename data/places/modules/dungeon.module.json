@@ -78,6 +78,12 @@
       "default": true,
       "ask": true
     },
+    "packing": {
+      "type": "enum",
+      "vocabulary": "dungeon-packing",
+      "default": "apart",
+      "description": "apart: rooms set in solid rock, joined by corridors; packed: rooms fill the whole level, wall to wall, joined by doorways (no empty rock)"
+    },
     "condition": {
       "type": "enum",
       "vocabulary": "condition",

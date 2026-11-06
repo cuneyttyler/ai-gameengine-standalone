@@ -1823,5 +1823,24 @@
       ],
       "prompt": "a building's footprint follows its lot and its street: a curved front on a curved street, a wedge in a wedge, rounded corners"
     }
+  ],
+  "dungeon-packing": [
+    {
+      "id": "apart",
+      "alt": [
+        "spread",
+        "separate rooms",
+        "rooms apart"
+      ]
+    },
+    {
+      "id": "packed",
+      "alt": [
+        "filled",
+        "dense",
+        "whole area",
+        "no empty space"
+      ]
+    }
   ]
 }

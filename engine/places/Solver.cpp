@@ -3129,11 +3129,14 @@ void Solver::Rooms(const json& s, int container) {
     const Region parent = regions_[container];
     const std::string id = s.value("id", "");
     const bool cave = s.value("style", "rooms") == "cave";
+    // Packed (the dungeon's packing): the rooms fill the level wall to wall, a cell of rock between neighbours, joined
+    // through it by doorways; no rock beyond that (a painting has no empty black to keep).
+    const bool packed = s.value("style", "rooms") == "packed";
     const std::string start = s.value("start", ""), goal = s.value("goal", "");
     struct Room {
         std::string id, node, module;
         int x = 0, y = 0, w = 0, h = 0, region = -1;
-        bool secret = false, cave = false;
+        bool secret = false, cave = false, placed = false;
         double cx() const { return x + w / 2.0; }
         double cy() const { return y + h / 2.0; }
     };
@@ -3158,7 +3161,7 @@ void Solver::Rooms(const json& s, int container) {
         return a.w * a.h > b.w * b.h;
     });
     std::vector<uint8_t> taken(W * H, 0); // rooms and their margins
-    const int margin = cave ? 2 : 3; // and corridors between them a real walk (place-refine.md §12)
+    const int margin = cave ? 2 : packed ? 1 : 3; // and corridors between them a real walk (place-refine.md §12)
     int made = 0;
     for (auto& room : rooms) {
         bool placed = false;
@@ -3182,11 +3185,11 @@ void Solver::Rooms(const json& s, int container) {
                         // Near the rooms so far, but not on top of them: a compact level.
                         double nearest = 1e9;
                         for (const auto& other : rooms) {
-                            if (other.region < 0) continue;
+                            if (!other.placed) continue;
                             nearest = std::min(nearest, std::hypot(other.cx() - cx, other.cy() - cy));
                         }
                         score -= std::abs(nearest - ((w + h) * 1.3 + 4.0));
-                        if (room.id == goal && !rooms.empty() && rooms.front().region >= 0) {
+                        if (room.id == goal && !rooms.empty() && rooms.front().placed) {
                             score += 0.6 * std::hypot(rooms.front().cx() - cx, rooms.front().cy() - cy); // far from the start
                         }
                     }
@@ -3206,11 +3209,88 @@ void Solver::Rooms(const json& s, int container) {
                     if (In(xx, yy)) taken[Cell(xx, yy)] = 1;
                 }
             }
-            room.region = AddRegion(room.id, room.node, id, container, cells, room.module);
-            placed = true;
+            // Packed: its region once grown (below).
+            if (!packed) room.region = AddRegion(room.id, room.node, id, container, cells, room.module);
+            room.placed = placed = true;
             ++made;
         }
         if (!placed) Problem("S-UNSAT", s, "no room for " + room.id + " in " + parent.id);
+    }
+    if (packed) {
+        // Each room grown a row or a column at a time, round them all, while the new cells keep a cell of rock from
+        // every other room and stay off the level's edge: they meet wall to wall.
+        std::vector<int> roomOf(W * H, -1);
+        for (int k = 0; k < static_cast<int>(rooms.size()); ++k) {
+            const Room& r = rooms[k];
+            if (!r.placed) continue;
+            for (int yy = r.y; yy < r.y + r.h; ++yy) {
+                for (int xx = r.x; xx < r.x + r.w; ++xx) roomOf[Cell(xx, yy)] = k;
+            }
+        }
+        auto open = [&](int x, int y, int self) {
+            if (!In(x, y) || x <= parent.x0 || y <= parent.y0 || x >= parent.x1 - 1 || y >= parent.y1 - 1) return false;
+            if (owner_[Cell(x, y)] != container) return false;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (!In(x + dx, y + dy)) continue;
+                    const int o = roomOf[Cell(x + dx, y + dy)];
+                    if (o >= 0 && o != self) return false;
+                }
+            }
+            return true;
+        };
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (int k = 0; k < static_cast<int>(rooms.size()); ++k) {
+                Room& r = rooms[k];
+                if (!r.placed || r.cave) continue;
+                for (int side = 0; side < 4; ++side) {
+                    // The strip just past this side: all of it open, or this side stays.
+                    const int sx = side == 0 ? r.x - 1 : side == 1 ? r.x + r.w : r.x;
+                    const int sy = side == 2 ? r.y - 1 : side == 3 ? r.y + r.h : r.y;
+                    const int n = side < 2 ? r.h : r.w;
+                    bool ok = true;
+                    for (int i = 0; ok && i < n; ++i) ok = open(side < 2 ? sx : sx + i, side < 2 ? sy + i : sy, k);
+                    if (!ok) continue;
+                    for (int i = 0; i < n; ++i) roomOf[Cell(side < 2 ? sx : sx + i, side < 2 ? sy + i : sy)] = k;
+                    if (side == 0) --r.x, ++r.w;
+                    else if (side == 1) ++r.w;
+                    else if (side == 2) --r.y, ++r.h;
+                    else ++r.h;
+                    grew = true;
+                }
+            }
+        }
+        // The pockets no rectangle could grow into: each open cell beside a room joins it, a cell at a time, so the
+        // rock left is only the walls between rooms.
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (int yy = parent.y0; yy < parent.y1; ++yy) {
+                for (int xx = parent.x0; xx < parent.x1; ++xx) {
+                    if (!In(xx, yy) || roomOf[Cell(xx, yy)] >= 0) continue;
+                    int k = -1;
+                    for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        if (In(xx + dx, yy + dy) && roomOf[Cell(xx + dx, yy + dy)] >= 0) k = roomOf[Cell(xx + dx, yy + dy)];
+                    }
+                    if (k < 0 || rooms[k].cave || !open(xx, yy, k)) continue;
+                    roomOf[Cell(xx, yy)] = k;
+                    grew = true;
+                }
+            }
+        }
+        for (int k = 0; k < static_cast<int>(rooms.size()); ++k) {
+            Room& r = rooms[k];
+            if (!r.placed) continue;
+            std::vector<int> cells;
+            if (r.cave) {
+                cells = Blob(r.x, r.y, r.w, r.h, rng);
+            } else {
+                for (int c = 0; c < W * H; ++c) {
+                    if (roomOf[c] == k) cells.push_back(c);
+                }
+            }
+            r.region = AddRegion(r.id, r.node, id, container, cells, r.module);
+        }
     }
     std::vector<int> placedRooms;
     for (int k = 0; k < static_cast<int>(rooms.size()); ++k) {

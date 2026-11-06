@@ -1374,12 +1374,13 @@ void Compiler::DungeonRoot(const json& root, const ModuleDef& m) {
         }
     }
     // Each level a square big enough for its rooms and the rock and corridors between
-    // (more, when a fitting round found it short).
-    int side = 24;
+    // (more, when a fitting round found it short). Packed (its packing): about its rooms' own area, they fill it.
+    const bool packed = Text(FieldOf(root, m, "packing"), "apart") == "packed";
+    int side = packed ? 16 : 24;
     for (const auto& l : levels) {
         double scale = 1.0;
         if (auto it = options_.zoneScale.find(l.node->value("id", "")); it != options_.zoneScale.end()) scale = it->second;
-        side = std::max(side, static_cast<int>(std::ceil(std::sqrt(l.area * 3.4 * scale))));
+        side = std::max(side, static_cast<int>(std::ceil(std::sqrt(l.area * (packed ? 1.6 : 3.4) * scale))));
     }
     const int n = std::max<int>(1, static_cast<int>(levels.size()));
     width_ = n * side + 2 * (n - 1) + 2;
@@ -1435,7 +1436,7 @@ void Compiler::DungeonRoot(const json& root, const ModuleDef& m) {
         }
         const int levelLocks = totalLocks * (k + 1) / n - totalLocks * k / n;
         json rooms = {{"op", "rooms"}, {"id", levelId + "/rooms"}, {"node", level.node->value("id", "")}, {"in", levelId}, {"into", into},
-                      {"style", cave ? "cave" : "rooms"}, {"start", start}, {"goal", goal}, {"locks", levelLocks},
+                      {"style", cave ? "cave" : packed ? "packed" : "rooms"}, {"start", start}, {"goal", goal}, {"locks", levelLocks},
                       {"loops", loops ? static_cast<int>(std::lround(loops->first)) : 1}, {"doorSlot", "door"}, {"lockedSlot", "locked-door"},
                       {"secretSlot", "secret-door"}, {"keySlot", "key"}};
         if (!previousGoal.empty()) rooms["stairsFrom"] = previousGoal;
