@@ -99,7 +99,7 @@ function loaded(path: string, event: Event): void {
   const img = event.target as HTMLImageElement
   natural[path] = Math.max(img.naturalWidth, img.naturalHeight)
 }
-function rendering(path: string): string {
+function rendering(path: string): 'pixelated' | 'auto' {
   return (natural[path] ?? 0) > 0 && natural[path]! <= 192 ? 'pixelated' : 'auto'
 }
 const frameOf = (path: string): SheetFrame | null | undefined => derivedFrames.value['lib:' + path]
