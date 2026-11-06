@@ -668,6 +668,30 @@ void Compiler::Root(const json& root) {
     }
     // Networks first: the river, the main road(s).
     int mainRoads = 0;
+    // The world's roads through a section, kept as they are: the longest its main road (what its streets join).
+    bool carried = false;
+    if (options_.roads.is_array() && !options_.roads.empty()) {
+        int k = 0;
+        for (const auto& r : options_.roads) {
+            const json cells = r.value("cells", json::array());
+            if (cells.size() < 2) continue;
+            const std::string roadId = k == 0 ? std::string("site/main-road") : "site/world-road-" + std::to_string(k);
+            Emit({{"op", "path"}, {"id", roadId}, {"node", id}, {"in", "site"},
+                  {"from", "site/entrance-w"}, {"to", "site/entrance-e"}, // (its cells decide where it runs)
+                  {"cells", cells}, {"class", "main"}, {"width", r.value("width", 2)}, {"terrain", r.value("terrain", "road")}});
+            // An end inside the land (the world's road stopped where its plan had the place): on to the place's middle.
+            for (const auto& end : r.value("open", json::array())) {
+                const json at = end == "start" ? cells.front() : cells.back();
+                const std::string anchor = roadId + "/" + end.get<std::string>();
+                Emit({{"op", "anchor"}, {"id", anchor}, {"node", id}, {"at", at}, {"kind", "marker"}});
+                Emit({{"op", "path"}, {"id", anchor + "/on"}, {"node", id}, {"in", "site"}, {"from", anchor}, {"to", "site.center"}, {"class", "main"},
+                      {"width", r.value("width", 2)}, {"terrain", r.value("terrain", "road")}});
+            }
+            ++k;
+            ++mainRoads;
+        }
+        carried = k > 0;
+    }
     // A section's ways in beyond its two (the world's roads crossing its land's edge): anchors, their roads below.
     json moreWays = options_.entrances.is_object() ? options_.entrances.value("more", json::array()) : json::array();
     for (size_t k = 0; k < moreWays.size(); ++k) {
@@ -689,6 +713,7 @@ void Compiler::Root(const json& root) {
             Emit({{"op", "path"}, {"id", node}, {"node", node}, {"in", "site"}, {"from", node + "/source"}, {"to", node + "/mouth"},
                   {"class", "river"}, {"width", width ? static_cast<int>(std::lround(width->first)) : 3}, {"terrain", "water"}});
         } else if (module == "road") {
+            if (carried) continue; // its main road is the world's, carried in
             const std::string cls = Text(FieldOf(c, *cm, "class"), "main");
             if (cls != "main" && mainRoads > 0) continue; // streets come from each zone's network
             const json roads = rootHints.value("roads", json::object());
@@ -750,7 +775,7 @@ void Compiler::Root(const json& root) {
             Emit({{"op", "path"}, {"id", "site/main-road"}, {"node", id}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
                   {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
         }
-        for (size_t k = 0; k < moreWays.size(); ++k) {
+        for (size_t k = 0; k < moreWays.size() && !carried; ++k) { // (the world's roads carried in already join them)
             if (!moreWays[k].is_array() || moreWays[k].size() != 2) continue;
             Emit({{"op", "path"}, {"id", "site/way-" + std::to_string(k + 1)}, {"node", id}, {"in", "site"},
                   {"from", "site/entrance-" + std::to_string(k + 1)}, {"to", "site.center"}, {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
@@ -931,6 +956,14 @@ void Compiler::Root(const json& root) {
     links_ = rootHints.value("links", json());
     linkMembers_ = json::array();
     for (size_t i = 0; i < zones.size(); ++i) Zone(*zones[i].first, *zones[i].second, static_cast<int>(i), layout);
+    // The links take in the zones its `also` names (a world's forests: sections of their own, reached by road too).
+    if (links_.is_object()) {
+        for (const auto& [zone, zm] : zones) {
+            for (const auto& also : links_.value("also", json::array())) {
+                if (also == zm->id) linkMembers_.push_back(zone->value("id", ""));
+            }
+        }
+    }
     // One network for all the sites (a world's): each joined to the main road, or to the nearest site already on it.
     if (links_.is_object() && !linkMembers_.empty()) {
         json from = json::array();
@@ -940,9 +973,10 @@ void Compiler::Root(const json& root) {
         if (from.empty()) from = json::array({"site/entrance-w", "site/entrance-e"});
         Emit({{"op", "connect"}, {"id", "site/links"}, {"node", id}, {"in", "site"}, {"members", linkMembers_}, {"from", from},
               {"class", links_.value("class", "main")}, {"width", links_.value("width", 2)}, {"terrain", links_.value("terrain", "dirt")},
-              {"late", true}}); // once every place's land has its site
+              {"neighbours", links_.value("neighbours", 0)}, {"late", true}}); // once every place's land has its site
         Emit({{"op", "check"}, {"id", "site/links-placed"}, {"node", id}, {"predicate", "count"},
-              {"args", {{"ref", "site/links"}, {"range", {static_cast<int>(linkMembers_.size()), static_cast<int>(linkMembers_.size())}}}}});
+              {"args", {{"ref", "site/links"}, {"range", {static_cast<int>(linkMembers_.size()),
+                                                         static_cast<int>(linkMembers_.size()) * (1 + links_.value("neighbours", 0))}}}}});
     }
     if (m) Traffic(*m, id, "site", true);
     Landscape(id, zonesIn, zones);

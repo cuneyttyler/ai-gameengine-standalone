@@ -32,6 +32,7 @@ float Noise(int x, int y, uint32_t salt = 0) { return (Hash(x, y, salt) & 0xFFFF
 Rgb TerrainColor(const std::string& t) {
     if (t == "grass" || t.empty()) return Hex(0x86b25f);
     if (t == "dirt") return Hex(0xc9a874);
+    if (t == "road") return Hex(0xe07b2a); // a world's roads (between its places): their own colour
     if (t == "gravel") return Hex(0xbfb8a8);
     if (t == "cobble") return Hex(0xa9a39b);
     if (t == "paved") return Hex(0xb6b6b0);
@@ -318,7 +319,7 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             }
         }
         for (const auto& g : grounds) {
-            const std::string label = g.empty() ? "Grass" : g == "dirt" ? "Dirt road or ground" : g == "water" ? "Water" : pretty(g);
+            const std::string label = g.empty() ? "Grass" : g == "dirt" ? "Dirt road or ground" : g == "road" ? "World road" : g == "water" ? "Water" : pretty(g);
             add(Swatch::Fill, TerrainColor(g.empty() ? "grass" : g), label);
         }
         if (!solved.value("terrain", json::object()).value("bridges", json::array()).empty()) add(Swatch::Bridge, Hex(0x9c7a4f), "Bridge");
@@ -433,7 +434,7 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
     for (int y = 0; y < H; ++y) {
         for (int x = 0; x < W; ++x) {
             const std::string& t = terrainAt(x, y);
-            if (t != "water" && t != "dirt" && t != "cobble" && t != "gravel" && t != "paved") continue;
+            if (t != "water" && t != "dirt" && t != "road" && t != "cobble" && t != "gravel" && t != "paved") continue;
             for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
                 if (x + dx < 0 || y + dy < 0 || x + dx >= W || y + dy >= H || terrainAt(x + dx, y + dy) == t) continue;
                 const float edge = std::max(1.0f, cell / 6.0f);
@@ -480,7 +481,7 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             const Rgb c = ZoneColor(zoneIndex++);
             for (const auto& [x, y] : cells) {
                 const std::string& t = terrainAt(x, y);
-                if (t == "water" || t == "dirt" || t == "cobble") continue;
+                if (t == "water" || t == "dirt" || t == "road" || t == "cobble") continue;
                 canvas.Rect(x * cell, y * cell, (x + 1) * cell, (y + 1) * cell, c, 0.24f);
             }
             outline(cells, Shade(c, 0.5f), 0.95f, std::max(1.5f, cell / 4.0f));

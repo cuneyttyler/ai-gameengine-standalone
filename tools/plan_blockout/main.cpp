@@ -551,6 +551,40 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             if (!more.empty()) ways["more"] = more;
         }
         options.entrances = ways;
+        // The world's roads through its land, kept as they are: each road's run of cells inside the land (in the road's
+        // own order), the longest first: its main road.
+        json carried = json::array();
+        for (const auto& p : world.solved.value("paths", json::array())) {
+            if (p.value("class", "") == "river" || p.value("terrain", "") == "water") continue;
+            json run = json::array();
+            // An end of a run that's inside the land, not on its edge (the world's road ended there): it goes on to the
+            // place's middle.
+            auto inner = [&](const json& c) {
+                const int lx = c[0], ly = c[1];
+                for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = lx + dx, ny = ly + dy;
+                    if (nx < 0 || ny < 0 || nx >= side || ny >= side || !land[static_cast<size_t>(ny) * side + nx]) return false;
+                }
+                return true;
+            };
+            auto flush = [&] {
+                if (run.size() >= 3) {
+                    json open = json::array();
+                    if (inner(run.front())) open.push_back("start");
+                    if (inner(run.back())) open.push_back("end");
+                    carried.push_back({{"cells", run}, {"width", p.value("width", 2)}, {"terrain", p.value("terrain", "road")}, {"open", open}});
+                }
+                run = json::array();
+            };
+            for (const auto& c : p.value("cells", json::array())) {
+                const int lx = c[0].get<int>() - x, ly = c[1].get<int>() - y;
+                if (lx >= 0 && ly >= 0 && lx < side && ly < side && land[static_cast<size_t>(ly) * side + lx]) run.push_back({lx, ly});
+                else flush();
+            }
+            flush();
+        }
+        std::sort(carried.begin(), carried.end(), [](const json& a, const json& b2) { return a["cells"].size() > b2["cells"].size(); });
+        options.roads = carried;
         const std::string id = landId + "/site";
         Planned section;
         std::string saved = id;

@@ -782,6 +782,13 @@ void Solver::Path(const json& s) {
     result.terrain = s.value("terrain", river ? "water" : "dirt");
     result.edge = s.value("edge", "");
     result.width = std::max(1, s.value("width", 1));
+    // Its cells given (a world's road carried into a section): exactly those, in order.
+    if (const json given = s.value("cells", json()); given.is_array() && !given.empty()) {
+        for (const auto& c : given) {
+            if (c.is_array() && c.size() >= 2 && In(c[0].get<int>(), c[1].get<int>())) result.cells.push_back(Cell(c[0].get<int>(), c[1].get<int>()));
+        }
+        stops.clear();
+    }
     for (size_t i = 0; i + 1 < stops.size(); ++i) {
         const auto a = Cells(stops[i]), b = Cells(stops[i + 1]);
         if (a.empty() || b.empty()) {
@@ -4019,6 +4026,68 @@ void Solver::Connect(const json& s, int container) {
             r.street.push_back(last);
         }
         paths_.push_back(p);
+    }
+    // And each member to its nearest others (`neighbours` of them): places beside each other are joined directly, not
+    // only through the tree; a leg follows the roads already there where it can.
+    if (const int neighbours = s.value("neighbours", 0); neighbours > 0) {
+        std::set<std::pair<std::string, std::string>> done;
+        auto centre = [&](const std::string& m) {
+            const Region& g = regions_[RegionIndex(m)];
+            return std::pair<double, double>{(g.x0 + g.x1) / 2.0, (g.y0 + g.y1) / 2.0};
+        };
+        auto edgeNear = [&](const std::string& m, double tx, double ty) {
+            const Region& g = regions_[RegionIndex(m)];
+            int best = -1;
+            double bestD = 1e18;
+            for (int c : g.cells) {
+                if (occ_[kBuilding][c] || solid_[c]) continue;
+                const double d = std::hypot(c % W - tx, c / W - ty);
+                if (d < bestD) bestD = d, best = c;
+            }
+            return best;
+        };
+        for (const auto& m : members) {
+            const auto [mx, my] = centre(m);
+            std::vector<std::pair<double, std::string>> others;
+            for (const auto& o : members) {
+                if (o == m) continue;
+                const auto [ox, oy] = centre(o);
+                others.push_back({std::hypot(ox - mx, oy - my), o});
+            }
+            std::sort(others.begin(), others.end());
+            for (int k = 0; k < neighbours && k < static_cast<int>(others.size()); ++k) {
+                const std::string& o = others[k].second;
+                const auto key = m < o ? std::pair{m, o} : std::pair{o, m};
+                if (!done.insert(key).second) continue;
+                const auto [ox, oy] = centre(o);
+                const int from = edgeNear(m, ox, oy), goal = edgeNear(o, mx, my);
+                if (from < 0 || goal < 0) continue;
+                const int mi = RegionIndex(m), oi = RegionIndex(o);
+                auto cost = [&](int c) -> double {
+                    if (occ_[kBuilding][c] || solid_[c]) return std::numeric_limits<double>::infinity();
+                    const int w = owner_[c];
+                    if (w >= 0 && w != mi && w != oi && regions_[w].parent >= 0 && std::find(members.begin(), members.end(), regions_[w].id) != members.end()) return 12.0;
+                    if (water_[c]) return 8.0;
+                    if (road_[c]) return 0.2;
+                    return 1.0 + 0.6 * noise[c];
+                };
+                auto path = AStar(from, goal, cost);
+                if (path.empty()) continue;
+                // From one's edge to the other's: each keeps its own ground.
+                while (!path.empty() && owner_[path.front()] == mi) path.erase(path.begin());
+                while (!path.empty() && owner_[path.back()] == oi) path.pop_back();
+                if (path.size() < 2) continue;
+                PathResult p;
+                p.id = s.value("id", "") + "/" + std::to_string(legs++);
+                p.node = s.value("node", "");
+                p.cls = cls;
+                p.terrain = terrain;
+                p.width = width;
+                p.cells = path;
+                MarkRoad(path, width, RankOf(cls), -1);
+                paths_.push_back(p);
+            }
+        }
     }
     instancesOf_[s.value("id", "")] = legs;
 }

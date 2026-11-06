@@ -119,9 +119,15 @@ a square corner. A site's own size has room round it for that land (its compile'
 
 **Roads.** The world plan joins every site in one road network (the world root's compile `links`): a tree from the main
 road, each site joined to it or to the nearest site already on it, its legs reusing roads already there; it runs once
-every place's land has its site (a `late` statement). A section's ways in are where the world's roads cross its land's
-edge (`CompileOptions.entrances`: the farthest two its road's ends, the rest roads to its middle), so its own road carries
-the world's on through it; a forest gets that road too (the world's road through the wood).
+every place's land has its site (a `late` statement). Its links also take in the forests
+(`also`) and join each member to its nearest neighbour (`neighbours`: 1), on top of the tree. The world's roads are their
+own terrain, `road`, drawn in their own colour (orange) on the layouts.
+
+A section **keeps the world's roads as they are**: each world road's run of cells through its land is given to it
+(`CompileOptions.roads`) and laid first, as a path of those cells exactly (the longest its main road, so its streets join
+it); a run that ends inside the land (the world's road stopped at where the world plan had the place) goes on to the
+place's middle. Its ways in are where the world's roads cross its land's edge (`CompileOptions.entrances`). It adds its
+own streets and tracks; it never moves or drops the world's.
 
 **No woods of a section's own.** A section's root has `woods: none` (the world type's `sections.fields`), which turns off
 all of the landscape's woods set (`woods`, `woods-undergrowth`: the stands and undergrowth towards a place's edges), and

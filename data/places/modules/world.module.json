@@ -154,14 +154,18 @@
   "compile": {
     "ground": "grass",
     "roads": {
-      "width": 2,
-      "surface": "dirt"
+      "width": 3,
+      "surface": "road"
     },
     "links": {
       "class": "main",
-      "width": 2,
-      "terrain": "dirt",
-      "description": "one road network for the whole world: each site joined to the main road or to the nearest site on it"
+      "width": 3,
+      "terrain": "road",
+      "description": "one road network for the whole world: each site and forest joined to the main road or to the nearest one on it, and to its nearest neighbour",
+      "neighbours": 1,
+      "also": [
+        "forest"
+      ]
     }
   }
 }

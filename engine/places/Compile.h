@@ -59,6 +59,9 @@ struct CompileOptions {
     // further one to its middle). Null: the whole square, its ways in at its sides.
     nlohmann::json outside;
     nlohmann::json entrances;
+    // The world's roads through it (a section's: kept as they are, docs/places/tiling.md §5): [{cells: [[x, y]...],
+    // width, terrain}], the longest its main road, laid before its own roads.
+    nlohmann::json roads;
 };
 
 nlohmann::json CompileSpec(const Ontology& ontology, const nlohmann::json& spec, const CompileOptions& options = {});
