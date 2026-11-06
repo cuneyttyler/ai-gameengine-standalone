@@ -23,6 +23,20 @@ The entity also needs a **Sprite** (the Animator sets which part of the picture 
 NPC and Make prefab set all of this up. An unknown animator name falls back to `humanoid`. Animators run in the editor
 too, outside Play: a character stands in its idle pose facing its Facing.
 
+### Example: An old miller who moves at half speed
+
+Old Tobin the miller walks with the same brisk walk as the young villagers.
+
+1. Select Tobin in the Scene view. In the Inspector, find his **Animator** (Make NPC already set `sheet` to
+   `assets/characters/tobin/tobin.character.anim.json` and `animator` to `humanoid`).
+2. Set **speed** to `0.6`.
+3. While you're there, set **corpseSeconds** to `5` so that, if he is ever killed, his death clip is seen before he
+   goes.
+4. Save the scene.
+
+Result: every clip Tobin plays runs at 60% of its speed, so his walk looks slow and tired; the sheet itself is
+unchanged, so other characters using it are not affected.
+
 Questions: how do I animate an entity? what is the Animator component? how do I slow down an animation? what does corpseSeconds do?
 
 ## Built-in animators: humanoid, quadruped, flyer, prop
@@ -43,6 +57,17 @@ walk, a cutscene's move), from how far it moved, smoothed so one still frame doe
 drag in the editor isn't walking). **attacking** comes from a combat attack; **hurt** and **dead** from taking damage and
 dying; **casting** from an ability; **open / closed** from a Door's open state (closed only once it has been open) or a
 Container once looted; **health** is the share of Health left.
+
+### Example: A wolf that walks on four legs and has no spell clip
+
+The `grey-wolf` sheet has `idle`, `walk`, `attack`, `hurt` and `die` clips.
+
+1. Select the wolf and, in the Inspector's **Animator**, set **animator** to `quadruped`.
+2. Press F5 and watch it: standing still it plays `idle`; as soon as its speed passes 0.1 it plays `walk`.
+3. Let it bite the player: `attack` plays to the end before it walks on, even if it starts moving mid-bite. Hit it
+   back: `hurt` cuts in, since hurt has a higher priority.
+
+Result: the wolf animates by the four-legged state machine, which has no cast or use states to look for.
 
 Questions: when does the walk animation play? why does my character slide without walking? what states does the humanoid animator have? how does a chest know to open?
 
@@ -67,6 +92,30 @@ For anything the built-ins don't cover, write an **animator** record (Project �
   parameter a script sets with `anim_set(id, "angry", 1)`.
 - **default**: the starting state (else the first).
 
+### Example: A forge bellows that pumps only while the smith works
+
+The `bellows` sheet has an `idle` clip (still) and a `pump` clip.
+
+1. In the Project panel, open **Records ▸ animator** and make a new record with the id `bellows`
+   (`records/animator/bellows.json`):
+
+   ```json
+   {"states": [{"id": "idle"}, {"id": "pumping", "clip": "pump"}],
+    "transitions": [{"from": "idle", "to": "pumping", "if": "working > 0"},
+                    {"from": "pumping", "to": "idle", "if": "working == 0"}],
+    "default": "idle"}
+   ```
+
+2. Select the bellows entity and, in its **Animator**, set **animator** to `bellows`.
+3. In the smith's script, set the parameter when he starts and stops working:
+
+   ```lua
+   anim_set(bellows_id, "working", 1)   -- he starts at the forge
+   anim_set(bellows_id, "working", 0)   -- he walks away
+   ```
+
+Result: the bellows stay still until the script sets `working` to 1, then pump until it goes back to 0.
+
 Questions: how do I make my own animator? what conditions can transitions use? how do I set an animator parameter from Lua?
 
 ## How a state picks its clip: several attacks, weapons
@@ -85,6 +134,17 @@ On entering a state the animator picks its clip, in this order:
 A state with no clip plays `idle`, else the sheet's first clip. So one character can have `attack_sword`,
 `attack_axe` and `attack_punch` (made with Generate ▸ Animate's weapon class), and the right one plays for what it holds.
 
+### Example: A brawler's punch–kick combo
+
+Brannoc the pit fighter has `attack_punch` and `attack_kick` clips and fights unarmed.
+
+1. Select Brannoc. In his **Animator**, set **clips** to `attack=attack_punch|attack_kick`.
+2. Set **pick** to `order`.
+3. Press F5 and pick a fight with him.
+
+Result: his attacks go punch, kick, punch, kick in turn. With **pick** left at `weapon`, an unarmed Brannoc would
+prefer the clip with "punch" in its name; with `random` he would mix them at random.
+
 Questions: how do I give a character several attacks? how does the game choose which attack to play? how do I make a combo?
 
 ## Playing any clip by name: Lua, cutscenes, interactables, abilities
@@ -101,6 +161,22 @@ Any clip can be played by name, whatever the animator:
   the lid opens, then the opened chest takes its place.
 - **Abilities**: their `animation` (cast, or any clip).
 
+### Example: The gravedigger digs when the player talks to him
+
+Old Hesk's character sheet has a clip `dig`, made with Generate ▸ Animate (Hesk picked, **custom: say it…**
+described as `dig`; a character's clip takes the action's words as its name when they aren't a known state).
+
+1. In the script run when the player talks to Hesk, add:
+
+   ```lua
+   play(hesk_id, "dig")
+   ```
+
+2. Press F5 and talk to him.
+
+Result: Hesk's `humanoid` animator has no `dig` state, so the clip `dig` plays once, then he goes back to idle. Only
+being hurt or dying cuts it short. `play(hesk_id, "stop")` ends it early.
+
 Questions: how do I play an animation from a script? how do I make a chest play its open animation? how do I play a dance animation?
 
 ## Props: a chest that opens, a torch that flickers
@@ -109,10 +185,24 @@ A chest is an entity with a Sprite, an Animator (`prop`, its sheet with an `open
 Interactable (verb Open). Used, it plays `open` and stays on its last frame (the clip's loop `once` or `hold`). A Door
 plays `open` and `close` as it toggles.
 
-The quick way: animate the chest's picture in Generate ▸ Animate with a motion like "the lid swings open" (it is
-recognised as a thing, so the non-humanoid model animates it), then **Make prefab** in its history. The clip is named
-`open`, and a `close` clip (the same frames backwards) is added; both play once and hold. A looping motion of a thing (a
-torch's flicker, a flag waving) becomes a looping `idle` clip, which the `prop` animator plays all the time.
+The quick way for a chest or a door in a place: **Build ▸ Animate** (or **Animate a part…**) animates it with the
+non-humanoid model and names the clip `open`, adding a `close` clip (the same frames backwards); both play once and
+hold. Generate ▸ Animate's **Make animation** / **Make prefab** name a clip from the motion's words: a thing's first
+(opening → `open`, which also gets its `close`; closing or shutting → `close`; breaking, shattering or smashing →
+`break`), then walking → `walk`, an attack, strike or swing → `attack`, a spell → `cast`, hurt → `hurt`, dying → `die`,
+anything else `idle`. So "the lid swings open" makes an `open` clip. A looping motion of a thing (a torch's flicker, a
+flag waving) becomes a looping `idle` clip, which the `prop` animator plays all the time.
+
+### Example: A banner that waves over the castle gate
+
+1. On Generate ▸ Animate, pick `castle-banner.png`. With AutoSprite choose **custom: say it…** and describe `the banner
+   waves in the wind`; type `a red cloth banner` in **What it is** and `banner-wave` in **Name**. Click **Animate**.
+2. The banner is a thing, so the non-humanoid model animates it.
+3. In the History entry, click **Make prefab**.
+4. Place the new prefab over the gate from the Assets panel.
+
+Result: the prefab's Animator uses the `prop` animator and the sheet's looping `idle` clip, so the banner waves all
+the time, in the editor and in Play.
 
 Questions: how do I make an animated chest? how do I make a torch flicker? how do I make a door open and close?
 
@@ -132,6 +222,19 @@ An entity with **Equipment** draws what it wears and wields from the item record
 or worn; the `icon` is the inventory's), `point` (default by slot: weapon → hand, offhand → offhand, head → head), `grip`,
 `pointing`, `size`, `layer`, `class` and `animation`. Changing the weapon swaps the picture; Equipment's `show` turns it
 off. These pictures aren't saved with the scene; they are made from the Equipment when it loads.
+
+### Example: A lantern hanging from Mira's cart
+
+The cart entity is named `MiraCart`; you have a `lantern` prefab.
+
+1. Place the lantern near the cart and select it.
+2. In the Inspector, pick **Attachment** in the **+ Add component** list. Set **to** to `MiraCart`, leave **point** empty (the cart's bottom
+   middle), and set **offsetX** to `10` and **offsetY** to `-30` so it hangs from the cart's pole.
+3. Set **pivotX** `0.5` and **pivotY** `0` (it hangs from its top), and leave **turn** off so it stays upright.
+4. Press F5 and move the cart.
+
+Result: the lantern rides on the cart wherever it goes. For a sword in a hand, give the character **Equipment** with
+a weapon item whose `sprite` is the sword picture: it is drawn on the `hand` point and follows the swing.
 
 See also: Animations tab and sheet editor, Character sheets, Animate tab (weapons).
 

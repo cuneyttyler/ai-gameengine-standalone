@@ -20,6 +20,30 @@ package, a recipe, a difficulty level, a magic effect, an ability and so on. Eac
   a Spawner's encounter, a Behaviour's packages, a Container's loot table.
 - Records belong to the project, not to one scene, and ship with the exported game.
 
+### Example: an iron sword the blacksmith sells
+
+Brannoc's smithy sells an iron sword, and the town guard carries one too.
+
+1. The sword is one file, `records/item/iron-sword.json`; its id is `iron-sword`:
+
+   ```json
+   {
+     "name": "Iron sword",
+     "description": "Plain, heavy and sharp enough.",
+     "kind": "weapon",
+     "value": 60,
+     "weight": 3,
+     "slot": "weapon",
+     "damage": 6,
+     "class": "sword"
+   }
+   ```
+
+2. Fields left out (`stack`, `unique`, `armor`...) take the item type's defaults.
+3. In the scene, Brannoc's Inventory **items** reads `iron-sword, potion*3`, and the guard's reads `iron-sword`.
+
+Both refer to the same record, so changing its `value` to 75 changes the price everywhere.
+
 Questions: what is a record? where are records stored? what is a record id?
 
 ## The Records page: finding records
@@ -37,6 +61,18 @@ Open it from the **Project** panel's **Records** tab ("Typed game data: items an
 - With nothing selected, the right side explains records and lists every problem in the project; click a problem's key
   (`item/iron-sword`) to open that record.
 - Inspector ▸ Behaviour's ✎ button next to a package opens that package here directly.
+
+### Example: finding everything that mentions iron and fixing a broken record
+
+1. In the **Project** panel, click the **Records** tab.
+2. Type `iron` in **Filter records…**. The list narrows to `iron-sword`, the `iron-ingot` material, the `smith-sword`
+   recipe that uses ingots, and the `smithy-stock` loot table that lists the sword.
+3. The `smithy-stock` row shows a ⚠. Hover it: the problem says its entry refers to an item `iron-helm` that doesn't
+   exist.
+4. Clear the filter and click nothing: the right side lists every problem; click `loot/smithy-stock` to open it, or
+   create the missing `iron-helm` item with **+** on the item group.
+
+The ⚠ goes away once the helm exists.
 
 Questions: where is the Records panel? how do I search records? what does the warning sign next to a record mean?
 
@@ -57,6 +93,31 @@ created). "Unsaved changes" shows while the form differs from the file. The reco
 
 Records the AI panel writes or deletes appear in the Records page and in every picker at once, without a restart.
 
+### Example: a healing potion
+
+1. In Project ▸ Records, press **+** on the **item** group header ("New item").
+2. **Id**: `healing-potion`.
+3. **name**: `Healing potion`; **description**: `A small red draught. Restores 25 health.`; **kind**: `consumable`;
+   **value**: `25`; **weight**: `0.2`; **stack**: `10`.
+4. Open the **use** section and set **heal** to `25` (leave **consumed** ticked so drinking uses it up).
+5. Press **Create** (or **Ctrl+S**).
+
+The file `records/item/healing-potion.json` is written:
+
+```json
+{
+  "name": "Healing potion",
+  "description": "A small red draught. Restores 25 health.",
+  "kind": "consumable",
+  "value": 25,
+  "weight": 0.2,
+  "stack": 10,
+  "use": { "heal": 25 }
+}
+```
+
+If you typed `-5` in **value**, Create would refuse and show the reason (below the minimum of 0) without writing.
+
 Questions: how do I make a new item? how do I save a record? why won't my record save?
 
 ## Inheriting from a base record
@@ -74,6 +135,22 @@ file then holds `"base": "<id>"` and only the fields this record sets itself; ev
 Use bases for families: a `potion` base with the icon, kind and weight, and small/medium/large potions that set only
 `name`, `value` and `use.heal`.
 
+### Example: a fine iron sword that inherits from the iron sword
+
+1. In Project ▸ Records, select `iron-sword` and press **Duplicate**; change the **Id** to `fine-iron-sword`.
+2. In **Base** at the top of the form, pick `iron-sword`. Every field now has a tick box.
+3. Untick everything except **name** and **value**; set **name** to `Fine iron sword` and **value** to `75`.
+4. Tick **damage** and set it to `8`.
+5. Press **Create**.
+
+The file holds only what differs:
+
+```json
+{ "base": "iron-sword", "name": "Fine iron sword", "value": 75, "damage": 8 }
+```
+
+Its kind, slot, weight and class come from `iron-sword`; raise the iron sword's weight later and the fine one follows.
+
 Questions: can a record inherit from another? what does the tick box next to a field do? how do I make variants of an
 item?
 
@@ -88,6 +165,17 @@ item?
   press **Create** to write it.
 - **Delete…** asks for confirmation and deletes the file. The confirmation lists what still uses the record ("Still
   used by: …"), and the form shows a **Used by** line with links to each record that references this one.
+
+### Example: renaming a potion used in a loot table and a recipe
+
+1. In Project ▸ Records, open the item `potion`. Its **Used by** line shows `loot/chest-common` and `recipe/brew-potion`.
+2. Change **Id** to `minor-healing-potion` and press **Save**.
+3. The file becomes `records/item/minor-healing-potion.json`, and the loot table's entry and the recipe's input now say
+   `minor-healing-potion`.
+4. Vara Bell's Inventory in the inn scene still reads `potion*3`: select her, and in Inspector ▸ Inventory change
+   **items** to `minor-healing-potion*3` by hand.
+5. To make a stronger one, press **Duplicate** (it opens `minor-healing-potion-copy`), set **Id** to
+   `healing-potion`, raise **use ▸ heal**, and press **Create**.
 
 Questions: how do I rename a record? does renaming update references? how do I copy a record? what happens when I
 delete a record that's in use?
@@ -108,6 +196,16 @@ form):
 Saving refuses a record that breaks its type. A reference to a record that doesn't exist yet is allowed (and reported),
 so related records can be written in any order: write the loot table first, then its items.
 
+### Example: a loot table written before its items
+
+1. Create a loot record `crypt-chest` whose entries name `bone-charm` and `old-coin`, neither of which exists yet.
+2. **Create** succeeds; the row shows ⚠ and the box under the form lists two references to missing items.
+3. Create the items `bone-charm` and `old-coin` (**+** on the item group).
+4. Back on `crypt-chest`, the ⚠ is gone.
+
+If instead you type `"weight": "heavy"` in an entry when editing the file by hand, the record shows ⚠ (wrong kind of
+value), and the Records page refuses to save it until the weight is a number.
+
 Questions: why does my record show a warning? what do record problems mean? can a record refer to one that doesn't exist
 yet?
 
@@ -124,6 +222,17 @@ to live and sandbox, and so on).
 - For a package, the form also shows **What <template> does**: the template's steps in words with this package's data
   filled in, the JSON of the template under "As JSON", and **Copy into a custom package…**.
 
+### Example: switching a package from wander to patrol
+
+1. In Project ▸ Records ▸ package, open `guard-wander`. Its template is `wander`, and the form shows **location** and
+   **data** with **radius** (`6`), **waitMin** and **waitMax**.
+2. Change **template** to `patrol`. **radius**, **waitMin** and **waitMax** disappear; **route**, **path** and
+   **duration** appear.
+3. Pick `town-wall` in **route** and press **Save**.
+
+The saved file has `"data": { "route": "town-wall" }`: the old `radius` was dropped because patrol doesn't read it.
+**What patrol does** now describes walking the `town-wall` path.
+
 See also: AI packages, Package templates, Custom procedures.
 
 Questions: why did a field disappear when I changed the template? why was some data removed when I saved a package?
@@ -137,6 +246,26 @@ Questions: why did a field disappear when I changed the template? why was some d
   checked the same way the Records page checks them. Ask it, for example, "make three healing potions of rising
   strength" or "add a bandit faction hostile to the town guard".
 - **Export:** the `records/` folder ships with the game.
+
+### Example: a sign that shows an item's price, and potions made by the AI
+
+The smithy's price board has an Interactable (verb `Read`, **event** `read-prices`) and this script:
+
+```lua
+on("read-prices", function(e)
+  local sword = record("item", "iron-sword")
+  if sword then
+    notify("toast", "Iron sword: " .. sword.value .. " gold")
+  end
+end)
+```
+
+To make records with the AI panel, type:
+
+> "make three healing potions of rising strength: minor 15, normal 30, greater 60 health"
+
+It writes `records/item/minor-healing-potion.json` and the others with `write_record`; check them in Diff Review and
+press Apply. They appear in Project ▸ Records at once.
 
 See also: Record types, Lua API.
 

@@ -21,6 +21,19 @@ Press **Generate character**. While it works the tab says "Drawing N directions 
 strip at the top shows each step. The button is off, with the reason beside it, when AI is off, the key for the model
 in use is missing ("Needs BFL_API_KEY in ai_service/.env" or "Needs PIXELLAB_API_KEY…"), or there is no description.
 
+### Example: Mira Quill, a herbalist in a green cloak
+
+1. Open the Generate panel and click **Character**.
+2. In the description box type `Mira Quill, a herbalist in a green hooded cloak with a leather satchel of herbs and a
+   wooden staff`.
+3. Set **Name** to `mira-quill`, **Directions** to **8 (and the diagonals)**, **Size** to **64 px** and **View** to
+   **low top-down (most 2D RPGs)**. Leave **Isometric** unticked.
+4. Click **Generate character**. Beside it: "Drawing 8 directions (a minute or two)…"; the progress strip shows each
+   direction as it is done.
+
+Result: a minute or two later Mira's card appears at the top of the History with her sheet's picture, showing her
+from all eight directions, ready for **Make NPC** or **Animate…**.
+
 Questions: how do I make a character? should I use 4 or 8 directions? what size should my character be? what does View mean?
 
 ## Who draws characters: BFL or PixelLab
@@ -43,6 +56,21 @@ PixelLab, and animations are made by the Humanoid / Non-humanoid animation model
 
 The prompt also carries the project's art style (Project Settings ▸ AI ▸ artStyle) and its main colours.
 
+### Example: Drawing the town guard with BFL instead of PixelLab
+
+The note under **Generate character** says "Drawn by PixelLab", but you want the guard painted by BFL.
+
+1. Make sure `BFL_API_KEY` is in `ai_service/.env`.
+2. Open **Project Settings ▸ AI** and set **art** to **BFL FLUX.3 Image** (or set Preferences ▸ Art and painting ▸
+   **Prefab art** to a BFL model, for every project).
+3. Back on Generate ▸ Character the note now reads "Drawn by the project's art model (flux-3-image): facing you
+   first, each other direction an edit of it, the west side mirrored".
+4. Describe `a town guard in a steel helmet and a blue tabard, holding a spear`, name it `town-guard`, pick **8**
+   directions and click **Generate character**.
+
+Result: the guard is painted facing you, then turned by 4 edits; the west side is mirrored, so 5 calls in all. If BFL
+refuses one direction, it is retried with other seeds on its own.
+
 Questions: who draws my characters? why is my character drawn by PixelLab and not BFL? how do I use BFL for characters? why was a direction refused?
 
 ## What Generate ▸ Character makes: one character sheet
@@ -63,6 +91,17 @@ its idle; Animate adds actions") and these buttons:
 **Clear history** forgets the list (the characters stay). Every character sheet is listed in Assets ▸ Characters, where
 the same actions are on its right-click menu. See the Character sheets topic for the file format.
 
+### Example: Finding Mira's sheet after she is drawn
+
+1. When `mira-quill` finishes, her card in the Character tab's History reads
+   `assets/characters/mira-quill/mira-quill.character.png · every direction, its idle; Animate adds actions`.
+2. Open the Assets panel ▸ **Characters**: `mira-quill` is listed.
+3. In the project folder you find two files in `assets/characters/mira-quill/`: `mira-quill.character.png` (all her
+   poses in one picture) and `mira-quill.character.anim.json` (the sheet, with its one clip, `idle`).
+
+Result: Mira is a single asset; right-click her in Assets ▸ Characters for the same Make player, Make NPC and
+Animate… actions as on her card.
+
 Questions: where is my generated character saved? how do I make the generated character the player? how do I add an NPC from a character? what is a character sheet?
 
 ## Make player and Make NPC from a character sheet
@@ -80,6 +119,18 @@ The player goes where the old player stood (it is replaced); an NPC goes in the 
 notice says "… is the player (F5 to play; R turns it; Save keeps it)". In the editor, **R** / **Shift+R** on a selected
 character turns it an eighth of a turn; save the scene to keep it. Both buttons are off during Play.
 
+### Example: Placing Mira at her herb stall, facing the square
+
+1. Scroll the Scene view so the herb stall is in the middle.
+2. In Assets ▸ **Characters**, right-click `mira-quill` and choose **Make NPC**.
+3. `prefabs/mira-quill-npc.prefab` is made and Mira appears in the middle of the view, selected, facing the camera.
+4. Drag her behind the stall's counter. Press **R** twice to turn her a quarter turn (two eighths) so she faces the
+   square.
+5. Save the scene.
+
+Result: Mira stands behind her stall facing the square with her idle pose; once she has a walk, her Animator plays it
+when she moves. To play as Mira yourself, use **Make player** instead and press F5.
+
 Questions: how do I make my character the player? how do I turn a character to face another way? why does my NPC face the camera?
 
 ## Characters made before character sheets: Make character sheet
@@ -93,6 +144,19 @@ pictures into one sheet (`assets/characters/<name>/…`) with an idle clip; then
 be animated in every direction at once. **Make player** on such a card makes a player straight from the loose pictures.
 Make character sheet needs AI on.
 
+### Example: Updating an old "blacksmith" made from loose pictures
+
+An older project has `assets/textures/generated/characters/blacksmith/` with `blacksmith-south.png`,
+`blacksmith-east.png` and the others.
+
+1. On Generate ▸ Character, find the blacksmith's card in the History: it shows one small picture per direction, each
+   with **Prefab** and **Animate**.
+2. With AI on, click **Make character sheet** on the card.
+3. Open Assets ▸ **Characters**: `blacksmith` is now listed, with its sheet in `assets/characters/blacksmith/`.
+
+Result: the blacksmith is one character with an idle clip and can be animated in every direction at once (right-click
+▸ **Animate…**) instead of one picture at a time.
+
 Questions: how do I convert old character pictures into a character sheet? my character is separate south/east pictures, what do I do?
 
 ## Animating a generated character
@@ -105,6 +169,19 @@ render; the character is uploaded to AutoSprite once and its id kept in the shee
 
 Animating the same action again replaces that clip; the old frames stay in the picture, unused. Remove a clip in the
 sheet editor (Assets ▸ Characters, right-click ▸ **Edit…**, pick the clip, **Remove**, **Save**).
+
+### Example: Giving Mira a walk, then removing a clip you don't need
+
+1. In Assets ▸ **Characters**, right-click `mira-quill` and choose **Animate…**. The Animate tab opens with Mira
+   picked.
+2. With AutoSprite, pick **walk** in **Motion** and click **Animate** ("Animating all 8 directions (2 to 5
+   minutes)…"). All 8 directions come back in one render.
+3. Mira's sheet now has a clip named `walk`, so her `humanoid` animator plays it when she moves.
+4. Later you also made a `wave` you don't want. Right-click `mira-quill` ▸ **Edit…**, click the `wave` clip tab,
+   click **Remove**, then **Save**.
+
+Result: Mira walks in every direction; the `wave` clip is gone from her sheet (its frames stay in the picture,
+unused).
 
 See also: Animate tab, Character sheets, The Animator, Troubleshooting generation.
 

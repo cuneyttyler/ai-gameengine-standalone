@@ -26,6 +26,14 @@ Difficulty, a package's ✎ opens Records, Assets ▸ Animations ▸ Edit… ope
 
 See also: scenes.md.
 
+### Example: from the troll's health to the difficulty table and back
+
+1. Press **P** to show the Project panel; its tabs run Scenes, World, Story, Records, Scripts and so on.
+2. Click **Story** to look over the quest "The Lost Ring" you're writing.
+3. Now select the `Cave troll` in the scene and click the **⚖** by **Health ▸ max** in the Inspector: the Project
+   panel switches to **Difficulty** on its own, showing the troll's health at every level.
+4. Click **Records** to check the troll's loot table, then **Scenes** to go back to the scene list.
+
 Questions: what is the project panel? where are quests and dialogue? where are items defined? how do I open the project
 panel?
 
@@ -37,6 +45,14 @@ open it; right-click for Open, Set as start scene, Rename…, Duplicate…, Type
 brings this page up.
 
 See scenes.md for the details of each action, scene types and gateway problems.
+
+### Example: jumping from the harbour to the lighthouse scene
+
+1. Choose **File ▸ Scenes…** (or click **Scenes** in the Project panel).
+2. The list shows `harbour` (**open**), `lighthouse` (2 markers) and `village` (**start**).
+3. Double-click `lighthouse`. If the harbour has unsaved changes, you're asked about saving first; then the lighthouse
+   opens and gets the **open** badge.
+4. Right-click `lighthouse` ▸ **Duplicate…** to keep a copy before a big change.
 
 Questions: where do I manage scenes? how do I see all my levels?
 
@@ -56,6 +72,26 @@ none; New script… starts one."
 To attach a script to a thing, select it and use the Inspector's **+ New script…** (makes and attaches one) or add a
 **LuaScript** component and pick the script in its **path** field.
 
+### Example: a ringing bell script, and who uses it
+
+1. Click **Project ▸ Scripts** and press **New script…**; type `church_bell`. `scripts/church_bell.lua` opens in the
+   script editor.
+2. Write it and save:
+
+```lua
+properties = {
+    sound = "bell.wav",   -- the bell's sound
+}
+
+function update(dt)
+    -- ring on the hour
+end
+```
+
+3. Select the church tower in the scene, add **LuaScript** (+ Add component) and pick `church_bell` in **path**.
+4. Back on Project ▸ Scripts, the `church_bell` row now names the church tower among its users; type `tower` in
+   **Search scripts and what uses them** to find it again among many scripts.
+
 Questions: where are my scripts? how do I create a Lua script? which objects use this script? how do I open the script
 editor?
 
@@ -71,6 +107,24 @@ encounter, Behaviour's packages and combatStyle, and the items in a Reaction's r
 package's **✎** button opens that package on this page.
 
 Records are covered in detail in their own topic.
+
+### Example: a silver key for the crypt
+
+1. Click **Project ▸ Records**, choose the item type and make a new record with the id `crypt_key`.
+2. Fill in its form: name `Silver Key`, kind `key`, tick unique, and a description. The record is saved as
+   `records/item/crypt_key.json`:
+
+```json
+{
+  "description": "A tarnished silver key with a skull on its bow. It opens the crypt under the chapel.",
+  "kind": "key",
+  "name": "Silver Key",
+  "unique": true
+}
+```
+
+3. Select the crypt's door, and in its **Reaction: Door, Chest, Sign** pick `crypt_key` as the **key**: the list now
+   offers it.
 
 Questions: what are records? where do I make items? where are packages edited?
 
@@ -88,5 +142,14 @@ Questions: what are records? where do I make items? where are packages edited?
 - **Story graph**: facts over time, what depends on them, and the story rules.
 
 Each has its own topic.
+
+### Example: giving the blacksmith his dialogue and his day
+
+1. In **Project ▸ World**, check that `Brom Ashford`, the blacksmith, is among the characters.
+2. In **Project ▸ Story**, write his dialogue `brom_forge` and a daily routine `smith_day` (forge by day, home at
+   night).
+3. Select Brom in the scene. In **Talk**, pick **character** `Brom Ashford` and **dialogue** `brom_forge`; add
+   **Routine** and pick `smith_day` as its **schedule**.
+4. To make his hammering sparks, open **Project ▸ Effects** and make a particle effect there.
 
 Questions: where is the World Bible? where are daily routines? where do I edit an animation sheet? where are cutscenes?

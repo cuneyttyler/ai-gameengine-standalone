@@ -19,6 +19,16 @@ starts the conversation. The world pauses while talking; a conversation can't be
 A character's name on screen comes from its World Bible entry ("Old Tamsin"), so quests and dialogue can refer to the
 canon name.
 
+### Example: letting the player talk to Vara Bell
+
+1. Select Vara Bell in the Hierarchy; in the Inspector choose **Talk** from **+ Add component**.
+2. **dialogue**: pick `dialogue/vara.json` from the list. **character**: `character/vara-bell`. **range**: `2`.
+3. Press Play and walk up to her.
+
+Within two cells the prompt reads "E  Talk to Vara Bell" (her World Bible name). Press **E**: the world pauses and her
+first line appears. If nothing shows, check that the player is within `range` and the dialogue file exists (its row in
+Project ▸ Story has no ⚠).
+
 Questions: how do I make an NPC talkable? why can't I talk to my NPC? how close does the player need to be to talk?
 
 ## The Story tab and dialogue files
@@ -36,6 +46,16 @@ Open **Project ▸ Story** ("Dialogue, quests and daily routines"). The left col
 
 Dialogue, quests and routines belong to the project, not a scene: progress, flags and the clock carry on through
 gateways.
+
+### Example: starting Vara's conversation
+
+1. Open **Project ▸ Story** and press **+** next to **Dialogue**.
+2. **File**: `dialogue/vara.json`. **Speaker**: pick Vara Bell (`character/vara-bell`).
+3. Write the first node (id `greet`); **Starts at** shows `greet`.
+4. Press **Save** (Ctrl+S).
+
+The row `vara` appears under Dialogue. Once her Talk component uses it, the row shows "1×"; hover it to read "Talk on
+Vara Bell".
 
 Questions: where do I write dialogue? how do I make a new conversation? where are dialogue files saved?
 
@@ -56,6 +76,28 @@ A conversation is a set of **nodes**. Each node is one line:
 start applies).
 
 In play, **Space**, **Enter** or **E** continue past a line without choices.
+
+### Example: a three-line exchange with the player answering
+
+1. In Project ▸ Story, open `dialogue/vara.json`.
+2. Node `greet`: who **Vara Bell** (the speaker), text `Welcome to the Golden Goose! Hungry?`, **then** go to `reply`.
+3. **+ Node**: id `reply`, who **The player**, text `Starving. What's cooking?`, **then** go to `stew`.
+4. **+ Node**: id `stew`, text `Rabbit stew, same as every day.`, **voice** `assets/audio/vara-stew.wav`, **then** end
+   the conversation. **Save**.
+
+```json
+{
+  "speaker": "character/vara-bell",
+  "start": "greet",
+  "nodes": [
+    { "id": "greet", "text": "Welcome to the Golden Goose! Hungry?", "next": "reply" },
+    { "id": "reply", "speaker": "player", "text": "Starving. What's cooking?", "next": "stew" },
+    { "id": "stew", "text": "Rabbit stew, same as every day.", "voice": "assets/audio/vara-stew.wav" }
+  ]
+}
+```
+
+In play the three lines follow each other with **Space**; her last line plays its voice and the conversation ends.
 
 Questions: how do I add a line to a dialogue? how do I end a conversation? can the player have lines? how do I add a
 portrait or voice to a line?
@@ -78,6 +120,32 @@ In play, **1-9** pick a choice; **Up/Down** and **Enter** do the same.
 Example: "Surely the keep can pay more." with a check speech ≥ 5, else → `refused`, and the effect set variable
 `reward` to 50.
 
+### Example: a choice shown only with a quest active, and a persuasion check
+
+Captain Rook offers the player work clearing the courtyard of ghouls.
+
+1. In Project ▸ Story, open `dialogue/rook.json`; select node `offer` and tick **choices**.
+2. **+ Choice**: text `I'll do it.`, → `thanks`; **effects**: start quest `quiet-the-courtyard`.
+3. **+ Choice**: text `Surely the keep can pay more.`, → `more`; tick **skill check**, attribute `speech`, difficulty
+   `5`, else → `refused`; **effects**: set variable `reward` to `50`.
+4. **+ Choice**: text `The ghouls are gone.`, → `paid`; **conditions**: quest is `quiet-the-courtyard` active.
+5. **+ Choice**: text `Not now.`, ends. **Save**.
+
+```json
+{ "id": "offer", "text": "Ghouls in the courtyard. Twenty gold to clear them.", "choices": [
+  { "text": "I'll do it.", "next": "thanks", "do": [{ "op": "start_quest", "quest": "quiet-the-courtyard" }] },
+  { "text": "Surely the keep can pay more.", "next": "more",
+    "check": { "attribute": "speech", "atLeast": 5 }, "fail": "refused",
+    "do": [{ "op": "set_var", "var": "reward", "value": 50 }] },
+  { "text": "The ghouls are gone.", "next": "paid",
+    "if": [{ "quest": "quiet-the-courtyard", "is": "active" }] },
+  { "text": "Not now." }
+] }
+```
+
+In play the third choice is hidden until the quest is active; the second reads "[Speech 5] Surely the keep can pay
+more." and with speech below 5 goes to `refused` without setting the reward.
+
 Questions: how do I add choices? how do I hide a choice unless a quest is active? how do I make a persuasion check? how
 many choices can a node have?
 
@@ -91,6 +159,27 @@ This is how a character greets you differently once a quest is under way:
 - instead start at `thanks` when quest `quiet-the-courtyard` is completed;
 - instead start at `progress` when quest `quiet-the-courtyard` is active;
 - otherwise start at `greet`.
+
+### Example: Captain Rook greets you three ways
+
+1. In Project ▸ Story, open `dialogue/rook.json`. **Starts at**: `greet`.
+2. Press **+ Different start when…**: Instead start at `thanks`, condition quest is `quiet-the-courtyard` completed.
+3. Press it again: Instead start at `progress`, condition quest is `quiet-the-courtyard` active. **Save**.
+
+```json
+{
+  "speaker": "character/captain-rook",
+  "start": "greet",
+  "starts": [
+    { "if": [{ "quest": "quiet-the-courtyard", "is": "completed" }], "node": "thanks" },
+    { "if": [{ "quest": "quiet-the-courtyard", "is": "active" }], "node": "progress" }
+  ],
+  "nodes": [ ... ]
+}
+```
+
+Before the quest Rook says his `greet` line; while it's under way, "Any luck with the ghouls?" (`progress`); after it,
+`thanks`. Order matters: the completed check comes first.
 
 Questions: how do I make an NPC say something different after a quest? how do I change the first line of a dialogue?
 
@@ -114,6 +203,31 @@ recipes' `if` and path forks. All in a list must hold. The editor offers:
 
 Written by hand, `{"difficulty": "story"}` or `{"difficulty": {"enemies": {"atLeast": 4}}}` test the difficulty.
 
+### Example: a night-only choice to buy a room
+
+Vara offers a room only in the evening, to a player with enough gold who isn't already a guest.
+
+1. In `dialogue/vara.json`, node `greet` with **choices**: **+ Choice** `I'd like a room.`, → `room`.
+2. Its **conditions**: time of day from `18` to `6`; player has gold `10`; flag `has_room` isn't set.
+3. Its **effects**: give gold `-10` (a negative amount takes gold) and set flag `has_room`. **Save**.
+
+```json
+{ "text": "I'd like a room.", "next": "room",
+  "if": [
+    { "time": { "from": 18, "to": 6 } },
+    { "gold": 10 },
+    { "flag": "has_room", "is": false }
+  ],
+  "do": [
+    { "op": "give_gold", "amount": -10 },
+    { "op": "set_flag", "flag": "has_room" }
+  ] }
+```
+
+In play the choice appears from 18:00 until 06:00 when the player carries at least 10 gold and hasn't taken a room;
+picking it takes the 10 gold.
+Add `{"item": "inn-key", "count": 1}` to also ask for a key the player carries.
+
 Questions: what conditions can dialogue use? how do I check if the player has an item? how do I check the time of day in
 dialogue?
 
@@ -132,6 +246,27 @@ the rule runs on.
 
 Example: the choice "I'll do it." with effects start quest `quiet-the-courtyard` and set flag `took_job`.
 
+### Example: hiring Elda as a guide
+
+1. In `dialogue/elda.json`, node `hire` with **choices**: **+ Choice** `Lead me to the old ruins. Here's 30 gold.`,
+   → `deal`; **conditions**: player has gold `30`.
+2. **effects**: give gold `-30`; start quest `the-old-ruins`; set flag `elda_joined`; a character starts doing
+   (`push_package`) `elda-lead`, who `Elda`; a character says `Stay close.`; give item `ruins-map`. **Save**.
+
+```json
+"do": [
+  { "op": "give_gold", "amount": -30 },
+  { "op": "start_quest", "quest": "the-old-ruins" },
+  { "op": "set_flag", "flag": "elda_joined" },
+  { "op": "push_package", "package": "elda-lead", "who": "Elda" },
+  { "op": "say", "text": "Stay close.", "who": "Elda" },
+  { "op": "give_item", "item": "ruins-map", "count": 1 }
+]
+```
+
+When the player picks it, 30 gold goes, the quest starts (its name shows as a notice), Elda says "Stay close." over her
+head, a map is added to the inventory, and Elda starts leading the way.
+
 Questions: what can a dialogue choice do? how do I give the player an item from dialogue? how do I start a quest from
 dialogue? can dialogue make an NPC follow the player?
 
@@ -140,6 +275,16 @@ dialogue? can dialogue make an NPC follow the player?
 Switch **List / Graph** to **Graph** to see the conversation as boxes and arrows: each node a box with its id and the
 start of its text, arrows for "then" links and choices (labelled), failed skill checks drawn differently, the start node
 marked. Click a box to show that node's form. **+ Node** adds a node in the graph view.
+
+### Example: finding a dead end in Rook's conversation
+
+1. In Project ▸ Story, open `dialogue/rook.json` and switch **List / Graph** to **Graph**.
+2. The `offer` box has four labelled arrows: "I'll do it." to `thanks`, "Surely the keep can pay more." to `more` (with
+   a failed-check arrow drawn differently to `refused`), and two more.
+3. The `bribe` box has no arrow coming in: nothing leads there (the list also shows a ⚠ "can't be reached").
+4. Click the `more` box; its form opens below. Set its **then** to go to `bribe`, and **Save**.
+
+The graph now shows an arrow from `more` to `bribe`, and the warning goes away.
 
 Questions: can I see my dialogue as a graph? how do I find where a node leads?
 
@@ -156,6 +301,27 @@ proposal.
 
 **From Lua:** `start_dialogue(path)` starts a conversation with the script's entity as the speaker; the `talk` event
 fires when the player talks to someone.
+
+### Example: a guard's conversation from the AI, and a statue that speaks
+
+1. Select the gate guard and type in the AI panel:
+
+   > "give the gate guard a conversation: he warns about bandits on the north road and, if the player asks, offers the
+   > bandit-hunt quest"
+
+2. The proposal shows `dialogue/gate-guard.json` and `quests/bandit-hunt.json` (from `write_dialogue` and
+   `write_quest`). Check them in Diff Review and press **Apply**; they appear in Project ▸ Story. Pick
+   `dialogue/gate-guard.json` in the guard's Talk **dialogue** if it isn't set already.
+3. For a talking statue with no Talk component, give it an Interactable (verb `Read`, **event** `statue-speaks`) and a
+   script:
+
+```lua
+on("statue-speaks", function(e)
+  start_dialogue("dialogue/old-king.json")
+end)
+```
+
+Pressing **E** at the statue opens the old king's conversation, with the statue as the speaker.
 
 See also: Quests, Schedules and cutscenes, Scripting.
 

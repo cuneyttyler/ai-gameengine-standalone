@@ -21,6 +21,19 @@ picked adds a clip. A clip added later takes new rows at the bottom of the pictu
 numbers. Assets ▸ Characters lists every character sheet (each card shows the character facing the camera; click a clip
 name on the card to play it in every direction in turn).
 
+### Example: Watching Mira's walk in every direction
+
+Mira Quill was drawn on Generate ▸ Character and then given a walk on Generate ▸ Animate.
+
+1. Open the Assets panel ▸ **Characters**. Mira's card shows her facing the camera, with her clip names under it:
+   `idle` and `walk`.
+2. Click `walk` on the card. Her walk plays facing south, then south-east, east and so on round the compass.
+3. Open `assets/characters/mira-quill/mira-quill.character.png` in an image viewer: the idle poses are on the top row
+   and the walk's frames on the rows added below them.
+
+Result: one picture and one sheet hold everything Mira does; adding an `attack` later adds rows at the bottom
+without moving the walk's slots.
+
 Questions: what is a character sheet? where are a character's frames stored? why is my character one big picture?
 
 ## The character sheet file, field by field
@@ -44,6 +57,23 @@ A character sheet looks like this:
 - `clips`: each with `loop`, its own `fps`, and `directions`, each a list of slot numbers (counted left to right, top
   to bottom). A clip may also carry `plays` (the animator states it plays on) and `points` (a hand, a head, per frame).
 
+### Example: Reading which slots Mira's south-facing walk uses
+
+Mira's sheet is 64 px slots, 8 to a row. Her `walk` clip, trimmed to two directions, reads:
+
+```json
+"walk": {"loop": "loop", "fps": 10,
+         "directions": {"s":  [8, 9, 10, 11, 12, 13, 14, 15],
+                        "se": [16, 17, 18, 19, 20, 21, 22, 23]}}
+```
+
+1. Slots count from 0, left to right, top to bottom, so slot 8 is the first picture of the second row.
+2. Her south walk is the whole second row (slots 8 to 15) and her south-east walk the third row.
+3. `"fps": 10` overrides the sheet's default `"fps": 8` for this clip only.
+
+Result: you can tell which frames play for each facing without opening the editor; the `character` block above it
+also holds her `autosprite` id when AutoSprite animated her, so she isn't uploaded again.
+
 Questions: what is in a .character.anim.json? where is the AutoSprite id kept? how are slot numbers counted?
 
 ## Animation sheets (.anim.json) for anything that moves
@@ -64,6 +94,25 @@ Sheets come from Generate ▸ Animate's **Make animation**, from Project ▸ Eff
 `footstep` effect, and any other name is heard by scripts as an `anim_event`. Events are set in the sheet's file (the
 sheet editor shows their count but has no event editor).
 
+### Example: A footstep sound on the guard's walk
+
+The town guard's walk should make a sound each time a foot lands, on frames 2 and 6 of the clip.
+
+1. In the project folder, open `assets/characters/town-guard/town-guard.character.anim.json` in a text editor.
+2. In the `walk` clip, add an `events` list beside `loop` and `fps`:
+
+   ```json
+   "walk": {"loop": "loop", "fps": 10,
+            "events": [{"frame": 2, "event": "footstep"}, {"frame": 6, "event": "footstep"}],
+            "directions": { ... }}
+   ```
+
+3. Save the file. In **Project ▸ Effects ▸ Sheets**, select the guard's sheet: the `walk` clip's heading now reads
+   "loop, 2 events".
+
+Result: in Play, the `footstep` effect plays at the guard on those two frames. Use `"sound:assets/sounds/clank.wav"`
+to play a sound file directly, or a name of your own (`"swing_peak"`) to hear it in a script as an `anim_event`.
+
 Questions: what is an .anim.json? how do I play a sound on a frame? how do I import an Aseprite animation? what loop modes are there?
 
 ## Directions and mirrors in a sheet
@@ -80,6 +129,18 @@ clip made only facing south plays south whatever the facing.
 Generated characters: BFL and PixelLab v3 paint the east side and copy it flipped for the west (the frames are stored
 flipped in the picture); AutoSprite's pack draws every direction itself.
 
+### Example: Making a hand-made bat's west side use its east frames
+
+You imported a bat sheet with frames only for `e`, and it flies west showing its east frames facing the wrong way.
+
+1. Open the sheet in the sheet editor (Project ▸ Effects ▸ Sheets, select it, **Edit**) and click the `fly` clip tab.
+2. Under **add direction**, pick `w`. A `w` row appears.
+3. In the `w` row's menu, change **own frames** to **mirror of e**.
+4. Do the same for `nw` (mirror of `ne`) and `sw` (mirror of `se`) if the clip has those, then click **Save**.
+
+Result: the file now holds `"w": "mirror:e"`, and the bat flying west shows its east frames flipped left to right.
+Without the mirror, the game would have used the nearest direction it had.
+
 Questions: how does mirroring work? what happens if my animation has no north-east frames? how do I make west use east's frames?
 
 ## Which side of a character shows
@@ -95,6 +156,18 @@ its mirror (see the directions section).
 Inspector's **Facing ▸ turn to** picks a direction. Facing is saved with the scene: an NPC starts Play facing the way it
 was left, until it moves.
 
+### Example: Mira facing the well when the game starts
+
+Mira stands west of the well but faces the camera (south) in the editor.
+
+1. Click Mira in the Scene view to select her.
+2. Press **R** until she faces the well (each press turns her an eighth on screen; **Shift+R** turns the other way).
+   Or, in the Inspector, use **Facing ▸ turn to** and pick the direction.
+3. Save the scene.
+
+Result: in the editor she stands in her idle pose facing the well; in Play she starts facing it too, until she walks
+off, when her Facing follows the way she moves.
+
 Questions: how do I turn a character in the editor? why does my NPC face the wrong way? how does the game pick a direction?
 
 ## Removing or replacing a character's animation
@@ -107,6 +180,18 @@ Questions: how do I turn a character in the editor? why does my NPC face the wro
 - **Rename a clip**: the sheet editor's **Rename** (idle, walk, attack, cast, hurt and die are what the animators play).
 - **Delete the whole character**: Assets ▸ Characters, right-click ▸ **Delete…**. The sheet goes, its picture too
   unless another sheet uses it, and any animated parts that played it are removed.
+
+### Example: Renaming the guard's "swing" clip so the animator plays it
+
+The guard's custom attack was added as a clip named `swing`, so it never plays when he attacks.
+
+1. In Assets ▸ **Characters**, right-click `town-guard` ▸ **Edit…**. The sheet editor opens on Project ▸ Effects.
+2. If the sheet already has an `attack` clip you no longer want, click its tab and **Remove** it first (a clip can't
+   be renamed to a name the sheet already has).
+3. Click the `swing` clip tab, then **Rename**; in the "Rename clip" dialog type `attack` and confirm.
+4. Click **Save** (or **Revert** to undo everything since the last save).
+
+Result: the `humanoid` animator plays the clip when the guard attacks.
 
 See also: Animations tab and sheet editor, The Animator, Animate tab.
 

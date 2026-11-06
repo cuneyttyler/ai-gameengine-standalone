@@ -23,6 +23,17 @@ Character Rules**, Barks as **Speech**, Faction as **Team**.
 
 While the game plays, the Inspector refreshes live (ten times a second) and editing is limited; most buttons are hidden.
 
+### Example: looking over the cellar door
+
+1. Click the cellar door of Vara's Inn in the viewport.
+2. The Inspector shows its label, `Cellar door`, then **Size** and the **Prefab** header (it's a copy of the `door`
+   prefab), then its components: Sprite, WorldTransform2D, Collider2D, **Reaction: Door, Chest, Sign** (Interactable)
+   and Door.
+3. Hover **Reaction: Door, Chest, Sign** to read what it does; hover a field name inside it for that field's meaning.
+4. Click a ground cell beside the door: the Inspector now shows "Ground cell (x, y)" with its tile layer and tile
+   prefab.
+5. Press **Escape**: nothing is selected, and the Inspector offers **Project Settings…**.
+
 Questions: what does the inspector show? why is the inspector empty? how do I see what a component does?
 
 ## Editing fields
@@ -47,6 +58,15 @@ reason shows in red under the field. Collapse a component with the **▾** befor
 The **✦** by a field (when the AI service is ready) asks the AI panel about that field. Editing a Name changes the
 Scene Tree's label at once.
 
+### Example: making a wolf tougher and darker
+
+1. Select `Grey wolf` in the Scene Tree.
+2. In **Health**, type `30` in **max** and press Enter; set **current** to `30` too, so it starts unhurt.
+3. Type `-5` in **max**: the box keeps the value within the field's range (at least 1).
+4. In **Sprite**, drag the tint sliders down a little to darken the fur.
+5. Not sure what a field means? Click the **✦** by it (with the AI service ready) and the AI panel explains it.
+6. Press **Ctrl+Z** to undo the last change; each field edit is its own step.
+
 Questions: how do I change a value? why did my value change back? how do I pick a texture for a sprite? what does the ✦
 button do?
 
@@ -64,6 +84,16 @@ Fields that name something are filled from the project: Gateway's scene (scenes)
 Talk's dialogue (dialogues) and character (World Bible characters), Routine's schedule, CutsceneTrigger's cutscene,
 Container's and Merchant's loot (loot records), Spawner's encounter, FactionMember's faction, Behaviour's combatStyle.
 
+### Example: sending the miller home before his marker exists
+
+Old Hob the miller should go home to the mill, but you haven't placed its marker yet.
+1. Select `Old Hob` and click **Behaviour ▸ home**.
+2. Type `mill`: the list narrows to the markers whose names contain "mill" (none yet), and the box says "Search, or
+   type a new one".
+3. Type `mill_door` and press **Enter** (or click **Use "mill_door"**).
+4. Later, place a marker named `mill_door` by the mill: Hob's home now points at it.
+5. To clear the field again, open the list and pick "(none)".
+
 Questions: how do I search in a dropdown? can I type a value that isn't in the list? how do I clear a field?
 
 ## Adding and removing components
@@ -80,6 +110,15 @@ Questions: how do I search in a dropdown? can I type a value that isn't in the l
 
 Adding or removing a component on a prefab's copy is recorded as an override of that copy (see "Prefab copies").
 Adding and removing are each one undo step and are disabled while playing.
+
+### Example: making a scarecrow you can hit
+
+1. Select the `Scarecrow` prop in the field.
+2. Open **+ Add component** at the bottom of the Inspector and pick **Hurtbox**. If the scarecrow has no Health yet,
+   it's refused with "Can't change …" saying what's missing: add **Health** first (max `10`), then Hurtbox.
+3. Hits now land on it and take its health down in play.
+4. Changed your mind? Click the **×** at the right of the Hurtbox header to remove it. Removing Health first would be
+   refused while Hurtbox still needs it.
 
 Questions: how do I add a component? how do I remove a component? why can't I edit ScreenTransform2D? what does derived
 mean?
@@ -103,6 +142,17 @@ Beside each changed field:
 The right-click menu's **Revert to prefab** is the same as Revert all. The **Size** row shows the copy's size as a %
 of the prefab's (10–1000), sprite and collision together, like [ and ].
 
+### Example: one bigger oak, then every oak a little greener
+
+The village has twelve copies of the `oak` prefab.
+1. Select the oak by the well and set **Size** to `130` %. Only this copy grows.
+2. In its **Sprite**, change the tint to a greener colour: the field is highlighted, the Prefab header counts 1
+   override, and the tooltip says "(Changed on this copy)".
+3. Click **⤒** beside the tint: the value goes to the prefab, and all twelve oaks turn greener. The well oak keeps its
+   own 130 % size.
+4. On another oak you'd moved and recoloured by mistake, click **Revert all** (or right-click ▸ **Revert to prefab**):
+   it looks like the prefab again.
+
 Questions: what is an override? how do I apply changes to every copy of a prefab? how do I undo changes to one copy? what
 does Revert to prefab do?
 
@@ -115,6 +165,19 @@ Fields that the difficulty levels scale (health, damage, defense, speed, gold, l
 There you can set a value by hand for one level, which overrides the computed value. Hand-set values are stored on the
 entity in a **DifficultyOverrides** component (`{"Health.max": {"hard": 20}}`), added and removed for you as values
 are set and cleared; each change is one undo step.
+
+### Example: a cave troll that is brutal on hard
+
+1. Select `Cave troll` and find **Health ▸ max**, which has a **⚖** button.
+2. Click **⚖**: Project ▸ Difficulty opens on the troll's preview, showing max health at every level.
+3. Type `20` by hand for the hard level, beyond what the scaling would give.
+4. Back in the Inspector, the troll has a new **DifficultyOverrides** component holding:
+
+```json
+{"Health.max": {"hard": 20}}
+```
+
+Clear the hand-set value and the component is removed again.
 
 Questions: how do I make an enemy stronger on hard? what is the ⚖ button? what is DifficultyOverrides?
 
@@ -130,6 +193,29 @@ property while playing applies at once.
 
 See also: project-panel.md (Project ▸ Scripts).
 
+### Example: a skeleton that flees when hurt, braver in the crypt
+
+1. Select `Skeleton` and click **+ New script…**; name it `skeleton_flee`. The file is created and a LuaScript is
+   attached.
+2. Click **✎** to open it and write its properties at the top:
+
+```lua
+properties = {
+    flee_health = 3,   -- flee when health drops below this
+    taunt = "",        -- a sound to play when it spots the player
+}
+
+function update(dt)
+    if get_health()[1] < properties.flee_health then
+        -- run away
+    end
+end
+```
+
+3. Save the script. Back in the Inspector, **Script properties** shows `flee_health` (a number box, 3) and `taunt` (a
+   text box).
+4. On the crypt's skeleton, set `flee_health` to `1`: only that one is braver. **↺** returns it to 3.
+
 Questions: how do I add a script to an object? how do I set a script's properties per entity? where do script errors
 show?
 
@@ -141,6 +227,16 @@ digits, `-` and `_`; it starts as the entity's name) and **Save** (Enter; Escape
 one of its copies and use Apply". The same is in the right-click menu (**Save as prefab…**).
 
 See also: prefabs.md.
+
+### Example: saving the herb cart as a prefab
+
+1. Select the herb cart you built by hand in the market (it isn't a copy of anything).
+2. In the Inspector's footer click **Save as prefab…**; the name starts as `Herb cart`. Type `herb-cart` and press
+   **Enter**.
+3. `prefabs/herb-cart.prefab` is written, the cart shows a **Prefab** header with 0 overrides, and `herb-cart` is in
+   Assets ▸ Prefabs.
+4. Try saving another cart as `herb-cart`: it's refused with "already exists — select one of its copies and use
+   Apply".
 
 Questions: how do I save an object as a prefab? why can't I save as prefab? where are prefabs saved?
 
@@ -164,6 +260,24 @@ Some fields have their own editors instead of raw text:
 - **FactionMember ▸ faction**: a searchable list of faction records and World Bible factions.
 - **Path**, **Building Plan**, **Reaction: Moving Part**, **Facing**: see markers-and-paths.md,
   buildings-and-interiors.md and components-guide.md.
+
+### Example: a shrine that takes an offering
+
+The shrine in the forest should give a blessing charm when the player offers a candle.
+1. Select `Forest shrine`, which has a **Reaction** (Action) component.
+2. In **Reaction ▸ takes**, click **+ Item**, pick `Candle` and set the count to `1`.
+3. In **Reaction ▸ gives**, click **+ Item**, pick `Blessing charm`, count `1`.
+4. In **do**, add an effect that sets the flag `shrine_blessed`; in **if**, add the condition that the flag
+   `shrine_blessed` is not set, so it only works once.
+5. If the item list says to "create them in Project ▸ Records", make the two items there first.
+
+### Example: the innkeeper thanks you for her ring
+
+1. Select `Vara Bell` and add **Reaction: Character Rules** from **+ Add component**.
+2. Click **Add a rule**. Set **When** to `quest:lost_ring:returned` (the stage of the quest "The Lost Ring" where the
+   ring is given back), **Says** to "You found it! Drinks are on the house tonight.", **Range** to `6` and tick
+   **Only once**.
+3. In play, when that quest stage is reached near her, she says the line, once.
 
 Questions: how do I set conditions on an action? how do I give items with an action? how do I order a character's
 packages? how do I make a character react to an event?

@@ -17,6 +17,23 @@ changed, so undoing them is fast.
 The history keeps the last **100 steps**. Undo and Redo are greyed out when there's nothing to take back or bring
 back. A new edit after undoing replaces the redo steps.
 
+### Example: taking back an AI change you don't like
+
+1. In the AI panel, type:
+
+> "Scatter a dozen pine trees along the north edge of the meadow."
+
+2. You accept the proposal and the pines appear, but they hide the shrine.
+3. Press Ctrl+Z (or click Undo on the toolbar) until the pines are gone: changes the AI applies are undo steps
+   like your own.
+4. Changed your mind again? Press Ctrl+Y: the pines are back. If you place a rock now instead, Redo greys out,
+   because the new edit replaces the redo steps.
+
+### Example: one paint stroke, one undo
+
+1. With the grass tile brush, drag a long stroke across the field, then a second, shorter one.
+2. Press Ctrl+Z once: only the second stroke goes. Press it again: the first goes too.
+
 Questions: how do I undo? how many undo steps are there? can I undo an AI change? why is redo greyed out?
 
 ## What isn't undoable, and when history is cleared
@@ -30,6 +47,19 @@ Questions: how do I undo? how many undo steps are there? can I undo an AI change
   undone by Ctrl+Z.
 
 If you undo every edit until the scene matches its saved file, the editor won't ask to save when you close.
+
+### Example: why Ctrl+Z doesn't bring back the old zoom
+
+1. In File ▸ Project Settings… ▸ Camera you raised playZoom from 2 to 3, then edited a few fences.
+2. Pressing Ctrl+Z undoes the fences, not the zoom: Project Settings aren't in the scene's undo history.
+3. Set playZoom back to 2 by hand in Project Settings, then save.
+
+### Example: undo before you leave a scene
+
+1. In `harbour_market` you deleted the old pier, then opened `smugglers_cellar` from File ▸ Scenes….
+2. Back in `harbour_market`, Edit ▸ Undo is greyed out: opening another scene cleared the history (and the pier is gone
+   for good if you saved when asked).
+3. Next time, undo (or don't save) before switching scenes.
 
 Questions: why can't I undo after switching scenes? can I undo a settings change? does undo work in play mode?
 
@@ -45,6 +75,14 @@ Questions: why can't I undo after switching scenes? can I undo a settings change
 
 The clipboard is the editor's own. It isn't the Windows clipboard, and it's empty when the editor starts. Pasting
 doesn't work during Play.
+
+### Example: copying a campfire into the other camp
+
+1. Click the campfire in the bandit camp and press Ctrl+C. The status bar says "Copied — Ctrl+V pastes at the
+   cursor".
+2. Pan to the hunters' camp, right-click the ground where the fire should go and click Paste here.
+3. The new campfire sits at that cell, selected. Press Ctrl+D twice for two more beside it, for a bigger camp.
+4. Trying Ctrl+D on the player instead says "Tiles and the player can't be duplicated".
 
 Questions: how do I copy an entity? where does paste put things? how do I paste at a specific cell? why can't I
 duplicate the player?
@@ -63,5 +101,19 @@ everything, the viewport included. If several are waiting, they show one after a
 **Enter** confirms and **Esc** cancels. Clicking outside the dialog also cancels. While a dialog is open, the
 editor's shortcuts wait. The questions about unsaved changes when switching scenes or projects, closing or exiting are
 Windows message boxes with Yes, No and Cancel.
+
+### Example: naming a marker, then changing your mind
+
+1. Right-click the ground by the well and click Add a marker here…. A prompt opens with its text field focused.
+2. Type `well_bucket` and press Enter: the marker is added.
+3. Right-click another spot and click Add a marker here… again, then press Esc (or click outside the dialog): it's
+   cancelled and nothing is added.
+4. Pressing V or Ctrl+Z does nothing while a dialog is open: the editor's shortcuts wait until it closes.
+
+### Example: deleting a scene with the red button
+
+1. In the Project panel's Scenes tab, right-click `test_room` and click Delete….
+2. A confirm dialog opens with a red Delete button, named after the action.
+3. Click Delete (or press Enter) to remove the scene file; this can't be undone with Ctrl+Z.
 
 Questions: how do I cancel a dialog? why don't my shortcuts work? (a dialog is open) what does the red button mean?

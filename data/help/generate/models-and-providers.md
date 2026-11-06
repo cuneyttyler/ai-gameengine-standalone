@@ -22,6 +22,20 @@ Settings ▸ AI), so the choice above doesn't apply to it") with a button **Use 
 the project's setting so it follows Preferences from then on. The Art tab shows the model in use beside Generate ("By …
 (set by this project)"). File ▸ New Project also offers Prefab art, Background and Paint model for the new project.
 
+### Example: Choosing the project's own animate model, then going back to the app's
+
+Your "Ashfall Keep" project should animate people with PixelLab, while your other projects keep AutoSprite.
+
+1. Open **Project Settings ▸ AI** and set **animate** to **PixelLab Animate with text v3**. Save.
+2. Open **File ▸ Preferences ▸ Art and painting**. Under **Humanoid animation** it now says "This project uses its
+   own: … (Project Settings ▸ AI), so the choice above doesn't apply to it".
+3. Generate ▸ Animate in this project shows PixelLab's form (**Action**, **Facing**, **View**) instead of
+   AutoSprite's **Motion**.
+4. Weeks later you want AutoSprite back: in Preferences, under Humanoid animation, click **Use this choice in the
+   project**.
+
+Result: the project's **animate** setting is cleared and Ashfall Keep follows Preferences (AutoSprite) again.
+
 Questions: where do I change the art model? why doesn't my Preferences art choice apply? how do I make a project use a different model? what does "set by this project" mean?
 
 ## Prefab art model (Art tab, prefabs, characters)
@@ -41,6 +55,19 @@ piece of an Assembled build in one style, and the Art tab's single pieces.
 It also decides who draws **Generate ▸ Character**: a BFL art model draws characters with BFL (facing you first, each
 other direction an edit of it); any other choice uses PixelLab. If the key for the chosen model is missing, Preferences
 shows an error under the setting ("No key for …: set … in ai_service/.env").
+
+### Example: Pixel art matched to the project, by PixelLab
+
+You use Claude as the language model and have only a PixelLab key; you want every prop in "Ashfall Keep" to share
+the same palette.
+
+1. Open **File ▸ Preferences ▸ Art and painting** and set **Prefab art** to **PixelLab** (with "Follow the provider"
+   and no Mistral key it would be PixelLab anyway, since Claude draws nothing).
+2. On Generate ▸ Art, the text beside the Generate button ("By …") now names PixelLab.
+3. Draw `an iron brazier with glowing coals`.
+
+Result: PixelLab draws it in the project's colours, matched to up to four of the project's own objects. Generate ▸
+Character also draws with PixelLab, since the art model isn't BFL's.
 
 Questions: which art model should I use? what does Follow the provider mean? why are my characters drawn by PixelLab? which key does BFL need?
 
@@ -66,6 +93,18 @@ Animate. AutoSprite is a character animator: given a thing, it adds a person.
 Tried and no longer offered, but still used when named in a setting: `bfl:flux-3-video` (FLUX 3 video for characters:
 good motion, about $0.75 a direction) and `bfl:image` (FLUX.2 klein editing copies of the pose).
 
+### Example: Animating the mill's waterwheel with FLUX video
+
+PixelLab's wheel looked stiff; you want to try BFL for things in this project.
+
+1. Make sure `BFL_API_KEY` is in `ai_service/.env`.
+2. Open **Project Settings ▸ AI** and set **objectAnimate** to **BFL FLUX video**.
+3. On Generate ▸ Animate, pick `waterwheel.png`, type `a wooden waterwheel` in **What it is** (a thing), describe the
+   motion `the wheel turns steadily, water splashing from its paddles`, and click **Animate**.
+
+Result: BFL makes a 5 second clip and 12 frames are taken from it. People are unaffected: they are still animated by
+the **animate** model (AutoSprite by default).
+
 Questions: what is the default animation model? AutoSprite or PixelLab? which model animates doors? how much does AutoSprite cost? do I need AutoSprite Pro?
 
 ## Background and paint models
@@ -84,6 +123,16 @@ These paint places rather than single pieces, but they are BFL models chosen the
 
 **Edit ▸ Background Image…** repaints a build's background from its plan and words, or (with Build "None: the open
 scene") the open scene's ground from words alone, behind everything; **Use a picture file…** takes your own instead.
+
+### Example: A quick draft background, then the final one
+
+1. Open **Edit ▸ Background Image…** for the village build and set **Model** to **BFL FLUX.2 klein (fast, loose)**
+   to see a rough draft of the ground and roads quickly.
+2. Happy with the layout, open it again, set **Model** to **BFL FLUX.3 Image (keeps the map best)** and repaint.
+
+Result: the final background follows the plan's roads and plots closely. To make FLUX.3 Image the default for every
+background in this project, set **Project Settings ▸ AI ▸ background** to it (or leave it empty to follow
+Preferences, where it is already the default).
 
 Questions: which model paints backgrounds? how do I repaint the background? what is the paint model? why do interiors need BFL?
 
@@ -105,6 +154,16 @@ reduction), keeping the colours as drawn; with a pixel style or none, the pixel 
 The project also keeps style references (a few pieces of each place built, with their palettes, in
 `places/style-references.json`): new art is briefed to match them and PixelLab draws in their look.
 
+### Example: Moving a project from pixel art to a painted look
+
+1. Open **Project Settings ▸ AI** and set **artStyle** to **painted**.
+2. On Generate ▸ Art, draw `a market stall with a striped awning`.
+3. Generate ▸ Character, draw `a fishmonger in a rubber apron`.
+
+Result: both prompts carry "hand-painted digital game art: soft painterly shading and brush texture, not pixel art",
+and the Art tab keeps the stall's colours as drawn (no reduction to 32 colours). Art made before the change keeps its
+old look; regenerate it if it should match.
+
 Questions: how do I make all my art pixel art? how do I change the art style? why is my art not pixelated?
 
 ## API keys for generation
@@ -122,6 +181,23 @@ Preferences ▸ AI ▸ Keys lists the main ones.
 Model menus mark a choice without its key "(no key)". The Generate tabs name the missing key beside their button. If a
 key added to `.env` still shows "(no key)", restart the AI service (untick and tick Preferences ▸ AI ▸ Use AI, or
 restart the editor).
+
+### Example: Setting up keys for characters drawn by BFL and animated by AutoSprite
+
+1. Open `ai_service/.env` and add both keys:
+
+   ```
+   BFL_API_KEY=your_bfl_key
+   AUTO_SPRITE_API_KEY=your_autosprite_key
+   ```
+
+2. Save, then untick and tick **Preferences ▸ AI ▸ Use AI** so the service reads them.
+3. In **Preferences ▸ Art and painting**, set **Prefab art** to a BFL model; **Humanoid animation** stays
+   **AutoSprite**. Neither shows "(no key)" any more.
+
+Result: Generate ▸ Character draws with BFL and Generate ▸ Animate animates characters with AutoSprite (its API needs
+AutoSprite's Pro plan). Things like doors still need `PIXELLAB_API_KEY` for the default non-humanoid model; without
+it they go to the humanoid model.
 
 See also: Generate panel, Art tab, Animate tab, Troubleshooting generation.
 

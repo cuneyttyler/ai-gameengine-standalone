@@ -21,6 +21,20 @@ with the scene and invisible in play.
 | `end` | at an end: `stop`, `loop` (the last point back to the first) or `back` (the way it came) |
 | `shown` | drawn in the viewport |
 
+### Example: the market loop as it's saved
+
+A square path round the market, four points, closing on itself, as the Path component holds it:
+
+| field | value |
+|---|---|
+| `name` | `market-loop` |
+| `points` | `[{"x": 0, "y": 0, "label": "gate"}, {"x": 8, "y": 0}, {"x": 8, "y": 6, "label": "well", "wait": 4}, {"x": 0, "y": 6}]` |
+| `links` | `[]` (point to point in order) |
+| `end` | `loop` |
+
+The town watchman's patrol package (data.route `market-loop`) and the baker's follow-path package both use it; each has
+its own place on it, and both stop four seconds at the well.
+
 Questions: what is a path? how do characters walk a route? can several characters share a path?
 
 ## Drawing a path with the Path tool
@@ -37,6 +51,19 @@ Choose **Path** on the toolbar.
 Label…; Delete point (a point in the middle of a line joins its neighbours); Finish drawing.
 
 With the Select tool, clicking a point selects its path.
+
+### Example: drawing a guard's round with a fork to the tavern
+
+1. Choose **Path** on the toolbar.
+2. Click the gate, then four more points along the wall to the square, then back towards the gate. Press **Enter**. The
+   path is named `path-1`.
+3. Click the square's point to pick it, then click by the tavern door twice: a branch from the square to the tavern.
+4. With the tavern's last point picked, **Shift+click** the wall point after the square: the branch joins the round again.
+5. Right-click the tavern door point ▸ **Wait here…**, type `10`. Right-click it again ▸ **Label…**, type `tavern`.
+6. In Inspector ▸ Path, set **name** to `guard-round` and **end** to `loop`.
+
+The square is now a fork: guards walking `guard-round` go on along the wall or detour to the tavern door for ten
+seconds, then rejoin.
 
 Questions: how do I draw a path? how do I make a fork in a path? how do I delete a point? how do I join two branches?
 
@@ -57,6 +84,15 @@ default. The path being drawn, the selected path and the selected character's pa
 
 Deleting a path that packages use says which packages use it (undo brings it back).
 
+### Example: renaming path-3 to river-walk
+
+1. With the Select tool, click any diamond of `path-3` in the viewport.
+2. Inspector ▸ Path lists who uses it: the packages `fisher-walk` and `washer-walk`, and the characters Old Ivo and
+   Bryn.
+3. Change **name** to `river-walk`.
+4. Open Project ▸ Records ▸ package ▸ `fisher-walk`: its **data ▸ route** now reads `river-walk`.
+5. To see only this path, untick **View ▸ Paths**; the selected path stays bright, others are hidden.
+
 Questions: how do I rename a path? what do the link colours mean? how do I hide paths in the viewport? how do I see who
 uses a path?
 
@@ -73,6 +109,21 @@ A point can say what's done there by everyone who walks the path:
 Stops can be switched off for one walker: the `follow-path` step's `stops: false`.
 
 Example: a market loop with a point at the well (wait 4, clip `drink`) and one at the bakery (use `door`, wait 6).
+
+### Example: a milkmaid's round that stops, drinks and delivers
+
+1. Draw a path `milk-round` from the dairy to the well, the bakery and back.
+2. Right-click the well point ▸ **Wait here…** `4`, then ▸ **Play a clip here…** `drink`.
+3. Right-click the bakery point ▸ **Use a part here…** `door`, then ▸ **Wait here…** `6`.
+4. Select the path; in Inspector ▸ Path, the bakery point's row has its wait and part; in the points JSON add a `do`:
+
+```json
+{ "x": 14, "y": 3, "use": "door", "wait": 6, "label": "bakery",
+  "do": [{ "op": "send_event", "event": "milk_delivered" }] }
+```
+
+Walking the round, the milkmaid drinks at the well for four seconds, opens the bakery door, waits six seconds, and the
+event `milk_delivered` is sent each time (a script can count deliveries with `on("milk_delivered", ...)`).
 
 Questions: how do I make a character stop at a point? can a character play an animation on a path? can a path point run
 effects?
@@ -101,6 +152,30 @@ choices, seeded, so a playtest replays the same.
 Example: a fork at the square: to the tavern with weight 1 and `if: [{"time": {"from": 18, "to": 23}}]`, to the market
 with weight 3, and the market link as default.
 
+### Example: a watchman's patrol on a named path with a fork
+
+The path `town-watch` runs gate → square, and at the square forks: to the tavern (label `tavern`), or on to the market
+(label `market`). Both join again at the north gate.
+
+1. Select the path; in Inspector ▸ Path, at the square's fork:
+   - the tavern link: **weight** `1`, conditions `[{"time": {"from": 18, "to": 23}}]`;
+   - the market link: **weight** `3`, **default** ticked;
+   - a third link to the guardhouse: **first** ticked, conditions `[{"flag": "alarm_raised"}]`.
+2. The three links leaving the square (point 1) in the links' JSON (the path's other links are in the same list):
+
+```json
+[
+  { "from": 1, "to": 2, "label": "tavern", "weight": 1, "if": [{ "time": { "from": 18, "to": 23 } }] },
+  { "from": 1, "to": 4, "label": "market", "weight": 3, "default": true },
+  { "from": 1, "to": 6, "label": "guardhouse", "priority": true, "if": [{ "flag": "alarm_raised" }] }
+]
+```
+
+3. Make a package `watch-town`: template `patrol`, **data ▸ route** `town-watch`, schedule `20:00`-`06:00`.
+
+From 18:00 to 23:00 the watchman takes the tavern way one time in four, otherwise the market; after 23:00 only the market
+holds. If `alarm_raised` is set when he reaches the square, he goes to the guardhouse.
+
 Questions: how do forks work? how do I make a character choose a branch by a condition? what does priority do? how do I
 weight a branch?
 
@@ -118,6 +193,25 @@ Several characters share a path: each keeps its own place, and waits a moment ra
 going to the same point. Characters open doors on their way. A point that can't be reached within 30 seconds makes the
 step fail. The blackboard keys `path`, `pathPoint` and `pathBranch` say where a character is (the Play overlay uses
 them).
+
+### Example: a pilgrim who walks to the shrine once and stays, preferring the river road
+
+1. Draw `pilgrim-way` from the village to the shrine, forking halfway into a hill road (label `hill`) and a river road
+   (label `river`).
+2. Make a custom package `pilgrim-go` with this procedure:
+
+```json
+{"type": "sequence", "children": [
+  {"type": "follow-path", "path": "pilgrim-way", "mode": "once", "from": "start", "weights": {"river": 3, "hill": 1}},
+  {"type": "say", "text": "At last."},
+  {"type": "idle"}
+]}
+```
+
+3. Put it in the pilgrim's Behaviour packages.
+
+She walks from the first point, takes the river road three times in four, says "At last." at the shrine and stands
+there. With `"hold": true` instead of the next steps, she'd stand at the end without speaking.
 
 Questions: how do I make a guard walk a path? what are the follow-path modes? how do I make a character prefer one
 branch? how do I stop at the end of a path?
@@ -139,5 +233,29 @@ branch? how do I stop at the end of a path?
 - Checks: a package's `data.route`, and a procedure's follow-path or patrol path, names a path in the scene or one added
   in the same answer; `data.mode` is once, loop or wander; an added path has at least two points, links between points
   it has, weights above zero, conditions that are JSON lists, and an end of stop, loop or back.
+
+### Example: a ghost that walks the manor path by script, and a path round the chapel from the AI
+
+A scripted package (`scripts/ai/ghost.lua`, template `script`):
+
+```lua
+function run()
+  while true do
+    if follow_path("manor-hall", "start") then
+      say("Whooo...")
+      wait(10)
+    else
+      wait(2)   -- a point couldn't be reached
+    end
+  end
+end
+```
+
+To have the AI draw a path, select the chapel and type in the AI panel:
+
+> "make a path called chapel-round just outside the chapel and have the monk walk it"
+
+It uses `path.around {name: "chapel-round", entity: "chapel"}` and writes a patrol package for the monk; Diff Review
+shows both. After Apply the path's diamonds appear round the chapel.
 
 Questions: can a script walk a path? can the AI draw a path? how do I make a path around a building?

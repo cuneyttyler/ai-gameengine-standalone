@@ -162,8 +162,12 @@ function framesOf(entry: HistoryEntry): string[] {
   return entry.results.filter((r) => !r.discarded && !r.path.endsWith('-sheet.png')).map((r) => r.path)
 }
 // The clip its action is, for the animators: walking walks, an attack attacks, a spell casts; anything else loops.
+// A thing's motions first, as the service names them (charsheet.clip_for): "the lid swings open" is open, not attack.
 function clipFor(action: string): string {
   const a = action.toLowerCase()
+  if (/open/.test(a)) return 'open'
+  if (/close|shut/.test(a)) return 'close'
+  if (/break|shatter|smash|destroy/.test(a)) return 'break'
   return /walk|run/.test(a) ? 'walk' : /attack|strik|swing/.test(a) ? 'attack' : /cast|spell/.test(a) ? 'cast' : /hurt|hit/.test(a) ? 'hurt' : /die|death/.test(a) ? 'die' : 'idle'
 }
 function make(entry: HistoryEntry, prefab: boolean): void {

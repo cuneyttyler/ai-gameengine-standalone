@@ -26,6 +26,30 @@ A package has:
 A character uses packages through its **Behaviour** component's `packages` list. The same package can be shared by any
 number of characters (each runs its own copy).
 
+### Example: Vara Bell, the innkeeper, lives in her inn and cooks
+
+The Golden Goose inn is a building named `golden-goose` with a stove inside (a Reaction whose station is `cook`). Vara
+should potter about indoors and cook often, never wandering outside.
+
+1. In Project ▸ Records, press **+** on the **package** group; **Id** `vara-live`.
+2. **template** `live`; **description** `Vara keeps the inn and cooks.`
+3. **location ▸ building**: pick `golden-goose`.
+4. **data ▸ actions**: add one row, **action** `cook`, **weight** `2`. **data ▸ outsideWeight**: `0`.
+5. Press **Create**. **What live does** now shows the cook weight 2 against wandering in the rooms 2, and outside never.
+
+```json
+{
+  "template": "live",
+  "description": "Vara keeps the inn and cooks.",
+  "location": { "building": "golden-goose" },
+  "data": { "actions": [{ "action": "cook", "weight": 2 }], "outsideWeight": 0 }
+}
+```
+
+6. Select Vara Bell in the scene and in Inspector ▸ Behaviour type `vara-live` in **packages**.
+
+Press Play: Vara walks between the inn's rooms and, about half the time, goes to the stove and cooks.
+
 Questions: what is an AI package? how do I make a character do things on its own? where are packages stored?
 
 ## The package stack: which package runs
@@ -48,6 +72,20 @@ broad one fills the gaps.
 Example stack for an innkeeper: 1 `innkeeper-sleep` (22:00-06:00), 2 `innkeeper-work` (08:00-20:00), 3 `innkeeper-live`
 (no schedule: everything else).
 
+### Example: Vara's day, and a quest that takes her away
+
+1. Make three packages in Project ▸ Records ▸ package: `vara-sleep` (template `sleep`, **location ▸ alias** `bed`,
+   **schedule** from `22:00` to `06:00`), `vara-work` (template `vendor`, **location ▸ building** `golden-goose`,
+   **schedule** `08:00` to `20:00`) and `vara-live` (the live package above, no schedule).
+2. Select Vara; in Inspector ▸ Behaviour set **packages** to `vara-sleep, vara-work, vara-live`, and **bed** to the
+   marker `vara-bed`.
+3. For the quest "Missing Supplies", make `vara-to-market` (template `travel`, **location ▸ marker** `market-gate`,
+   **flags ▸ mustComplete** ticked). In the quest's stage effects, push it: `{"op": "push_package", "package":
+   "vara-to-market", "who": "Vara Bell"}` (or from Lua, `push_package(entity_named("Vara Bell"), "vara-to-market")`).
+
+At 22:00 Vara goes to bed; from 08:00 she serves; between, she lives in the inn. When the quest pushes
+`vara-to-market`, she walks to the market gate whatever the hour, until it's popped.
+
 Questions: which package does a character run? why isn't my package running? how do I give a character a daily
 schedule? how do I make a quest change what a character does?
 
@@ -69,6 +107,19 @@ Pickers in the form list the scene's named things, markers and scenes. The place
 entity, then alias, then marker, then the point; with none of them, the character's `home` marker, else where it
 stands. Name places by things in the scene, never by guessed coordinates; renaming a thing breaks packages that name it.
 
+### Example: a farmer who works the field and goes to market in town
+
+1. Open the package `tomas-farm` (template `wander`). In **location**, pick `wheat-field` in **marker**; **data ▸
+   radius** `4`. **Save**.
+2. Make `tomas-market` (template `stay`): **location ▸ building** `market-stall-2`, **location ▸ scene**
+   `scenes/town.aige`, **schedule** from `10:00` to `14:00`, **days** `6`. **Create**.
+3. Make `tomas-home` (template `stay`): **location ▸ alias** `home`. **Create**.
+4. On Tomas, set Behaviour **packages** to `tomas-market, tomas-farm, tomas-home` and **home** to the marker
+   `tomas-house`.
+
+On weekday 6 between 10:00 and 14:00 Tomas is "away" from the farm scene (hidden) and stands at stall 2 in town; the rest
+of the time he wanders within four cells of the wheat-field marker.
+
 Questions: how do I tell a package where to go? what is location.building? can a package send a character to another
 scene? what are aliases home, work and bed?
 
@@ -84,6 +135,22 @@ custom and script (accompany always follows the player).
 
 Example: a dog package with template follow, target `Vara`, data.distance 1.5. A companion uses accompany, which follows
 the player at `data.distance` (default 2).
+
+### Example: Vara's dog follows her, and a frightened villager flees the wolf
+
+1. In Project ▸ Records ▸ package, press **+**; **Id** `biscuit-follow-vara`: **template** `follow`, **target**
+   `Vara Bell` (picked from the list), **data ▸ distance** `1.5`. **Create**.
+
+```json
+{ "template": "follow", "target": "Vara Bell", "data": { "distance": 1.5 } }
+```
+
+2. Select the dog Biscuit; in Inspector ▸ Behaviour set **packages** to `biscuit-follow-vara`.
+3. Make `flee-wolf`: **template** `flee`, **target** `Grey Wolf`, **data ▸ distance** `10`, **conditions**: flag
+   `wolf_loose`. Put it first in the villagers' packages.
+
+Biscuit trots a cell and a half behind Vara wherever she goes. Once `wolf_loose` is set, villagers run until they're ten
+cells from the wolf.
 
 Questions: how do I make a character follow the player? how do I make a character follow another character? what does
 target do?
@@ -102,6 +169,25 @@ with the condition flag `alarm_raised` set. The guard switches as soon as the fl
 
 The game clock starts at Time.startHour and runs at Time.minutesPerSecond (Project Settings).
 
+### Example: a night watchman who works weekdays and answers the alarm
+
+1. In Project ▸ Records ▸ package, open `guard-night` (template `patrol` on the route `town-wall`).
+2. **schedule ▸ from** `20:00`, **to** `06:00`, **days** `1,2,3,4,5`.
+3. In **conditions**, add a row: **flag** `alarm_raised`, untick **flagValue**. **Save**.
+4. Make `guard-alarm` (template `travel`, **location ▸ marker** `north-gate`, **flags ▸ run** ticked) with the condition
+   **flag** `alarm_raised` (flagValue ticked), and put it above `guard-night` in the guard's Behaviour packages.
+
+```json
+{
+  "template": "patrol",
+  "data": { "route": "town-wall" },
+  "schedule": { "from": "20:00", "to": "06:00", "days": "1,2,3,4,5" },
+  "conditions": [{ "flag": "alarm_raised", "flagValue": false }]
+}
+```
+
+On weekday nights he walks the wall; the moment a script or dialogue sets `alarm_raised`, he heads for the north gate.
+
 Questions: how do I make a package run only at night? how do I make a package run only on weekdays? can a package depend
 on a quest? how do I write package conditions?
 
@@ -115,6 +201,16 @@ on a quest? how do I write package conditions?
 
 Combat, fleeing and searching take over from any package when perception or an attack calls for it (see "Behaviour
 component"); the package resumes afterwards.
+
+### Example: a courier who always finishes his delivery
+
+1. In Project ▸ Records ▸ package, make `pip-deliver` (template `travel`, **location ▸ building** `golden-goose`,
+   **schedule** from `09:00` to `09:30`).
+2. In **flags**, tick **mustComplete**. **Create**.
+3. On Pip the courier, set Behaviour **packages** to `pip-deliver, pip-wander`.
+
+At 09:30 Pip is still on the road; without mustComplete he would turn back to wandering, but with it he reaches the inn
+first and only then switches to `pip-wander`. If a wolf attacks on the way, he fights or flees, then carries on.
 
 Questions: what does mustComplete do? how do I stop a package being interrupted? how do I make a character run?
 
@@ -134,6 +230,23 @@ default, not zero. Weights are the exception: a weight of 0 (outsideWeight, insi
 means never.
 
 The same `@data:` syntax works in any procedure you write, so a custom package can take its own parameters.
+
+### Example: a wanderer who pauses longer, and a procedure with its own parameter
+
+1. Open the package `old-man-wander` (template `wander`). Its outline shows "(data.waitMin, the template's)".
+2. Set **data ▸ waitMin** `5` and **waitMax** `12`. **Save**. The outline now shows 5 and 12, and in Play the old man
+   stands 5-12 seconds between walks.
+3. In a procedure of your own, write a parameter with a default so each package can change it:
+
+```json
+{ "type": "loop", "children": [
+  { "type": "wander", "radius": "@data:radius=4" },
+  { "type": "wait", "min": "@data:pause=3", "max": "@data:pause=3" }
+] }
+```
+
+A custom package using it with `"data": { "radius": 8 }` wanders eight cells; one with empty data uses 4. Setting
+`radius` to 0 also gives 4, because 0 counts as empty.
 
 Questions: what does @data mean? what happens if I leave a data field empty? why does waitMin 0 not stop the waiting?
 how do I turn off wandering in live?
@@ -156,6 +269,22 @@ live and tend; a target for follow, escort and flee; a path for patrol; a script
 with known steps, buildings and entities it names exist in the scene, routes name an existing path, and every package a
 Behaviour lists exists or is written in the same answer. Review it in Diff Review like any change.
 
+### Example: asking the AI to give the blacksmith a routine
+
+1. Select Brannoc the blacksmith in the scene and open the AI panel.
+2. Type:
+
+   > "Brannoc works at the forge in the smithy from 7 to 18, hammering most of the time and sometimes sweeping; at night
+   > he sleeps in his bed"
+
+3. The proposal shows two records and a change to Brannoc: `brannoc-work` (template `live`, **location ▸ building**
+   `smithy`, data actions `hammer` weight 3 and `sweep` weight 1, schedule 07:00-18:00), `brannoc-sleep` (template
+   `sleep`, **location ▸ alias** `bed`, schedule 22:00-06:00), and Behaviour **packages** `brannoc-sleep, brannoc-work`.
+4. If the smithy had no part or Reaction named `sweep`, the check reports it before you see the proposal and the AI fixes
+   it. Press **Apply** in Diff Review.
+
+Press Play and F4: Brannoc's label reads `brannoc-work` during the day.
+
 Questions: can the AI give a character a routine? how does the AI write packages? what does the AI check in packages?
 
 ## Debugging packages
@@ -169,6 +298,17 @@ Questions: can the AI give a character a routine? how does the AI write packages
   location names a thing that was renamed; a template is missing its data (a use-part package with no action, a follow
   package with an empty target); nothing usable is within the radius (a smart object, a part or a Reaction), so the
   template's fallback (walk to the place and wait) runs instead.
+
+### Example: why Vara stands still at noon
+
+1. Press Play, then **F4**. Vara's label reads `vara-work`, but she just stands.
+2. Open Project ▸ Records ▸ package ▸ `vara-work` (or press ✎ beside it in Inspector ▸ Behaviour): its **location ▸
+   building** reads `golden-goose`, but the inn was renamed `goose-inn` in the Hierarchy, so the place isn't found.
+3. In **location ▸ building**, pick `goose-inn` and **Save**.
+4. Back in Play, F4 shows `vara-work` and she walks behind the counter.
+
+If instead her label read `idle`, no package held: check the schedules in her Behaviour list (maybe `vara-work` runs only
+on `days` 1-5 and today is day 6).
 
 See also: Package templates, Behaviour component, Paths.
 

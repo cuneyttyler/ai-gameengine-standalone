@@ -19,6 +19,15 @@ saved.
 A new project with no `prefabs/` folder gets a starter set: **grass**, **dirt**, **wall** (tiles), **player**, **npc**,
 **enemy**, **potion** and **gateway**. They're ordinary files: edit, restyle or delete them.
 
+### Example: every pine in the forest gets a new picture
+
+The forest scene has forty copies of the `pine` prefab. Two of them, by the road, were made smaller on purpose.
+1. Select any pine and pick a new picture in **Sprite ▸ texture** (`pine_winter.png`).
+2. Click **Apply to prefab** in the Inspector's Prefab header.
+3. All forty pines in the open scene show the winter picture at once; the two by the road stay smaller, as their size
+   was their own override.
+4. Open the `mountain_pass` scene, which also has pines: they're brought up to date as it opens.
+
 Questions: what is a prefab? where are prefabs stored? what happens to placed copies when I change a prefab? what are
 the default prefabs?
 
@@ -38,6 +47,15 @@ picks a range, **Ctrl+A** everything shown, **Escape** clears, **Delete** delete
 cards onto a folder to move them. When you select a copy in the scene, its prefab is picked and scrolled to here.
 
 **Refresh** rescans the project folder (for files changed outside the editor).
+
+### Example: finding the rope bridge among two hundred prefabs
+
+1. Press **J** to show the Assets panel and click **Prefabs**.
+2. Click the folder `props/outdoor` on the left, then the **Other** chip.
+3. Type `bridge` in **Search**: two cards remain, `rope_bridge` and `stone_bridge`.
+4. Click `rope_bridge` to pick it as the brush. (The first nine cards also show numbers: press **3**, say, to pick the
+   third one without the mouse.)
+5. Later, click a bridge copy in the scene: its card is picked and scrolled to here.
 
 Questions: where is the prefab palette? how do I filter prefabs? what are the numbers on prefab cards? how do I find
 the prefab of an object I selected?
@@ -61,6 +79,16 @@ button shows **Place <name>** or **Paint <name>**.
 **Escape** or **V** goes back to the Select tool. **E** is the Erase tool: click a thing to delete it, or a built
 place's ground cell to erase it.
 
+### Example: a cobbled square with a fountain in the middle
+
+1. In Assets ▸ Prefabs, click the `cobble` tile card. The toolbar's brush button shows **Paint cobble**.
+2. Press **Shift+wheel** until the brush is 3×3, then drag across the square: every cell the stroke crosses becomes
+   cobbles.
+3. Click the `fountain` card (**Place fountain**), set **Size %** to `150` on the toolbar, and click the square's
+   centre cell once. The fountain copy is placed and selected.
+4. Pick the `bench` prefab, press **R** to mirror it, and click either side of the fountain.
+5. Press **Escape** to go back to the Select tool; press **E** and click a bench to delete it with the Erase tool.
+
 Questions: how do I place an object? how do I paint ground tiles? how do I paint a bigger area at once? how do I place
 things smaller? how do I stop placing?
 
@@ -81,6 +109,18 @@ refused.
 With several images picked, the details offer **Make a prefab from each** (named after their files) and **Import N as
 prefabs…** (see assets.md, Import as prefabs).
 
+### Example: a haystack prop from a generated picture
+
+1. In **Assets ▸ Assets**, click `haystack.png`. Its details show **Make a prefab from it**.
+2. **Name**: keep `haystack`.
+3. **Drawn**: the picture is 2:1, so it's guessed **Isometric / upright**; leave it.
+4. Tick **Solid** so the haystack blocks its cell.
+5. Click **New prop prefab**. The editor says "Created prefabs/haystack.prefab — click in the viewport to place it":
+   click in the farmyard to place a few.
+
+For a ground tile from a tileset such as `meadow_tiles.png`, click the tile in the tile picker (the name becomes, say,
+`meadow_tiles_7`), leave **Solid** off and click **New tile prefab**.
+
 Questions: how do I turn an image into a prefab? what is the difference between a tile prefab and a prop prefab? how do
 I use one tile of a tileset? how do I make a solid prop?
 
@@ -93,6 +133,15 @@ returns the entity to an ordinary one (the file stays).
 
 This is how you make a reusable character or prop you've set up by hand: add its components, set its fields, then
 save it as a prefab and place more copies.
+
+### Example: a reusable town guard
+
+1. Set up a guard by hand: an entity `Town guard` with Sprite, Health (max `40`), Team Neutral, MeleeAttack and a
+   Behaviour whose **work** is `gate_post`.
+2. Right-click it ▸ **Save as prefab…** and type `town-guard`.
+3. `prefabs/town-guard.prefab` is written without the guard's position; the guard becomes its first copy.
+4. Pick `town-guard` in Assets ▸ Prefabs and place three more at the other gates; set each one's **work** marker on its
+   copy.
 
 Questions: how do I make a prefab from an entity? can I reuse an NPC I set up? why is Save as prefab greyed out?
 
@@ -110,6 +159,14 @@ To throw away a copy's changes: **Revert all**, **↺** beside a field, or right
 Some changes go to the prefab directly: **Add interior** and animating a part (Animate a part…, Animate the interior…,
 Build ▸ Animate) put the result on the prefab of the copy, so every copy has it. **Lay flat on the grid (top-down
 art)** / **Stand upright (isometric art)** in a prefab card's right-click menu changes how the prefab is drawn.
+
+### Example: making every lantern flicker
+
+1. Select one lantern copy in the street and add **Light2D** (+ Add component) with **flicker** `0.3`, **radius** `3`.
+2. The Prefab header counts the new component as an override of this copy.
+3. Click **Apply to prefab**: every lantern in the scene now flickers. One lantern you'd already made brighter keeps its
+   own brighter value.
+4. On the lantern in the alley, which should stay dark, click **↺** beside **flicker** (or **Revert all**).
 
 Questions: how do I edit a prefab? how do I change all trees at once? why didn't my change reach the other copies? how
 do I update every copy?
@@ -132,6 +189,15 @@ Right-click a prefab card:
 Right-click a folder for **Rename folder…**, **Show in Explorer** and **Remove folder…** (its contents move up a level
 unless you tick "Also remove the N prefabs in it"). With several cards picked: **Move N to folder…** and **Delete N…**.
 
+### Example: tidying the character prefabs into a folder
+
+1. In Assets ▸ Prefabs, **Ctrl+click** the cards `guard`, `miller` and `innkeeper`.
+2. Right-click one ▸ **Move 3 to folder…** and type `characters/town`. The folder is created and every scene and quest
+   that uses them is updated.
+3. Right-click `innkeeper` ▸ **Rename…** and type `vara-bell`: the scenes' copies follow.
+4. Right-click the unused `old_cart` card ▸ **Delete prefab…** and confirm; its two copies in the scene stay as ordinary
+   entities ("2 copies kept as ordinary entities").
+
 Questions: how do I rename a prefab? how do I organise prefabs into folders? what happens when I delete a prefab?
 
 ## Replacing a prefab in the scene
@@ -144,6 +210,15 @@ becomes the second, where it was. One undo step."
 - For a ground tile it covers hand-painted tiles and a built place's ground alike.
 
 Press **Replace it** / **Replace every copy**. Each copy keeps its place, and how it was turned and mirrored.
+
+### Example: autumn comes to the village
+
+1. Choose **Edit ▸ Replace prefab…**.
+2. **Replace**: `oak`. **With**: `oak_autumn`.
+3. Press **Replace every copy**: every oak in the scene becomes an autumn oak in the same place, turned and mirrored as
+   before. One **Ctrl+Z** puts them all back.
+4. For the ground, open the dialog again with **Replace** `grass` and **With** `grass_autumn`: hand-painted tiles and
+   the built place's ground change alike.
 
 Questions: how do I swap all copies of one prefab for another? how do I replace one tree with another kind? how do I
 change the ground tile everywhere?
@@ -159,6 +234,16 @@ change the ground tile everywhere?
   **Delete…**. Click a clip name on a card to play it; double-click to open it in Effects.
 - **Assets ▸ Assets**: a generated character whose pictures are named `…-south.png`, `…-east.png` and so on in one
   folder has **Make player** in its right-click menu: the player, facing the way it walks.
+
+### Example: Mira the ranger becomes the player
+
+You generated Mira with Generate ▸ Character and she has a sheet in Assets ▸ Characters.
+1. In **Assets ▸ Characters**, right-click `mira` ▸ **Make player**. A prefab that plays her sheet is made.
+2. Delete the old player from the scene, then pick Mira's prefab in Assets ▸ Prefabs and click where she should
+   start.
+3. Right-click `old-fisher` ▸ **Make NPC** for an NPC that plays his sheet, and place him on the pier.
+4. To give the windmill its turning sails, select it, then in **Assets ▸ Animations** right-click `windmill_sails` ▸
+   **Add to selected**.
 
 Questions: how do I make a player from a generated character? how do I make an NPC prefab? how do I give an object an
 animation?

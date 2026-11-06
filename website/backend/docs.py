@@ -84,8 +84,9 @@ def _parse(area: str, page: str, nav: str) -> dict | None:
             sub_heading, _, sub_body = piece.partition("\n")
             sub_heading = sub_heading.strip()
             example = sub_heading.lower().startswith("example")
+            shown = re.sub(r"^example:\s*", "", sub_heading, flags=re.I) if example else sub_heading
             subsections.append({
-                "title": re.sub(r"^example:\s*", "", sub_heading, flags=re.I) if example else sub_heading,
+                "title": shown[:1].upper() + shown[1:],
                 "slug": unique(f"{section_slug}-{_slug(sub_heading)}"),
                 "example": example,
                 "html": _html(sub_body.strip()),

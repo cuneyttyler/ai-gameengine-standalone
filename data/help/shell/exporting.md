@@ -18,6 +18,17 @@ into the export, the accessibility report, the version, icon and splash, the deb
 When it's done, **Game exported** says how many files were written and where, for example "…files in
 D:\Games\My Game. Run the .exe inside to play." **Show in Explorer** opens the folder.
 
+### Example: sending "Lanternfall" to a friend as a zip
+
+1. Make sure you're not playing (the Play menu says Play, not Stop), then click File ▸ Export Game….
+2. The name box shows `Lanternfall`; keep it and click Next.
+3. Choose Folder and .zip.
+4. Choose Leave it off for the debug console, since your friend is a player, not a tester.
+5. The editor saves the scene and settings if they have unsaved changes.
+6. Pick `D:\Exports` as the folder.
+7. Game exported says how many files were written, in `D:\Exports\Lanternfall`, and `D:\Exports\Lanternfall.zip` is
+   beside it. Click Show in Explorer and send the .zip; your friend unzips it and runs `Lanternfall.exe`.
+
 Questions: how do I export my game? how do I make a zip of my game? should I keep the debug console?
 
 ## What an export contains
@@ -35,6 +46,29 @@ Left out: `.cache`, the AI log, hidden files and folders, generation sidecars (`
 top of the project (such as editor-layout.json). With .zip chosen, `<destination>\<Name>.zip` holds the same folder.
 The game starts at Project Settings ▸ Game ▸ startScene.
 
+### Example: checking what went into the export
+
+After exporting "Lanternfall" to `D:\Exports`:
+
+1. Open `D:\Exports\Lanternfall`. It holds `Lanternfall.exe` (with your `assets/icon.png` as its icon), `shaders/` and
+   `game/`.
+2. Open `game/export.json` in a text editor. It records the name, version and start scene, plus when it was
+   exported and whether the debug console was kept, something like:
+
+```json
+{
+  "name": "Lanternfall",
+  "exported": "2026-11-06T14:02:11Z",
+  "engine": "AIGE",
+  "version": "0.3.0",
+  "debugConsole": false,
+  "startScene": "scenes/village_green.aige"
+}
+```
+
+3. A notes file you kept at the top of the project, such as `design-notes.txt`, isn't there: only the game's runtime
+   content goes in. Neither are `.cache`, the AI log or `.gen.json` sidecars.
+
 Questions: what files are in the exported game? why is a file missing from my export? where does the exported game
 start?
 
@@ -50,6 +84,18 @@ the failing checks, so you can ask it to fix the theme's contrast, for example.
 Exported games give players their own options too: text size, high contrast, colour-blind colours, reduce motion,
 reduce flashes, hold to toggle, subtitles and UI scale.
 
+### Example: fixing a contrast failure after export
+
+1. Export the game. Game exported reads "Accessibility: 9/10 checks pass" and lists the failing check: the text
+   contrast against panels is too low.
+2. In the AI panel, type:
+
+> "The export says the theme's text contrast against panels fails. Fix the theme so it passes."
+
+3. Review and accept the change, then export again (into a new folder or after deleting the old export, since
+   exports never overwrite). The report now shows the contrast check passing; the full report is in
+   `game/accessibility.json`.
+
 Questions: what is the accessibility report? why does my export fail accessibility checks? how do I fix contrast?
 
 ## Version, icon, splash and crash log
@@ -61,6 +107,15 @@ Questions: what is the accessibility report? why does my export fail accessibili
 - **Crash log**: if the game crashes, it writes what happened and the version to `crash.log` beside its saves, and
   tells the player.
 - **Debug console**: it's only in the export if you chose Keep it.
+
+### Example: a version number, icon and splash for the first release
+
+1. Open File ▸ Project Settings… ▸ Game and set version to `1.0.0`.
+2. Set splash to `assets/ui/lanternfall_logo.png` (a picture you imported into assets).
+3. Put a square picture at `assets/icon.png`.
+4. Press Ctrl+S, then File ▸ Export Game….
+5. Run the exported game: the logo shows for two seconds (any key skips it), the window's title shows 1.0.0, and the
+   exe and window use the lantern icon. If the game ever crashes, `crash.log` beside its saves names version 1.0.0.
 
 Questions: how do I set my game's icon? how do I add a splash screen? where is the crash log?
 
@@ -76,6 +131,15 @@ Questions: how do I set my game's icon? how do I add a splash screen? where is t
 - **"Stop playing first."**: Export is off during Play.
 
 Building a game from a Planner design (places, characters, quests) is a different thing, done in the Planner panel.
+
+### Example: exporting a second build next to the first
+
+1. Yesterday you exported Lanternfall to `D:\Exports`. Today you export again to the same folder.
+2. The export refuses: `D:\Exports` already has a `Lanternfall` folder, and exports never overwrite.
+3. Either rename the old folder to `Lanternfall-0.3` in Explorer and export again, or type the name `Lanternfall 0.4`
+   in the export's name box so the new folder gets that name.
+4. If the message notes a Debug player, build the Release configuration of the player before your final export for
+   a smaller, faster game.
 
 Questions: why did export fail? export says no built player found? why is my exported game slow? can I overwrite an
 export?

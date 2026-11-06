@@ -20,6 +20,15 @@ pad B), `inventory` (I, Tab, pad Y), `crafting` (C), `put_back` (right mouse, Z,
 **Interact is the default action**: talk, open, pick up, use. `attack` does something only for a character with
 MeleeAttack (or RangedAttack for `fire`).
 
+### Example: moving interact off Space
+
+1. Open **Project Settings ▸ Input** and find `interact` (E, Space, pad A; situation gameplay).
+2. Remove the Space binding, so Space is free for a jump of your own.
+3. Find `quicksave` and check it's still F6.
+4. Press Play: **E** now talks, opens and picks up; Space does nothing until you bind it.
+
+The change is saved to the project's `input.json`; scripts that ask for `action_pressed("interact")` keep working.
+
 Questions: what keys does the game use? how do I rebind a key? what does the interact key do?
 
 ## Adding your own action
@@ -38,6 +47,18 @@ group, its bindings (**+ Key**, **+ Button…**; axes have + Key (+) and + Key (
 
 Example, right click to parry: add `parry`, bind MouseRight, plays `parry`. Scripts ask for actions by name
 (`action_pressed("farm")`), so rebinding changes nothing in them.
+
+### Example: a "kick" action with its own clip and event
+
+1. In Project Settings ▸ Input, type `kick` in "a new action: farm, parry, kick…" and press **Add action**.
+2. **+ Key**: press **G**. **+ Button…**: pad Y. Description `Kick doors and barrels`.
+3. **plays**: `attack_kick` (the player's kick clip, made in Generate ▸ Animate).
+4. **event**: press **New event…** and name it `kick`. **effect**: `hit-dust`.
+5. Tick **only near something it activates**, so the kick only plays beside a barrel or door that uses it.
+6. Give the barrels a Reaction: trigger `input`, action `kick`, range `1.2`, becomes `prefabs/barrel-broken.prefab`.
+
+In play, pressing G next to a barrel plays the kick clip with dust, sends `kick` (a script can count kicks with
+`on("kick", fn)`), and the barrel turns into its broken prefab. Away from barrels, G does nothing.
 
 Questions: how do I add a new key action? how do I make a key play an animation? how do I make a key open a screen?
 
@@ -61,6 +82,17 @@ uses it:
 
 Missing an item it requires or takes, it says what ("Needs 2 seeds, Hoe") and does nothing.
 
+### Example: a well where you fill a bucket, which takes three seconds
+
+1. Select the well and choose **Reaction** from **+ Add component**.
+2. **trigger** `input`, **action** `interact`, **range** `1.5`, **prompt** `Draw water`.
+3. **requires** `bucket`; **takes** `bucket`; **gives** `bucket-water`.
+4. **userAnimation** `use_pickup`; **duration** `3`; **text** `You fill the bucket.`; **cooldown** `2`.
+5. **do**: `[{"op": "add_var", "var": "water_drawn", "value": 1}]`.
+
+In play the prompt reads "E  Draw water". Without a bucket it says "Needs Bucket"; with one, the player works the well
+for three seconds and gets a full bucket. Walking off halfway interrupts it and the empty bucket comes back.
+
 Questions: how do I make an object do something when the player presses a key near it? how do I make a field the player
 can farm? how do I make something take time?
 
@@ -82,6 +114,22 @@ prompt, `locked` with a `key` (and `consumeKey`), `requiresFlag`, `setFlag`, `te
 Every use runs the same steps: can it (not used up or cooling, in range, items, flag) → animations → takes, gives, flag,
 event, text → becomes once the animations end → once and cooldown.
 
+### Example: a locked chest, a sign, and a guard who opens the gate
+
+1. **Locked chest:** select the chest; add an **Interactable** (verb `Open`, name `Chest`, **locked** ticked, **key**
+   `crypt-key`, **consumeKey** ticked) and a **Container** with **loot** `crypt-chest`. Prompt: "Open Chest"; without
+   the key it stays shut; with it, the key is used up and the loot is rolled.
+2. **Sign:** select the signpost; add an **Interactable** with verb `Read`, name `Sign`, **text** `North: Ravenford. East:
+   the Old Mill.` Pressing E shows the text.
+3. **Gate:** the town gate has a **Door** and an **Interactable** with **locked** and **key** `gate-key`. Corporal Hale
+   carries `gate-key` in his Inventory and has a custom package step:
+
+```json
+{ "type": "act", "action": "interact", "around": "town-gate", "radius": 3 }
+```
+
+At dawn Hale walks to the gate and opens it with the key from his own pockets, just as the player would.
+
 Questions: can NPCs use Reactions? what is an Interactable? how do I make a locked chest? how do I make a sign?
 
 ## Farming without a script
@@ -98,6 +146,22 @@ Add the `farm` action in Project Settings ▸ Input (bound to F) and give the pl
 A farmer NPC tends the fields with a package: template `tend`, data action `farm`, radius 12, location the fields; a
 second package with action `interact` harvests. The same Reactions serve the player and the farmer.
 
+### Example: Tomas's wheat field, step by step
+
+1. In Project Settings ▸ Input, **Add action** `farm`, **+ Key** F, **plays** `farm`.
+2. Make the prefab `prefabs/field.prefab` with a Reaction: **trigger** `input`, **action** `farm`, **requires** `seeds`,
+   **takes** `seeds`, **userAnimation** `farm`, **becomes** `prefabs/field-seeded.prefab`, **prompt** `Sow`.
+3. `prefabs/field-seeded.prefab`: Reaction **trigger** `timer`, **seconds** `120`, **becomes**
+   `prefabs/field-grown.prefab`.
+4. `prefabs/field-grown.prefab`: Reaction **trigger** `input`, **action** `interact`, **userAnimation** `use_pickup`,
+   **gives** `wheat*3`, **becomes** `prefabs/field.prefab`, **prompt** `Harvest`.
+5. Paint a row of `field` prefabs by Tomas's farmhouse. Make two packages for Tomas: `tomas-sow` (template `tend`,
+   location marker `fields`, data action `farm`, radius 12) and `tomas-harvest` (the same with action `interact`).
+6. Give the player and Tomas `seeds*10` in their Inventories.
+
+The player presses F on a field to sow it; two minutes later it's grown, and E harvests three wheat. Tomas does the same
+with his own seeds, working whichever fields are free.
+
 Questions: how do I make farming? how do crops grow over time? how do I make an NPC farmer?
 
 ## Moving parts and doors
@@ -111,6 +175,18 @@ doorway of its building), `locked`, `key`, `consumeKey`. Build ▸ Animate or ri
 
 Doors open for anyone who moves: the player, and characters walking by their packages (a locked one only with the key
 in their inventory). Characters use parts with the `use-part` and `act` steps and Lua `use_part`.
+
+### Example: an inn door that opens as people come near, and a locked cellar hatch
+
+1. Select the Golden Goose and choose **Build ▸ Animate** (or right-click its door ▸ **Animate a part…**). Mark the door
+   and make its open clip.
+2. In the new **Reaction: Moving Part**, set **activation** `auto`, **range** `1.5`, **door** ticked (the building's
+   doorway).
+3. Do the same for the cellar hatch, but set **activation** `use`, **prompt** `Open the hatch|Close the hatch`,
+   **locked** ticked, **key** `cellar-key`, **fires** `hatch_opened`.
+
+In play the inn door swings open whenever the player or Vara walks up, and shuts behind them. The hatch shows "Open the
+hatch" but stays shut without the cellar key; with it, it opens and sends `hatch_opened`.
 
 Questions: how do I make a door open when someone comes near? how do I make a lever? how do I lock a door with a key?
 
@@ -126,6 +202,26 @@ and effects (text that isn't a JSON list never holds and does nothing). `do` can
 (`{"op": "open_screen", "screen": "inventory"}`: also crafting, spellbook, journal, or a screen id), and change what a
 character does: `{"op": "push_package", "package": "chase-player", "who": "Mara"}`, `pop_package`,
 `{"op": "say", "text": "..."}`, `{"op": "send_event", "event": "alarm"}`.
+
+### Example: Vara reacts to the quest, a wave, and the alarm
+
+1. Select Vara Bell and choose **Reaction: Character Rules** from **+ Add component**.
+2. Enter this JSON list:
+
+```json
+[
+  { "event": "quest:rats-in-the-cellar:20", "says": "Did I hear squeaking stop?", "once": true },
+  { "event": "action:wave", "range": 3, "says": "Hello, love!", "clip": "wave" },
+  { "event": "alarm", "if": [{ "flag": "alarm_raised" }],
+    "do": [{ "op": "push_package", "package": "hide-in-cellar" }], "says": "Not again!" }
+]
+```
+
+3. Give the bell tower's Reaction `do`: `[{"op": "set_flag", "flag": "alarm_raised"}, {"op": "send_event", "event":
+   "alarm"}]`.
+
+When the rat quest reaches stage 20, Vara says her line once. Pressing the `wave` action within three cells makes her
+wave back. Ringing the alarm makes her cry out and hide in the cellar (her `hide-in-cellar` package is pushed).
 
 See also: Crafting, Dialogue (conditions and effects), AI packages.
 

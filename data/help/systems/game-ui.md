@@ -17,6 +17,19 @@ them with RmlUi (HTML/CSS-like documents) from `data/ui`; a project's own copies
   keyboard, gamepad or mouse.
 - Project Settings ▸ UI ▸ documents off keeps the plain built-in overlays.
 
+### Example: showing the current quest's objective on the HUD
+
+The HUD document reads the `hud` model, so a line of text can show the objective with no code:
+
+1. Open **Project ▸ UI**, select the HUD screen and press **Customise**: the engine's `hud.rml` is copied into the
+   project's `ui/` folder.
+2. Press **Design…**, **Add ▸ text**, anchor it top-right, and type its text with the model's data inserted:
+   `{{objective}}`.
+3. Press **Preview**: with sample data, the line shows an objective under the clock.
+
+In play the line reads "Kill the rats (2/6)" while Rats in the Cellar is active, and is empty otherwise. Pressing a
+menu item by mouse calls the same choice as Enter or the gamepad.
+
 Questions: how do I change the game's menus? where are the game's screens? can I customise the HUD?
 
 ## The UI tab: screens, theme, notifications
@@ -30,6 +43,28 @@ Questions: how do I change the game's menus? where are the game's screens? can I
   used as `var(--token)`); **Save theme** writes `ui/theme.json`.
 - **Notifications:** rules mapping events to notifications (`ui/notifications.json`); **Save rules**.
 - **Check all** shows every screen once and lists what doesn't load ("Every screen loads cleanly").
+
+### Example: a parchment look and a banner for each finished quest
+
+1. Open **Project ▸ UI**. Under **Theme**, set **Base theme** to `parchment`; override the accent colour token with a
+   deep red. **Save theme** writes `ui/theme.json`.
+2. Under **Notifications**, add a rule: event `quest_completed`, channel `banner`, text `Quest complete`, seconds `3`;
+   and one for `item_added` on the `feed` channel. **Save rules**:
+
+```json
+{
+  "schema": "aige.ui-notifications/1",
+  "rules": [
+    { "event": "quest_completed", "channel": "banner", "text": "Quest complete", "seconds": 3 },
+    { "event": "item_added", "channel": "feed", "text": "+{count} {text}", "coalesce": "text", "seconds": 4 }
+  ]
+}
+```
+
+3. Press **Check all**: "Every screen loads cleanly".
+
+Menus, windows and the dialogue box turn parchment-coloured; finishing a quest shows a large banner for three seconds,
+and picking up wheat three times shows one "+3 Wheat" line in the feed.
 
 Questions: how do I change the game's colours? how do I customise a built-in screen? how do I check my screens?
 
@@ -56,6 +91,19 @@ Saved as `ui/designs/<id>.json`, with `ui/screens/<id>.rml` written from it. A h
 RML element, kept whole. Not yet: code-view edits taken back into the design; a checkbox's or slider's value passed on
 (it sends its event).
 
+### Example: a HUD with a health bar, a gold counter and an inventory button
+
+1. In Project ▸ UI, **Customise** the HUD and press **Design…**. Pick the **16:9** canvas.
+2. **Add ▸ bar**: anchor top-left, **Data** HUD data `health` of `health_max`, a red theme colour.
+3. **Add ▸ image**: **Import…** `coin.png` (copied to `assets/ui/coin.png`); next to it **Add ▸ text** `{{gold}}`;
+   **Import font…** `Alagard.ttf` (copied to `assets/fonts/`) and pick it for the text.
+4. **Add ▸ button**: anchor bottom-right, text `Bag`, **On click** open a screen `inventory`. Give it a hover look.
+5. **Add ▸ text** `Night falls...`, with **Only show if** the condition time of day from `20` to `6`.
+6. Look at **Checks** (empty), then press **Preview**.
+
+Saved as `ui/designs/hud.json` with `ui/screens/hud.rml`. In play the bar follows the player's health, the coins count
+up, clicking Bag opens the inventory, and the night line shows after 20:00.
+
 Questions: how do I design a HUD? how do I add a button that opens the inventory? how do I import a picture for the UI?
 how do I use my own font?
 
@@ -73,6 +121,17 @@ Text over people and things, drawn by the HUD document and styled in the designe
 In the designer, the element types bubbles, labels and numbers are templates repeated for each entry (text `{{it.text}}`,
 a bubble's speaker `{{it.name}}`, numbers' colours by kind).
 
+### Example: a sign over the smithy and subtitles instead of bubbles
+
+1. Select the smithy and choose **Label** from **+ Add component**: **text** `Brannoc's Smithy`, **within** `6`,
+   **height** `2.5`.
+2. In Project Settings ▸ UI, set **speech** to `subtitle` and **speechSeconds** to `4`; untick **damageNumbers**.
+3. Give Brannoc a Speech **idle** line `Hot iron waits for no one.`
+
+In play the smithy's name appears over it when the player is within six cells. Brannoc's line shows on the subtitle
+line rather than in a bubble, for four seconds plus a second per 25 letters, and hits no longer show numbers (items
+gained still do: "+1 Iron ingot").
+
 Questions: how do I show speech bubbles? how do I put a name over a shop? how do I turn off damage numbers?
 
 ## Notifications and UI from scripts
@@ -88,5 +147,29 @@ button's On click.
 Lua: `notify(channel, text[, seconds])`, `open_screen(id)`, `close_screen(id)`, `is_open(id)`; a document's
 `action('…')` arrives as the `ui_action` event. The AI panel writes screens, styles, the theme and rules with
 `write_ui`, checked as the UI tab checks them.
+
+### Example: a bounty board screen with a button a script answers
+
+1. In Project ▸ UI, make a new screen `bounties` (it opens in the designer). Add a panel, a text `Wanted: the Redhand
+   chief`, and a button `Accept` whose **On click** sends an event, with the document's action `accept-bounty`.
+2. On the bounty board, add an Interactable (verb `Read`, **event** `read-bounties`) and a script:
+
+```lua
+on("read-bounties", function(e)
+  open_screen("bounties")
+end)
+on("ui_action", function(e)
+  if e.text == "accept-bounty" and is_open("bounties") then
+    close_screen("bounties")
+    start_quest("redhand-bounty")
+    notify("banner", "Bounty accepted", 2)
+  end
+end)
+```
+
+3. Without a script, a Reaction's `do` could open it too: `[{"op": "open_screen", "screen": "bounties"}]`.
+
+Reading the board opens the screen; clicking Accept (or pressing it with keys or a gamepad) closes it, starts the bounty
+and shows a banner.
 
 Questions: how do I show a notification? how do I open a screen from a script? how do I react to a UI button in Lua?

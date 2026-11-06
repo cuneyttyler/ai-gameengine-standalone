@@ -19,6 +19,20 @@ Each request sends the model a summary of the open project as it is now:
 
 What doesn't fit, it reads with tools.
 
+### Example: "this" means what you selected
+
+1. In the Scene panel, select the chest **Cellar Chest**.
+2. In the AI panel type "put 3 healing potions in this" and press **Enter**.
+
+The selected chest is in the context, so the card targets Cellar Chest directly (for example `✎ Cellar Chest · Inventory.items  (empty) → potion*3`) without asking which chest. The same goes for an Inspector field you used **Ask AI** on: its "About ..." chip tells the AI which field "it" is.
+
+### Example: a question about a long script
+
+1. Your project has a 15,000-character `scripts/boss_fight.lua`. Ask "why does the boss stop attacking after phase 2?"
+2. Only the first 6,000 characters of each script travel with the request, so the AI uses **read_file** on the script; the chat shows "Looked at: read_file".
+
+The answer comes back with the whole script read, usually as a proposal that fixes the cause, with the reason in its notes.
+
 Questions: what does the AI know about my project? does the AI see my scripts? how many entities does the AI see?
 
 ## What the AI is told about the engine
@@ -26,6 +40,18 @@ Questions: what does the AI know about my project? does the AI see my scripts? h
 The model is also given the engine's full schema, from the editor at start-up: every component and field with its type, range and options, every project setting, every command with its parameters, and every record type. It may only use what the schema lists and ids and paths that are in the context.
 
 Its instructions also explain the engine's systems so it uses them rather than writing Lua: dialogue and quest formats, routines, cutscenes, gameplay systems (items, inventories, Interactable, Reactions, recipes and crafting, animated parts and doors, interiors), AI packages and paths, difficulty, game UI and designs, animation and effects, magic, physics, the story graph, the Planner, records, scenes and gateways, art and roads, and the complete Lua API. It is told to prefer what exists over new code, to make the smallest change that does what was asked, and, when something can't be done, to make no changes and explain why in its notes.
+
+### Example: a lever that opens a gate, without Lua
+
+1. Ask "Make the lever in the dungeon open the portcullis when the player uses it".
+2. Because its instructions cover the engine's systems, the AI uses them: the card adds an Interactable to the lever and a reaction that opens the portcullis (an animated part or door), rather than a `Write scripts/....lua` row.
+
+You get fewer files to maintain, and the result shows in the Inspector like any hand-made Interactable. If you really want a script, say so ("write a Lua script for it").
+
+### Example: asking for something the engine doesn't have
+
+1. Ask "Add real-time water reflections to the lake".
+2. If nothing in the schema does that, the card shows "No changes proposed." and the notes explain why it can't be done and what could come close (for example a looping shimmer animation on the water tiles).
 
 Questions: how does the AI know which components exist? why didn't the AI write a script?
 
@@ -45,6 +71,18 @@ When the context doesn't show what it needs, the AI asks for tools instead of gu
 - **check**: the project's problems: gateways, records, animation sheets, and script errors from a 2-second headless run.
 - **look**: a picture of the scene (around an entity, an area, or the whole of it up to 96 cells), drawn by the CPU renderer and attached to the next message so the model sees it.
 - **playtest**: the open scene played headless for 1 to 30 seconds (5 by default), pressing the input actions asked for in turn (`move_x+` walks right): its events, script errors, where the player went, its pockets and health.
+
+### Example: put two guards inside the inn
+
+1. Ask "Put two guards drinking inside the Leaky Bucket inn".
+2. The chat shows "Looked at: buildings, find_prefabs": the AI read which buildings can be entered (the inn, its cells to stand someone, its smart objects) and which guard prefab exists.
+3. The card spawns two copies of the Guard prefab on free cells inside the inn's walls, off the furniture.
+
+### Example: let the AI playtest the way to the shrine
+
+1. Ask "Can the player walk from the start to the shrine east of the river? Fix it if not."
+2. The AI uses **look** to see the area and **playtest** pressing `move_x+` (and `move_y-` to go up) for a few seconds; the chat shows "Looked at: look, playtest".
+3. If the player gets stuck at the river, the card proposes a change (a bridge or a ford of walkable tiles) and the notes say what the playtest found, such as where the player stopped.
 
 Questions: what tools does the AI have? can the AI see the scene? can the AI playtest my game? what does "Looked at" mean?
 
@@ -66,6 +104,19 @@ It can't:
 - run while the game is playing.
 
 If a village or road command fails, it doesn't build one by hand; it finishes and quotes the error.
+
+### Example: a new scene with a gateway to it
+
+1. Ask "Create a cellar scene under the inn and a trapdoor in the inn that leads to it".
+2. The card proposes creating the scene `cellar` with its type and the trapdoor with a gateway to it. Apply it.
+3. Then ask "Add three rats in the cellar". The cellar now exists, so a second card spawns the rats there.
+
+An answer can't change something it spawned itself (it has no id yet), so a follow-up like this, or a later task step, is how you build on what was just made.
+
+### Example: animating a door is not the AI's job
+
+1. Ask "Make the barn door swing open".
+2. The AI can't animate parts itself; its answer says so in the notes and points you to Build ▸ Animate or right-click the door ▸ **Animate a part…**.
 
 Questions: what can't the AI do? can the AI delete files? can the AI create a new scene? can the AI animate doors?
 

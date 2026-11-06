@@ -17,7 +17,17 @@ Only what the player uses (doors, chests, items) and characters get art of their
 ③ Plan, ④ Paint, ⑤ Mark, ⑥ Assets, ⑦ Build. A picture of your own can be the painting: Build panel ▸ From a picture ▸
 **As the painting** goes straight to ⑤ Mark with every cell walkable and no occluders.
 
-Set a scene's type in New scene, or its right-click ▸ **Type ▸ Paint** (see scenes.md).
+Set a scene's type in New scene, or its right-click ▸ **Type: … ▸ Paint** (see scenes.md).
+
+### Example: your own watercolour of a mountain village as a level
+
+You painted `highvale.png`, an isometric view of a mountain village.
+1. Make a scene `highvale` with **New scene…**, choosing **Paint**.
+2. In the Build panel, click **Choose…** beside **From a picture**, pick `highvale.png`, and in the list beside it
+   choose **as the painting (Paint: skips Layout, Plan, Paint)**.
+3. The build goes straight to ⑤ Mark, with every cell walkable and no occluders.
+4. Block the houses and the cliffs on the Walkable layer, add occluders for the houses and the big pine, then go on to
+   ⑥ Assets for the doors and the villagers, and ⑦ Build.
 
 Questions: what is a painted scene? how do I use my own painting as a level? what does the Mark step do?
 
@@ -38,6 +48,17 @@ The canvas: wheel zooms, **Fit** (F) fits the painting; pan with Space+drag or t
 **Occluders** and **Walkable**, one shown at a time, each with an **opacity** slider. **↶** / **↷** (Ctrl+Z / Ctrl+Y)
 undo and redo; **Save** (Ctrl+S); it also saves itself every minute and when you leave the step.
 
+### Example: checking the marks of a painted riverside mill
+
+1. After ④ Paint, go to ⑤ Mark. The painting shows with the marks already filled in from the plan.
+2. Press **F** (**Fit**) to see it whole, then zoom in on the mill with the wheel; pan with **Space+drag**.
+3. Show the **Walkable** layer and lower its **opacity** so you can see the painting under it: the river is blocked,
+   but the little bridge is too.
+4. Switch to **Occluders**: the mill and the willow each have one. The willow's region misses a branch.
+5. Fix both (see the next sections) and press **Save** (**Ctrl+S**).
+
+If you repaint the picture later, the step says the marks are stale: check the occluder regions again.
+
 Questions: how do I fix where the player can walk in a painted scene? what are the marks? why does Mark say stale?
 
 ## Marking walkable cells
@@ -49,6 +70,14 @@ Choose the **Walkable** layer. Tools:
 
 Blocked cells become a solid, invisible tile layer called `walk` in the scene, which pathing and collision read like
 any ground. Block cells under buildings, water and cliffs; leave doorways and paths walkable.
+
+### Example: opening the bridge over the mill stream
+
+1. In ⑤ Mark, choose the **Walkable** layer.
+2. Pick **Brush** and, holding **Alt** (or with the right button), paint along the bridge: its cells become walkable.
+3. A painted stone wall by the mill was left walkable: pick **Rectangle** and drag over it to block it.
+4. A pond in the corner is all walkable: pick **Fill** and click inside it to block the whole pond.
+5. **Save**. After ⑦ Build, the player crosses the bridge and stops at the wall and the pond.
 
 Questions: how do I block an area in a painted scene? how do I make a bridge walkable? why does my character walk
 through a painted wall?
@@ -68,6 +97,16 @@ Choose the **Occluders** layer. The list shows each occluder (name, ✎ when cha
 The **base line** matters most: a character whose feet are behind it is drawn under the occluder, one in front is
 drawn over it. Only the part above the base line is redrawn; mask below it is treated as ground in front.
 
+### Example: walking behind the old willow
+
+1. In ⑤ Mark, choose the **Occluders** layer and click `willow` in the list.
+2. Pick **Click-select** (**S**) and click the branch the region missed: its outline is added (the first click takes
+   a few seconds). **Alt+click** a patch of sky it took by mistake to remove it.
+3. Tidy the edge with **Brush** (**B**) and **Eraser** (**E**), sizing with **[** and **]**.
+4. Pick **Base line** (**L**) and drag its handles to where the trunk meets the grass.
+5. For the well, which had no occluder, press **+ New** and brush its roof and posts, then set its base line.
+6. After ⑦ Build, a character walking behind the trunk is drawn under the willow's leaves, and one in front over them.
+
 Questions: how do I make the player walk behind a tree in a painted scene? what is a base line? how do I add an
 occluder? why is my character drawn over a house front?
 
@@ -83,6 +122,14 @@ At ⑦ Build:
 
 A painted building with a cutaway interior shows its cutaway while the player is inside and hides its occluders then
 (the Building Plan's **hides**). Doors in a painted place are their own entities over the painting (DoorPart).
+
+### Example: building the painted mill and looking at the result
+
+1. With the marks saved and ⑥ Assets done (the mill door, a sack of flour, Miller Edda), go to ⑦ Build.
+2. The painting is laid at the back in pieces, the `walk` tile layer is made from the walkable marks, the mill and
+   willow occluders are cut into thin strips, and the door, sack and Edda are placed.
+3. Press Play and walk round the mill: the player passes behind its front wall and in front of its side.
+4. Open the mill door: it's its own entity over the painting, opening as the project's doors do.
 
 Questions: what happens when I build a painted place? how do doors work in a painted scene?
 
@@ -104,6 +151,17 @@ The scene is drawn back to front by depth, worked out every frame from where thi
 **ScreenTransform2D ▸ depth** shows the result (read-only for things with a world position). If something sorts wrongly,
 check its footprint (Obstacle), its Sprite's flat/ground/order, or the occluder's base line.
 
+### Example: the player shows through the long side of the barn
+
+In an Assembled farm, the player standing behind the barn's long side is drawn over its wall.
+1. Select the barn. Its **Obstacle** has **left** `0`, **right** `0`, **back** `0`: the footprint is a single cell, so
+   only that cell is compared with the player.
+2. Set **left** `2` and **back** `1`, to cover the cells the barn stands on.
+3. Walk the player behind it again: now it's drawn behind the barn along the whole side.
+4. A rug in the farmhouse is drawn over the table? A rug should lie on the ground: tick **Sprite ▸ ground** (or
+   **flat** for top-down art) on the rug, and it's drawn under what stands.
+5. Check **ScreenTransform2D ▸ depth** on both to see their order.
+
 Questions: why is my character drawn behind a tree it's in front of? how do I put a rug under a table? how is draw
 order decided? why does the player disappear behind a building?
 
@@ -114,5 +172,15 @@ detail per house. The design for big painted places is to paint them in **tiles*
 density (art pixels per cell, chosen for the camera), so that together they read as one painting with no visible
 edges. Today, painted places are painted as one picture; backgrounds of big Assembled scenes are already painted in
 tiles and blended (see backgrounds.md).
+
+### Example: choosing how to make a big port city
+
+You want a port city of about 200 × 200 cells.
+1. As a **Paint** scene, the whole city is one picture of about 4 megapixels, so each house gets only a few pixels and
+   looks blurry close up.
+2. As an **Assembled** scene, each building has its own art and the background is painted in tiles and blended, so it
+   keeps its detail.
+3. A good middle way: make the city Assembled, and make one small square (the fish market, say) its own Paint scene,
+   joined with a Marker and a Gateway, where a painting's detail shows best.
 
 Questions: can I paint a very large place? why does my big painted town look blurry close up?

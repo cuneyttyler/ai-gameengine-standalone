@@ -13,6 +13,17 @@ Open it:
 
 Requests about changing things (move, delete, tougher...) or about a place's people and story (story, populate, NPCs, dialogue, gossip, lore, villagers) are not builds; they stay in the AI panel. On a build card that is still reading the request, **Ask as a change instead** cancels the build and sends your words to the AI panel as a change.
 
+### Example: a fishing village from the AI panel
+
+1. Open an empty scene and type in the AI panel:
+
+   > Build a fishing village by a river with a mill
+
+2. Press **Enter**. "Build ... village" is a build request, so no proposal comes back: a build card "Building ..." appears with its stage, and the Build panel starts reading the request.
+3. Click **Open build panel** on the card (or press **U**).
+
+The Build panel is at ① Confirm, showing what the village will hold (houses, the river, the mill, a pier...) for you to check before anything is made.
+
 Questions: how do I build a village with AI? where is the Build panel? why did my request start a build?
 
 ## Starting a build
@@ -26,6 +37,27 @@ The Build panel's first page: "Describe a place to build. You'll confirm the det
 5. Press **Start**. Then ① Confirm opens: what the place holds, and its layout to adjust.
 
 **Builds** reopens earlier builds or starts another; **Remove older builds** deletes every build but the open one (asks first).
+
+### Example: a large market town with set choices
+
+1. Press **U** to show the Build panel. On its first page, type in the box:
+
+   > A large village by a river, with gardens and a market
+
+2. Leave **Build method** on Assembled.
+3. Set **Place** to the settlement type and **Size** to its large class (the list shows the number of buildings for each). Set **Asset variety** to High so the houses don't all look alike.
+4. Open **▸ Other choices** and set **How many** from `40` to `60`. The line reads "... set: kept as you set them".
+5. Click **Start**.
+
+The request is read and ① Confirm opens with a large settlement of 40 to 60 buildings: your choices win over what the words might suggest.
+
+### Example: a village painted after a sketch
+
+1. On the first page, type "a hill village with a chapel", set **Build method** to Paint.
+2. Next to **From a picture**, click **Choose…** and pick `hill_village_sketch.png`, then choose **as a reference for the painting**.
+3. Click **Start**.
+
+The village is laid out and planned as usual, and at the Paint step it is painted after your sketch's look.
 
 Questions: how do I start a build? what is asset variety? can I build from a picture? how do I reopen an earlier build?
 
@@ -47,6 +79,16 @@ Behind the steps:
 
 Every AI step has a rule-based fallback. "Nothing is applied to the scene until the build step"; you can look at the other steps meanwhile.
 
+### Example: following "a mining camp in the mountains" through its steps
+
+1. Start a build with "a small mining camp in the mountains with a mine entrance and a cook tent" (Assembled).
+2. The stepper shows ① Confirm · ② Layout · ③ Plan · ④ Assets · ⑤ Result. While the request is read three times, the readings disagree on how many tents: a question asks how many; answer "six" or skip it.
+3. ① Confirm shows the Brief: size, the mine entrance and cook tent on, six tents. Continue.
+4. ② Layout shows the zones (the camp, the mine mouth, a track); ③ Plan the parts in each.
+5. ④ Assets finds or makes the art; ⑤ Result builds it into the scene.
+
+Start the same build again with the same plan and you get the same layout: steps 6 to 8 are code, seeded.
+
 Questions: what are the Build panel's steps? what does the Brief contain? does building need AI?
 
 ## ① Confirm and ② Layout
@@ -61,6 +103,18 @@ Questions: what are the Build panel's steps? what does the Brief contain? does b
 
 "Short of room" warns about a zone you painted smaller than its buildings need. Changing the contents after the plan was made asks **Discard the plan?** (**Keep the plan** / **Discard it and make changes**).
 
+### Example: move Riverford's market to the crossroads
+
+1. With the build Riverford at ② Layout, look at the zones beside the map: the market lies at the north edge.
+2. Type in **Revise**:
+
+   > Move the market to the crossroads; the residential ward along the river, south of the docks
+
+3. The zones are laid out again with the market at the crossroads.
+4. The docks zone is still a little off: click **Paint the zones…**, pick the docks zone, set the brush to `4` cells and paint the cells along the bank; click **Done**.
+
+Each zone's row now shows its new place and size (cells²). If you painted a zone smaller than its buildings need, it shows "Short of room".
+
 Questions: how do I change the layout of a place? how do I paint zones? what does Lay out the zones again do?
 
 ## ③ Plan
@@ -68,6 +122,14 @@ Questions: how do I change the layout of a place? how do I paint zones? what doe
 **③ Plan** shows the solved layout with what each colour means, a table per part (Part, Area, Holds, Character, with each part's rationale on hover), and **Layout checks and counts** (What, Asked, Planned, Built). The sketch shows sizes only; where each part goes is worked out when it's built, and the site is outlined in the viewport.
 
 You can change a part's fields and lay that part out again ("the rest stays as it is"), lock parts, and **Revise** inside the zones in words ("add 10 more houses to ward 1"). The **Module brush** paints a module over an area. **AI review of the map**: describe a problem ("put houses around the commons; the merchant ward needs townhouses; a bigger market"), or let the AI look at the map and fix what looks wrong. A region's plan has **Sites**: each site is built as a place of its own (**Build this site**).
+
+### Example: more houses and a bigger market
+
+1. At ③ Plan, **Layout checks and counts** shows houses Asked 40, Planned 31.
+2. In **Revise** type "add 10 more houses to ward 1" and send it. Ward 1 is laid out again; the rest stays as it is. Houses now read Planned 41.
+3. Under **AI review of the map**, describe "put houses around the commons; a bigger market" and send it.
+
+The AI changes the plan to match and the sketch shows the bigger market. Lock the parts you're happy with first so a later revision leaves them alone.
 
 Questions: how do I see the plan? can the AI fix the map? how do I add houses to a ward?
 
@@ -89,6 +151,15 @@ For a Planner build: "Art strategy: set in the AI Planner's Game Brief (① Conc
 
 **Animate**: doors of buildings and things that are used (chests, gates, levers), animated before the build.
 
+### Example: cutaway taverns and a thatched mill
+
+1. At ④ Assets ▸ **How each is found**, leave the default on **Search (project, library, web, then make)**.
+2. Under **Interiors**, set the tavern to **Cutaway** with **Floors** Auto, and the mill to **Scene (no interior)**.
+3. Go to **The assets**. The mill came back with a slate roof: click **Make it again** and type "a thatched roof, warmer colours, smaller".
+4. The well was rejected by the check but looks right to you: click **Keep**.
+
+The mill is made again as described; the tavern's interior is made by BFL as a cutaway of its exterior picture. If making the art takes too long, **■ Stop** keeps what was made and puts placeholders for the rest.
+
 Questions: where does the Build panel get its art? how do I remake one asset? what are cutaway interiors? how do I stop making art?
 
 ## Result: building into the scene
@@ -101,11 +172,28 @@ The Result step: **Build into the scene** puts the place into the scene, verifie
 
 Once built, the place is the scene's: ask the AI panel to add or change things in it ("add a well to the village") like any part of the scene.
 
+### Example: build, verify and finish the fishing village
+
+1. At ⑤ Result, click **Build into the scene**. The village appears in the viewport.
+2. The vision model looks at it (a few minutes for a big place) and reports, for example, that two boats stand on dry land.
+3. Click **Fix what Verify found**; the boats are moved onto the water.
+4. Read the list of what was repaired and the assets used with their licences, then click **Finish**.
+
+The scene is saved with the village and the build closes. To add a fish market later, ask the AI panel "add a fish market by the pier": the village is now part of the scene.
+
 Questions: how do I put the built place in the scene? how do I undo a build? how do I change a place after building it?
 
 ## Stopping and cancelling a build
 
 You can stop at any time: **Stop** while it works, **Cancel**, or **■ Stop** while art is made (what was made is kept). A cancelled build shows "The build was cancelled." and can be reopened from Builds and resumed. Nothing reaches the scene until Build into the scene, and that is one undo step.
+
+### Example: stop for the night, carry on tomorrow
+
+1. A big town build is at ④ Assets making art. Click **■ Stop**: the pieces made so far are kept.
+2. Click **Cancel**. The panel shows "The build was cancelled." and the scene is untouched.
+3. The next day, open the Build panel, click **Builds** and reopen the town build.
+
+It resumes where it was, with the art already made.
 
 Questions: how do I stop a build? can I resume a cancelled build?
 
@@ -116,6 +204,16 @@ Questions: how do I stop a build? can I resume a cancelled build?
 - **Build types** and their modules, with **Find a module**.
 - **New module**: an id (lowercase, dashes), Name, Level, Description ("What it is: the AI reads this"), Classes, **Goes in** (where it can go, min, max, how typical), **Fields** (quantity or quality, type, default, values or vocabulary, **Asked** in ① Confirm) and **Slots** (what art it shows: role, needed, main).
 - **Import…** adds modules and extensions from a file; **Export…** saves what you added as one file.
+
+### Example: a smokehouse for fishing villages
+
+1. Choose **File ▸ Ontology…** and pick the settlement build type.
+2. Click **New module**. Fill in id `smokehouse`, Name `Smokehouse`, Description "A small wooden hut where fish are smoked over a slow fire; smoke from the roof".
+3. Under **Goes in**, add the settlement's residential or docks area with min `0`, max `2`.
+4. Under **Slots**, click **+ slot**, name it `building`, and tick **Needed** and **Main**.
+5. Click **Save** (it is checked against the rest before it is kept).
+
+The next village you build "with a smokehouse" can have one, since the AI reads its description. **Export…** saves it to a file a friend can **Import…**.
 
 Questions: what is the ontology? how do I add a new kind of building? can I share my modules?
 

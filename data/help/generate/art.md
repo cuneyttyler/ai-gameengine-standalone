@@ -24,6 +24,17 @@ Open the Generate panel and pick the **Art** tab. The form on the left:
 Press **Generate**. Beside it the tab says which model draws ("By …", with "(set by this project)" when the project has
 its own art model) and, while it works, "Drawing N images (~10 s each)…". A failure shows in orange under the button.
 
+### Example: Drawing a stone well in three conditions
+
+1. Open the Generate panel and click **Art**.
+2. In the description box type `a round stone well with a wooden roof and a bucket on a rope`.
+3. Set **Name** to `well`, **Kind** to **object**, **Height** to `64`, **Style** to **pixel art**.
+4. In **Variants** type `clean, mossy, ruined`. The button now reads **Generate 3 variants**.
+5. Click it. Beside the button: "Drawing 3 images (~10 s each)…".
+
+Result: about half a minute later, `well-clean.png`, `well-mossy.png` and `well-ruined.png` appear at the top of
+**Files**, each 64 px tall, cut out on a checkerboard.
+
 Questions: how do I generate a sprite? what does Kind mean? how big should the height be? how do I make variants? what names are allowed?
 
 ## Which model draws the Art tab's pictures
@@ -45,6 +56,18 @@ else PixelLab. With PixelLab, each new piece is drawn to match up to four of the
 
 The same art model also decides who draws characters in Generate ▸ Character (BFL when it is a BFL model, else
 PixelLab). See Models and providers.
+
+### Example: Making this project draw its props with BFL FLUX.2 klein
+
+Your project "Harbor Town" should draw with BFL while your other projects keep Mistral.
+
+1. Make sure `BFL_API_KEY` is in `ai_service/.env` (the choice otherwise shows "(no key)").
+2. Open **Project Settings ▸ AI** and set **art** to **BFL FLUX.2 klein**.
+3. Go back to Generate ▸ Art. Beside the Generate button it now says "By … (set by this project)"; hover it to see that
+   the choice comes from Project Settings ▸ AI.
+
+Result: the Art tab, and Generate ▸ Character, draw with BFL in this project only. Clear the project's art setting to
+follow Preferences again.
 
 Questions: which AI draws my art? how do I switch the art model to BFL? why does it say "set by this project"? does Claude draw images?
 
@@ -68,6 +91,18 @@ Behind the Art tab, the AI service does this for each picture:
 
 A ground tile is not cut out: its centre square is taken, scaled to height × height and kept fully opaque.
 
+### Example: A white sheep that keeps its white wool
+
+1. On Generate ▸ Art, describe `a fluffy white sheep standing`, **Kind** **object**, **Height** `40`, **Style**
+   **pixel art**, and click **Generate**.
+2. The image model draws the sheep on pure white. The cut-out clears the white by filling inward from the picture's
+   edges, so the backdrop goes but the white wool inside the sheep's outline stays.
+3. The light halo round the sheep is peeled off, the picture is cropped with one clear pixel round it and scaled to
+   40 px, then its edges made hard and its colours reduced to 32.
+
+Result: `fluffy-white-sheep.png`, a white sheep with no white fringe, that shows cleanly on dark grass. A
+`cobblestone` drawn as **ground tile (top-down)** instead comes out square and fully opaque, with nothing cut out.
+
 Questions: how does the background get removed? why are my sprites pixelated? what prompt is sent to the image model? why is the tile not transparent?
 
 ## The .gen.json file next to each generated picture
@@ -86,6 +121,29 @@ The gallery reads it: a card's title shows the prompt on hover, its lines show t
 seed, and **Regenerate** uses it to ask again. Generate ▸ Animate also reads a picture's description from it to decide
 whether it is a person or a thing. Deleting the `.gen.json` doesn't break the picture, but the gallery then says
 "unknown model" and Regenerate has nothing to go on.
+
+### Example: Checking which prompt drew the mossy well
+
+1. On Generate ▸ Art, **Files**, hover the title `well-mossy.png`: the tooltip shows the prompt that was built.
+2. For the full record, open `assets/textures/generated/well-mossy.png.gen.json` from the project folder. Trimmed, it
+   looks like this:
+
+   ```json
+   {
+     "description": "a round stone well with a wooden roof and a bucket on a rope",
+     "variant": "mossy",
+     "family": "well",
+     "kind": "object",
+     "provider": "mistral",
+     "seed": null,
+     "processing": { "size": [52, 64], "style": "pixel" },
+     "seconds": 9.6,
+     "created": "2026-11-06T10:14:03+00:00"
+   }
+   ```
+
+Result: you can see the variant, the provider and its size; `"seed": null` means the provider doesn't expose one, so
+the card says "seed not exposed".
 
 Questions: what is in the .gen.json? how do I see the prompt that was used? where is the seed?
 
@@ -110,6 +168,18 @@ state (Drawing…, failed with the reason, or done with small thumbnails), and t
 request back in the form) and **Generate again** (sends it again). A result later deleted shows "discarded"; one drawn
 over by a later request shows "redrawn". **Clear history** forgets the list; the files stay.
 
+### Example: Redoing yesterday's lantern request in a smooth style
+
+1. On Generate ▸ Art, click **History (N)** at the top of the right side.
+2. Find the entry "a brass lantern with a candle inside" (object · 32 px · pixel) and click **Use again**. The form on
+   the left fills with that request.
+3. Change **Style** to **smooth** and click **Generate**.
+4. The old entry's thumbnail now says "redrawn", since the new lantern was written over `lantern.png`.
+5. If you don't like it either, click **Files (N)**, then **Discard** on the `lantern.png` card and **Discard** in
+   the dialog: the History marks the result "discarded".
+
+Result: a smooth `lantern.png` replaces the pixel one; the History still lists both requests.
+
 Questions: how do I delete generated art? where is the history of my requests? how do I redo the same request? why does it say "redrawn"?
 
 ## Make prefab from generated art, and "lies on the ground"
@@ -129,6 +199,18 @@ Tick the box before pressing Make prefab; the tick is per picture. Prefabs appea
 See also: Character tab (for a character that walks and turns, use Generate ▸ Character, not the Art tab's character
 kind), Troubleshooting generation.
 
+### Example: A well that stands, and a rug that lies on the ground
+
+1. On Generate ▸ Art, **Files**, find `well-mossy.png`. Leave **lies on the ground** unticked and click **Make
+   prefab**. A prefab `well-mossy` appears in the Assets panel's prefab list.
+2. Place it in the scene: it stands up, and the villagers walk in front of it or behind it. Since it isn't solid,
+   select it and add a collider in the Inspector so people can't walk through it.
+3. Now draw `a round woven rug, red and gold` (Kind **object**) and, on its card, tick **lies on the ground** before
+   clicking **Make prefab**.
+
+Result: the rug's picture is fitted to the grid (saved as `round-woven-rug-ground.png`) and its prefab lies flat with
+its bottom edge on the cell's front corner, drawn under characters, so the innkeeper walks over it.
+
 Questions: how do I place generated art in my scene? what does "lies on the ground" do? how do I make a rug that characters walk over? how do I make a tile prefab?
 
 ## Tips for good results in the Art tab
@@ -144,5 +226,16 @@ Questions: how do I place generated art in my scene? what does "lies on the grou
   art prompt, so pieces made at different times match. With painted or flat-vector, the pixel clean-up is skipped.
 - **A walking character** is better made in Generate ▸ Character: the Art tab's character kind is a single still picture
   facing the viewer.
+
+### Example: Turning a vague chest into a matching set
+
+The first try, `a chest`, came out plain and with a patch of grass under it.
+
+1. Open **Project Settings ▸ AI** and set **artStyle** to **pixel-32**, so every prop drawn from now on shares it.
+2. On Generate ▸ Art, describe `a weathered oak chest with rusted iron bands`, **Name** `chest`, **Height** `40`.
+3. In **Variants** type `closed, open, broken`, then click **Generate 3 variants**.
+4. If one of them still has ground drawn under it, click **Regenerate** on that card only.
+
+Result: three chests that look alike, in the project's style, at the height they will be used.
 
 Questions: how do I get better art? why is there grass under my object? how do I keep a consistent style?

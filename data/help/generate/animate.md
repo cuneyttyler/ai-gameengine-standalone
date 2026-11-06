@@ -18,6 +18,17 @@ The **Image** row on the right shows what is picked ("knight.character.anim.json
 Other places pick for you: a character's **Animate…** (Generate ▸ Character, Assets ▸ Characters right-click) and a
 loose direction picture's **Animate** button. A picture whose name ends in a direction (`-east.png`) sets the facing.
 
+### Example: Picking the wall torch to animate
+
+1. Open the Generate panel and click **Animate**.
+2. In the search box ("Find an image: knight, torch, characters…") type `torch`.
+3. Under **Images**, click the thumbnail of `wall-torch.png`. The **Image** row on the right now shows
+   `assets/textures/generated/wall-torch.png`.
+4. To animate Mira instead, clear the search, and under **Characters: every direction at once** click her picture:
+   the Image row reads `mira-quill.character.anim.json (every direction)`.
+
+Result: the form is ready for the motion; a picture is animated in its own view, a character in all its directions.
+
 Questions: how do I animate an image? how do I animate a character in all directions? where is the Animate tab?
 
 ## The Animate form with AutoSprite (the default)
@@ -38,6 +49,17 @@ Press **Animate**. It says "Animating (about a minute)…" for a picture, "Anima
 for a character. The button is off while AI is off, without `AUTO_SPRITE_API_KEY` in `ai_service/.env`, without a
 picture or character picked, or (custom) without a description.
 
+### Example: A treasure chest whose lid swings open, with a custom motion
+
+1. On Generate ▸ Animate, pick `treasure-chest.png` under **Images**.
+2. In **Motion**, choose **custom: say it…** at the bottom of the list. A **Describe it** row appears.
+3. Type `the lid swings open, gold glints inside`.
+4. In **What it is**, type `a wooden treasure chest` so it is not taken for a person.
+5. In **Name**, type `chest-open`, then click **Animate**. It says "Animating (about a minute)…".
+
+Result: the History shows `chest-open` playing in a small preview. Because the chest is a thing, it is animated by the
+non-humanoid model (PixelLab by default), not AutoSprite; see "Person or thing" below.
+
 Questions: what motions can AutoSprite make? how do I make a custom animation? what is "What it is" for?
 
 ## The Animate form with PixelLab Animate v3
@@ -55,6 +77,19 @@ call: the progress strip shows "queued, position N", then "drawing". For a chara
 (south, south-east, east, north-east, north, all at once) and mirrors them for the west side, so all 8 directions play
 their own frames; the clip plays at 10 frames a second. The text under the button says "PixelLab (Animate with text v3)
 makes 8 looping frames from the picture, up to 256 px".
+
+### Example: Adding a walk to Mira Quill with PixelLab
+
+1. Make sure `PIXELLAB_API_KEY` is in `ai_service/.env`.
+2. Open **Project Settings ▸ AI** and set **animate** to **PixelLab Animate with text v3** (or set Preferences ▸ Art
+   and painting ▸ **Humanoid animation** to it for every project).
+3. On Generate ▸ Animate, click Mira under **Characters: every direction at once**. The form now shows **Action**
+   instead of Motion.
+4. In **Action**, pick `walking` from the suggestions. Leave **What it is** empty and **Name** empty.
+5. Click **Animate**. The progress strip shows "queued, position N" while PixelLab's queue waits, then "drawing".
+
+Result: after a few minutes Mira's sheet has a `walk` clip of 8 frames in each direction: south, south-east, east,
+north-east and north drawn, the west side mirrored, playing at 10 frames a second.
 
 Questions: how do I animate with PixelLab? why is PixelLab so slow? what does queued position mean?
 
@@ -79,6 +114,18 @@ most 384 px a side first); a person by the humanoid model. Without the non-human
 humanoid model. A character sheet is always animated by the humanoid model;
 AutoSprite is still told whether it is a person (a wolf character is rigged as an animal).
 
+### Example: Opening the cellar door without a person appearing in it
+
+An earlier try at animating `cellar-door.png` with AutoSprite drew a person pushing it.
+
+1. Check that **Project Settings ▸ AI ▸ objectAnimate** is empty or **PixelLab Animate with text v3**, and that
+   `PIXELLAB_API_KEY` is in `ai_service/.env` (without it, everything goes to the humanoid model).
+2. On Generate ▸ Animate, pick `cellar-door.png`.
+3. In **What it is**, type `a heavy wooden cellar door`: "door" is a thing word, so it counts as a thing.
+4. Choose **custom: say it…**, describe `the door swings open inwards`, and click **Animate**.
+
+Result: PixelLab keeps the door as drawn and opens it; the sheet's `.gen.json` records `"humanoid": false`.
+
 Questions: why did AutoSprite add a person to my door? how do I animate a chest? what is non-humanoid animation? how does it know if it's a person?
 
 ## Directions: how each model covers 8 directions
@@ -96,6 +143,18 @@ Questions: why did AutoSprite add a person to my door? how do I animate a chest?
 A character drawn with **4 directions** has only south, west, east and north to animate; in the game the diagonals use
 the nearest direction it has. Draw characters with 8 directions to get true diagonals.
 
+### Example: Getting true diagonal walking for a goblin drawn with 4 directions
+
+The `goblin` walks north-east using its north frames, because it was drawn with **4 (south, west, east, north)**.
+
+1. On Generate ▸ Character, find the goblin's card in the History and click **Use again**.
+2. Change **Directions** to **8 (and the diagonals)** and click **Generate character**. The new sheet replaces the
+   old one.
+3. Click **Animate…** on the new card, pick **walk** in **Motion** (AutoSprite) and click **Animate**.
+
+Result: one isometric pack (15 AutoSprite credits) gives all 8 directions their own walk frames, so the goblin's
+north-east walk is no longer its north walk.
+
 Questions: why does my character only have four directions? does AutoSprite do 8 directions? why does the walk look the same going north-east and north?
 
 ## Weapons: holds a weapon and weapon class
@@ -112,6 +171,17 @@ With AutoSprite and a character picked, the **Weapon** row has **holds a weapon*
   swing move differently, but every sword can share one swing.
 
 See The Animator and attachments topic for how equipment is drawn on the hand.
+
+### Example: A sword swing for the town guard that any sword can use
+
+1. On Generate ▸ Animate, pick `town-guard` under **Characters: every direction at once**.
+2. In **Motion** choose **attack**.
+3. In the **Weapon** row tick **holds a weapon** and type `sword` in the class box.
+4. Click **Animate** ("Animating all 8 directions (2 to 5 minutes)…").
+
+Result: the guard's sheet gains a clip `attack_sword` with a `hand` track and no rod showing. In the game, when the
+guard wields any weapon of class sword from his Equipment, that weapon is drawn in his hand and this swing plays. If
+the hand point is off in a frame, fix it with the sheet editor's point tool.
 
 Questions: how do I animate a character holding a sword? how do weapons show in animations? what is weapon class? how do I make a different attack for axes?
 
@@ -131,6 +201,18 @@ Each request is listed under the form in **History (N)**: its name or action, wh
     clips, else the `prop` animator (its idle looping).
 - **Use again** and **Generate again** on every entry. **Clear history** forgets the list (the animations stay).
 
+### Example: A flickering wall torch you can place
+
+1. On Generate ▸ Animate, pick `wall-torch.png`. With PixelLab as the humanoid model, type `flickering flame` in
+   **Action**; with AutoSprite choose **custom: say it…** and describe `the flame flickers`. Name it `torch-flicker`.
+2. Click **Animate**. When it is done, its History entry plays the frames in a small preview with the spritesheet's
+   path.
+3. Click **Make prefab** on the entry.
+
+Result: an animation sheet is written beside the spritesheet (`torch-flicker-sheet.png`) with one idle clip (a flame
+is a looping motion, not a walk, attack, spell, hurt or death), and a prefab that plays it with the `prop` animator. Place it on the wall from the Assets panel. Use **Make
+animation** instead when you only want the sheet, for example to give an existing entity's Animator.
+
 Questions: how do I use the animation I generated? how do I make a prefab of a torch animation? where is Make animation? how do I make a chest open and close?
 
 ## What a picture's animation writes
@@ -147,6 +229,20 @@ from one shared box and brought to the original's height.
 
 A thing animated by PixelLab is centred in a 256 px square at 90% for PixelLab and each frame put back at the picture's
 own size and place. A motion that opens, closes or breaks plays once and ends where the motion ends; any other loops.
+
+### Example: Finding the chest's frames on disk
+
+After animating `treasure-chest.png` with the name `chest-open`:
+
+1. Open `assets/textures/generated/animations/chest-open/` in the Assets panel or the project folder.
+2. You find `chest-open-1.png`, `chest-open-2.png` … one per frame, and `chest-open-sheet.png` with all of them side
+   by side in one row.
+3. Open `chest-open-sheet.png.gen.json`: it names the source picture, the action, the frame count, the provider and
+   `"humanoid": false`.
+
+Result: since the lid opens, the frames end with the lid open rather than looping back. Note that **Make animation**
+names the clip from the motion's words ("swings" reads as an attack), so for a chest that opens when used in a place,
+Build ▸ Animate is the better route: it names the clip `open` and adds a `close`.
 
 See also: Character sheets, Animations tab and sheet editor, Models and providers, Troubleshooting generation.
 

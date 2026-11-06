@@ -13,6 +13,17 @@ Open it:
 
 The Planner needs AI on for most stages; without AI the Game Brief is made from the request's words alone.
 
+### Example: start a game from the AI panel
+
+1. In a new, empty project, type in the AI panel:
+
+   > Make an RPG where a young ferrywoman uncovers a smuggling ring along the river, two villages and a sea cave, about three hours
+
+2. Press **Enter**. The editor recognises "make an RPG" and starts a plan instead of a proposal: a plan card "Planning ..." shows the stage, its progress and what it is doing.
+3. Click **Open planner panel** on the card (or press **Y**).
+
+The Planner opens at ① Concept, reading your request; soon the Game Brief window waits for you.
+
 Questions: how do I design a whole game with AI? where is the Planner? how do I open the Planner?
 
 ## Starting a plan
@@ -24,6 +35,26 @@ The Planner's home page, **Plan a game**:
 4. Press **Plan**.
 
 **Your plans** lists the current plan and earlier ones, each with its stage and when it changed: **Open** or **Remove** (deletes the plan's documents and history, asks first; what it already built into scenes stays). Starting a new plan when the project has one asks whether to **Replace** it or **Keep it**. The **⌂** button in the stepper returns to the home page; **Back to the plan** returns.
+
+### Example: plan a short dark-fantasy RPG
+
+1. Choose **File ▸ New Game with the Planner…**. The **Plan a game** page opens.
+2. Leave **Build method** on Assembled ("the project's").
+3. In the box type:
+
+   > A short dark-fantasy action RPG about a disgraced warden recovering a stolen amulet, three towns and a dungeon, about four hours
+
+4. Leave the main choices on "Decided by the AI". Click **▸ Other choices** and click one chip to fix a value you care about; the line now reads "1 chosen: kept as you chose them".
+5. Click **Plan**.
+
+The stepper appears with ① Concept working. Under **Your plans** on the home page (**⌂**), this plan is listed as "current" with its stage.
+
+### Example: a second idea without losing the first
+
+1. With the warden plan open, click **⌂**, type a new description ("a cosy farming sim on a windy island") and click **Plan**.
+2. Asked whether to **Replace** the current plan or **Keep it**, choose **Keep it**.
+
+Both are under **Your plans**: the warden plan as "earlier", the island as "current". **Open** switches back; **Remove** deletes a plan's documents after asking (scenes it built stay).
 
 Questions: how do I start a plan? can I have several plans? how do I delete a plan?
 
@@ -45,6 +76,15 @@ The Planner works through stages shown as a stepper; each is a view you can open
 
 The stepper shows each stage's status (✓ done, … working, ? waiting, ✗ failed, Ⅱ paused), failures, a stale count and a "review" badge when it waits for you.
 
+### Example: confirming the Game Brief
+
+1. After **Plan**, ① Concept shows the Game Brief window. On the **Game** tab, the length field is marked **differ**: hover over it to see the other readings (say, "4 hours" and "6 hours").
+2. On the **Places** tab the dungeon's name is marked **guessed**: change it to "The Hollow Vault".
+3. On the **Difficulty** tab a value is marked **assumed** (from the genre profile): leave it.
+4. Read "To decide" for open points, then click **Continue**.
+
+The stepper moves on to ② Outline (… working), then ③ Story, each turning ✓ as it finishes. A stage that needs you shows ? and a "review" badge.
+
 Questions: what are the Planner's stages? what does differ mean in the Game Brief? what does assumed mean?
 
 ## Working with the plan: Continue, Pause, Regenerate, Why?
@@ -63,6 +103,15 @@ On every item (a scene, a character, a quest, a place):
 
 A change marks what depends on it stale. Editing a scene's card rewrites that scene. Plans are saved and resume after closing the editor.
 
+### Example: change a character and redo what depends on her
+
+1. In ④ Characters, open Maren, the warden's sister. Click **Why?** to see why she was made a priest, with the inputs and history behind it.
+2. You want her to be a smuggler instead: click **Edit JSON**, change her class and biography, and click **Save changes**.
+3. The stepper shows a stale count on ③ Story and ⑤ Quests: scenes and quests that used Maren now depend on old facts.
+4. Click **Regenerate stale (N)** in the bar under the stepper.
+
+Only the documents whose inputs changed are made again. To keep one scene exactly as it is, click **Lock** on it first: it is never regenerated, and a conflict with it is reported instead.
+
 Questions: how do I regenerate part of the plan? what does stale mean? how do I see why the AI decided something? can I pause the Planner?
 
 ## ⑨ Validate: errors, warnings, Fix and Accept
@@ -74,6 +123,14 @@ It shows "N errors, N warnings, N accepted". Errors stop the build until they're
 - **Accept…** keeps a finding as it is, asking for your reason.
 
 With no open errors the design is saved as the **baseline**, and ⑩–⑬ Build becomes available.
+
+### Example: clearing the last errors before building
+
+1. ⑨ Validate shows "2 errors, 5 warnings, 0 accepted". One error says a reward item of the quest "The Stolen Amulet" has no record; another that a character in a story scene has no document.
+2. Choose **Fix** ▸ **Errors** and click **Fix now**. The Planner writes the missing item record and the character's document, then checks again.
+3. One warning says a side quest is long for a four-hour game. You're fine with that: click **Accept…** and give the reason "the side quest is optional".
+
+The page reads "0 errors, 4 warnings, 1 accepted", the design is saved as the baseline, and ⑩–⑬ Build can be opened.
 
 Questions: why can't I build the game? how do I fix validation errors? what is the baseline?
 
@@ -92,6 +149,17 @@ The table lists each place, its scene, build type, mode and status (building, bu
 
 "Build the game" in the AI panel starts this too.
 
+### Example: build the warden game, with one place by hand
+
+1. Open ⑩–⑬ Build. **Art for the places** shows how places will find their art; leave it.
+2. Click **Build each place myself**. The table lists Ashford, Greywater, Thornwick and The Hollow Vault, each "needs you".
+3. On Ashford click **Open build**: its Brief opens in the Build panel. Go through it there, then come back and click **Built**.
+4. Greywater fails twice with art errors; click **Placeholder** so the rest can go on with a simple room.
+5. Finish the others the same way. ⑪ Bindings places the characters and binds the quests; ⑫ Playtest reports, for example, "41/42 checks".
+6. On ⑬ Result read **Gameplay set up**, then click **Play from the start**.
+
+Later, click **Rebuild** on Greywater to build it properly; the confirm asks "Build Greywater again from the start? Its scene is replaced."
+
 Questions: how do I build the whole game? what does a placeholder place mean? how do I playtest the planned game?
 
 ## How the Planner hands work to other panels
@@ -103,5 +171,16 @@ Questions: how do I build the whole game? what does a placeholder place mean? ho
 The Planner's documents live in the project's `planner/` folder (brief, outline, story, characters, quests, places, systems, decisions and history); the story graph is `planner/kg.json`.
 
 See also: build-panel.md, story-graph.md, world-bible.md, ai-panel.md.
+
+### Example: revise the plan in words from the AI panel
+
+1. With the warden plan open in the Planner, type in the AI panel:
+
+   > Make Aldric the mentor's son
+
+2. Because Aldric is a character of the plan, the request goes to the Planner as a revision of its documents instead of a proposal card.
+3. In the Planner, the stages that used Aldric show stale counts; click **Regenerate stale (N)**.
+
+By contrast, "populate Ashford with villagers" stays in the AI panel as an ordinary task, even though Ashford is a place of the plan.
 
 Questions: how does the Planner use the Build panel? can I edit the plan from the AI panel? where are the Planner's files?

@@ -21,6 +21,15 @@ The **Assets panel** (show or hide with **J**) has these tabs:
 The **Search** box filters the current tab (Prefabs, Assets, Characters, Animations, Catalog, Library). On the Assets
 tab it matches the path, and also an analysed image's description and tags.
 
+### Example: finding the barrel picture you imported last week
+
+1. Press **J** to show the Assets panel and click the **Assets** tab.
+2. Type `barrel` in **Search**: the cards whose path contains "barrel" remain.
+3. Nothing? The file was named `IMG_0412.png`. If it was analysed, type `wooden cask` instead: the search also matches
+   an analysed image's description and tags, and it shows up.
+4. Click the **Catalog** tab with the same search to see what the builder understood about it (role, footprint,
+   perspective).
+
 Questions: where are my images? what are the tabs of the assets panel? how do I search my assets?
 
 ## Importing images and sounds
@@ -34,6 +43,15 @@ Other ways art arrives: the Art and Character tools (Generate panel) write to `a
 adds to `assets/web/…`; the Library adds to `assets/library/`; builds write their own art.
 
 **Refresh** rescans the project folder, for files you added or changed outside the editor.
+
+### Example: bringing in a tavern sign and a door creak
+
+1. On **Assets ▸ Assets**, press **Import…** and pick `tavern_sign.png` and `door_creak.wav` from your downloads.
+2. The picture is copied to `assets/textures/tavern_sign.png` and the sound to `assets/audio/door_creak.wav`; the last
+   one is selected, showing its **Duration** and **▶ Preview**.
+3. Import `tavern_sign.png` again after touching it up: the old file isn't overwritten, the new one is
+   `assets/textures/tavern_sign_1.png`.
+4. Copied files into `assets/` with Explorer instead? Press **Refresh** to see them.
 
 Questions: how do I import images? what file formats are supported? where do imported files go? why does my file have
 _1 in its name? how do I add sound effects?
@@ -58,6 +76,15 @@ Several picked: the details pane shows "N assets picked" with **Move to folder�
 suggested name(s)**, **Import N as prefabs…**, and **Make a prefab from each**; their right-click has **Move N to
 folder…**, **Keep N in my library**, **Delete N…**.
 
+### Example: sorting the market pictures into their own folder
+
+1. On Assets ▸ Assets, click `stall_red.png`, then **Shift+click** `stall_blue.png` to pick the range, and
+   **Ctrl+click** `fruit_crate.png` to add it.
+2. Right-click one of them ▸ **Move 4 to folder…** and type `textures/market`. The folder is made and the files move;
+   the `fruit_stall` prefab and the village scene that use them are updated.
+3. Right-click `fruit_crate.png` ▸ **Rename…** and type `crate_apples`: nothing breaks, the references follow.
+4. Click the **Textures** chip to hide the sounds while you work.
+
 Questions: how do I move assets into a folder? how do I rename an image without breaking things? how do I delete
 several assets? can I make subfolders?
 
@@ -76,6 +103,16 @@ Click an image on the Assets tab to see, on the right:
 
 An audio file shows its **Duration** and **▶ Preview**.
 
+### Example: setting up a dungeon tileset and using one tile on a crate
+
+1. Click `dungeon_tiles.png` on Assets ▸ Assets.
+2. Under **Import as**, choose **Tileset**, set **Tile size** to `32`, and press **Apply import settings**. The tile
+   picker appears.
+3. Select the crate entity in the scene, click the cracked-floor tile in the picker, and press **Apply to selected
+   entity**: the crate's sprite becomes that tile, sized to it.
+4. To give the inn its inside, click `inn_exterior.png` and choose `inn_interior.png` under **Interior**; the interior
+   picture then shows **Interior of** with **Unpair**.
+
 Questions: how do I set up a tileset? how do I change the picture of an object? how do I preview a sound? what does the
 analysis tell me?
 
@@ -88,6 +125,16 @@ description, kind, tags, direction, size and a better name. While it works the b
 Analysis helps elsewhere: better names, kinds and sizes in Import as prefabs, search by description and tags, and the
 builder's catalog. **Rename to …** / **Apply N suggested name(s)** renames files to the suggested names after a
 confirmation, updating prefabs, scenes and scripts that use them.
+
+### Example: naming a pack of badly named pictures
+
+A downloaded pack has files called `sprite_001.png` to `sprite_040.png`.
+1. Click the pack's folder on Assets ▸ Assets and press **Analyze 40**. The button reads "Analyzing 40…" while it
+   works (with the AI service running, a vision model describes each).
+2. Click `sprite_007.png`: **What** says "a wooden water well with a bucket", **Kind** a prop that blocks the way, and
+   a button **Rename to water_well**.
+3. Press **Ctrl+A** to pick all of them and click **Apply 40 suggested name(s)**, then confirm.
+4. The files are renamed and any prefab or scene using them follows.
 
 Questions: what does Analyze do? how do I get better names for my images? do I need AI for analysis?
 
@@ -104,6 +151,17 @@ shows the plan before anything is made:
   **solid**.
 
 Press **Create N prefab(s)** (or **Cancel** / Escape).
+
+### Example: a forest pack of trees, rocks and ground tiles
+
+You imported a pack into `assets/textures/forest_pack/` with 12 ground tiles and 18 props.
+1. Analyze the folder first (**Analyze 30**) for better names and kinds.
+2. With the folder shown, press **Import as prefabs…**.
+3. The pack's **image pixels per cell** says 64; the trees look tiny in the plan, so change it to `48`. The plan is
+   worked out again and your edits are kept.
+4. Untick the row of a duplicate rock. Make sure the ground rows say **Tile** and the trees say **Prop** with
+   **solid** ticked; set the big oak's width to `3` **cells**.
+5. Press **Create 29 prefab(s)**: they appear in Assets ▸ Prefabs, ready to paint and place.
 
 Questions: how do I import an asset pack? how do I make many prefabs at once? why are my imported props the wrong size?
 what is pixels per cell?
@@ -128,6 +186,15 @@ The first time it holds generated art, the tab asks **Share the art you generate
 decide for each**, **Keep it private**. The footer's select changes it any time. Nothing is uploaded until the AIGE
 library's service is online.
 
+### Example: reusing a lighthouse from your last game
+
+1. In the old project, right-click `lighthouse.png` on Assets ▸ Assets ▸ **Keep in my library**. Its interior and door
+   animations go with it.
+2. Open the new project and click the **Library** tab. Find the lighthouse (or type `lighthouse` in Search).
+3. Double-click it (or **Add to the project**): it's copied to `assets/library/` and gets a ✓.
+4. Moving to a new computer? Click **Export…** for the whole library, and on the other computer use **Import…** with
+   the exported `.aige-library` folder.
+
 Questions: where is art I generated in another project? how do I reuse art across projects? how do I move my art to
 another computer? does AIGE upload my art?
 
@@ -149,6 +216,16 @@ Added art is credited (in CREDITS.md, through its description) and kept in your 
 in your browser** opens searches on OpenGameArt, Kenney, itch.io, CraftPix, Game-icons.net, Wikimedia Commons and
 Lospec for what you typed; bring what you download into the project (Assets ▸ Import…) and keep its licence and
 author for your credits.
+
+### Example: a free wooden fence for the farm
+
+1. Make sure the AI service is running (Preferences ▸ AI).
+2. Click **Assets ▸ Web Search**, type `isometric wooden fence` and press **Enter**. After 10 to 40 seconds the
+   results come, each with its licence (say CC0), author, source and a style %.
+3. Click the one with the best style % to read why it ranks there and its size.
+4. Click **Add to folder…** and type `farm`: it's downloaded to `assets/web/farm`, credited in CREDITS.md and kept in
+   your library.
+5. Make a prefab from it on the Assets tab (**Make a prefab from it**, Solid, **New prop prefab**).
 
 Questions: how do I find free art? is web art safe to use in my game? where does downloaded art go? why does the web
 search fail?

@@ -17,6 +17,13 @@ The **status bar** is the thin strip along the bottom of the editor window. From
 - **The bell (🔔)**, which opens Notifications. A number on it counts what has finished since you last looked, and a
   spinning ◌ shows while work is running.
 
+### Example: checking the brush size and a save at a glance
+
+1. With "Place barrel" armed, press ] twice. The status bar's notice reads "Brush size 121%" for a few seconds.
+2. Press Ctrl+S. The notice reads "Saved harbour_market.aige", and the dot after the scene name on the left of the
+   status bar goes away.
+3. Missed the notice? Click the bell (🔔): every notice is also listed in Notifications.
+
 Questions: what does the bottom bar show? where did that message go? what does the number on the bell mean?
 
 ## The Notifications panel
@@ -34,6 +41,16 @@ seconds), a progress bar when the work has counted steps, and how long ago it ch
 running. **Clear** removes everything that has finished, and **✕** closes the panel. Opening the panel resets the
 bell's count. The list keeps the last 120 entries.
 
+### Example: did the blacksmith's art finish?
+
+You asked for art for Bram Hollis, the blacksmith, and went on painting the forge yard.
+
+1. The bell on the status bar shows a spinning ◌ while the job runs, then a 1 when it has finished.
+2. Click the bell. Notifications opens at the bottom right; the newest entry is the art call, with ✓ (done) or ✕
+   (failed), its detail line and how long ago it changed.
+3. If it shows ✕, read its detail line for the reason and try again from the Generate panel.
+4. Click Clear to remove the finished entries, then ✕ to close the panel. The bell's count is back to nothing.
+
 Questions: how do I see what the AI is doing? where are old notices? how do I clear notifications? did my art
 generation fail?
 
@@ -44,6 +61,14 @@ interior…**. When that window is closed and the Notifications panel is closed 
 job at the bottom right: its title, its detail and a progress bar. Up to three boxes show at once. A box stays a few
 seconds after the job finishes. Click a box to open Notifications, or click **Hide** to hide it (the job stays listed
 in Notifications).
+
+### Example: animating the mill wheel while you keep working
+
+1. Right-click the watermill and click Animate a part…, pick the wheel and start the job.
+2. Close the Animate a part window. With Notifications closed too, a small box at the bottom right shows the job's
+   title, its detail and a progress bar.
+3. Keep placing fences. The box is in your way? Click Hide: it goes, and the job is still listed in Notifications.
+4. When the job finishes, the box (if shown) stays a few seconds, and the bell counts it.
 
 Questions: what is the box at the bottom right? how do I hide the progress box? can I close the animate window while
 it works?
@@ -63,5 +88,17 @@ Under the line, a bar fills as counted steps finish, or runs back and forth whil
 reports from the AI service about once a second.
 
 See also: preferences.md (AI models).
+
+### Example: watching an AI panel request work
+
+1. In the AI panel, type:
+
+> "Add a herbalist's hut at the edge of the forest with Ilsa Fen, the herbalist, inside."
+
+2. A strip appears at the top of the AI panel: "AI panel request", its phase (waiting for the model, then thinking,
+   then writing), its current step, the tokens written so far and the seconds counting up.
+3. Hover the token count to see how many were thinking, answer and read tokens.
+4. When the phase reads done the strip goes away. If it sits at "waiting for the model" for long, the model may be
+   busy or slow; see Preferences ▸ AI models.
 
 Questions: how long has the AI been thinking? how many tokens did it use? why is the AI slow?

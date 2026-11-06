@@ -23,6 +23,19 @@ Press **Animate**. The box is cut out of the picture, animated, and placed over 
 (on its prefab, so every copy has it). The window shows the result playing over the picture; closing it doesn't stop the
 work ("Close (it goes on)"), and a floating box in the corner follows it.
 
+### Example: The bakery's sign swinging in the wind
+
+1. In the viewport, right-click the "Golden Crust" bakery building ▸ **Animate a part…**.
+2. In **It's**, pick **another object: a sign, a window, a flag (PixelLab)**.
+3. Drag a box round the hanging sign over the door.
+4. In **Describe the animation**, type `the sign swings gently in the wind`.
+5. In **Activation**, pick **always playing (a loop)**.
+6. Click **Animate**.
+
+Result: the window plays the swinging sign over the picture and says "Done: it plays over the picture above. It's on
+the building now (Inspector ▸ AnimatedPart); every copy of its prefab has it." Every Golden Crust bakery in the
+project now has a swinging sign.
+
 Questions: how do I animate just the door of a building? how do I make a sign swing? how do I animate part of a painted scene? what does Find the door do?
 
 ## How doors are opened: from their own pixels
@@ -42,6 +55,17 @@ of the building). Then:
 
 A double door (two leaves, or a door wider than three quarters of its height) opens as two halves. **Close** is the open
 frames played backwards; each is held at its last frame. A door finishes opening before it shuts.
+
+### Example: Opening the chapel's double doors
+
+1. Right-click the chapel ▸ **Animate a part…**. Leave **It's** at **a door (opened from its own pixels)**.
+2. Click **Find the door**. The vision model draws a box round the arched double door; drag a new box if it is off.
+3. Leave **Activation** at **as the project's doors (Project Settings ▸ Game ▸ doorsOpen)** and click **Animate**.
+
+Result: with PixelLab as the non-humanoid model, the doorway is fitted to the frame and the two leaves swing inward as
+two halves at 12 frames a second, the arch and wall staying as drawn. Without a PixelLab key, the window warns
+"…couldn't animate it: opened from its own pixels instead" and the engine swings the doors itself, free, with the art
+kept exactly.
 
 Questions: why does my door animation look like the original art? which model animates doors? how do double doors work? why did it say opened from its own pixels instead?
 
@@ -65,6 +89,20 @@ shows progress; **Stop after this one** stops between targets; **Animate all aga
 AnimatedPart on the building's prefab; a used thing's prefab gets an Animator (`prop`) and an Interactable whose verb
 plays it. Open archways are kept as ways in, with nothing to animate.
 
+### Example: Fixing a missed door and skipping a gate in a village build
+
+The "Millbrook" village's art is made and the Build panel has moved to **Animate**.
+
+1. Click **① Identify doors (N)**. The rows fill with "door found: check it".
+2. The tavern's row shows a box round a window, not its side door. Click its picture, click **Draw the doors**, drag a
+   box from the threshold to the top of the door and from frame to frame, then click **Use these doors**.
+3. The paddock gate doesn't need to move: click **Skip** on its row.
+4. Click **② Animate (N)**. Rows go "animating…" then "animated".
+5. You need to leave: click **Stop after this one**; the row in progress finishes and the rest wait.
+
+Result: the doors open as AnimatedParts on their buildings' prefabs; the chest by the tavern became a `prop`
+with an Interactable that opens it. Click **Include** on the gate later if you change your mind.
+
 Questions: what does Build ▸ Animate do? how do I fix a door box that's wrong? how do I skip animating something? how do I stop Build ▸ Animate?
 
 ## What activates an animated part
@@ -85,6 +123,19 @@ A door can be **locked** with a **key** (and **consumeKey**): it stays shut, its
 shows when the player tries it; carrying the key, it unlocks for good. A building's door blocks the way in while shut.
 The Inspector's AnimatedPart row opens **Edit doors…** (a building) or **Edit parts…** (anything else).
 
+### Example: A vault door that needs the iron key, and a lever that opens a gate
+
+1. Right-click the bank ▸ **Animate a part…**, keep **a door (opened from its own pixels)**, box the vault door and
+   tick **Locked**; type `iron-key` (the key item's id) beside it. Click **Animate**.
+2. In Play, trying the vault door without the key shows "Locked: needs …"; carrying the iron key, it unlocks for good.
+3. For the castle lever, right-click the gatehouse ▸ **Animate a part…**, pick **another object…**, box the lever and
+   describe `the lever is pulled down`.
+4. Set **Activation** to **an input action, near it**, pick `interact`, set **Sends event** to `gate_lever`, and type
+   `Pull the lever` in **Prompt**. Click **Animate**.
+
+Result: pressing the interact key by the lever pulls it and sends `gate_lever`, which a script or trigger can answer
+by opening the gate; pressing it again puts the lever back.
+
 Questions: how do I make a door open automatically? how do I lock a door with a key? how do I make a lever play when pressed? how do I make a part always animate?
 
 ## Generating a building's interior
@@ -104,6 +155,18 @@ so `BFL_API_KEY` is needed whatever the art model.
 
 The vision model counts the storeys (1–4); each floor is painted from a blockout with its stairs and doors. **H** shows
 the selected building's interior; **Shift+H** every building's. See the interiors topics for the details.
+
+### Example: A cutaway for the two-storey inn
+
+1. Make sure `BFL_API_KEY` is in `ai_service/.env` (interiors are always BFL, whatever the art model).
+2. In the viewport, right-click "The Sleeping Fox" inn ▸ **Add interior: cutaway**.
+3. The vision model counts two storeys; each floor is painted from a blockout with its stairs and doors.
+4. When it's done, select the inn and press **H**.
+
+Result: the inn shows its ground floor cut away (bar, tables, hearth), on the same canvas as the outside, with
+`sleeping-fox-interior.png` and `sleeping-fox-interior-2.png` beside its picture. Don't like the rooms? In the
+Inspector ▸ Building Plan, click **Redesign interiors…** and describe `a cosy inn with a long bar and a big stone
+hearth downstairs, four small bedrooms upstairs`.
 
 Questions: how do I generate the inside of a building? why does interior generation need BFL? how do I redo an interior? how do I see a building's interior?
 
@@ -128,6 +191,21 @@ interior…**.
 
 A part plays only while its floor shows. One building is worked on at a time; closing the window doesn't stop the work.
 The AI panel can open this window on a building for you.
+
+### Example: Animating the stove's fire in the bakery
+
+1. Right-click the "Golden Crust" bakery (it has a cutaway) ▸ **Animate the interior…**.
+2. Click **Find the moving things**. On the ground floor's tab, yellow boxes mark the bread oven and the stove; the
+   unlit candles are left grey.
+3. On the stove's row, change the **motion** to `flames flicker inside the stove's open grate` and leave **Plays** at
+   **always (a loop)**.
+4. The finder missed the kettle on the stove: drag a box round it, pick **It's** (the kettle kind) and click **Add**;
+   then untick it if you only want the stove now.
+5. Click **Animate 2 ticked**.
+
+Result: one at a time, the oven and the stove are cut from the floor's picture, animated by the non-humanoid model and
+put on the bakery as AnimatedParts on that floor; their boxes turn green. The fire flickers whenever the ground floor
+is showing (press **H**).
 
 See also: Animate tab, Models and providers, Troubleshooting generation.
 

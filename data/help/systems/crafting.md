@@ -23,6 +23,32 @@ The form edits `if`, `do`, `start` and `interrupted` with the rule editor. Input
 
 Example, a stove's stew: inputs meat, water, turnip ×2; keeps pot; gives stew; at `stove`.
 
+### Example: a torch from a stick and rags, and a stew at the stove
+
+1. In Project ▸ Records, press **+** on the **recipe** group; **Id** `torch`.
+2. **name** `Torch`; **inputs**: `stick` count 1, `rags` count 1; **gives**: `torch` count 1; **text** `You wrap the
+   rags round the stick.` **Create**.
+3. Press **+** again; **Id** `stew`: **name** `Hearty stew`; **inputs** `meat` 1, `water` 1, `turnip` 2; **keeps**
+   `pot`; **gives** `stew` 1; **at** `stove`; **seconds** `5`; **clip** `cook`; **text** `The stew is ready.`
+4. In **if**, add a condition with the rule editor: flag `learned_cooking` is set. **Create**.
+
+```json
+{
+  "name": "Hearty stew",
+  "inputs": [{ "item": "meat", "count": 1 }, { "item": "water", "count": 1 }, { "item": "turnip", "count": 2 }],
+  "keeps": ["pot"],
+  "gives": [{ "item": "stew", "count": 1 }],
+  "at": "stove",
+  "seconds": 5,
+  "clip": "cook",
+  "text": "The stew is ready.",
+  "if": "[{\"flag\": \"learned_cooking\"}]"
+}
+```
+
+The torch can be made anywhere by using the stick on the rags. The stew shows up only at a stove, only once Vara has
+taught the player (`learned_cooking`); it takes five seconds of the cook clip, uses the food, keeps the pot.
+
 Questions: how do I add a recipe? how do I make a recipe need a tool that isn't used up? how do I make cooking take time?
 
 ## Combining two items, and the Crafting list for more
@@ -35,6 +61,18 @@ Questions: how do I add a recipe? how do I make a recipe need a tool that isn't 
 - In the list, lines that can't be made are greyed and say what's missing.
 
 A recipe with `seconds` under way is kept in a save; cut short (the player hit, a cutscene), its inputs come back.
+
+### Example: making the torch and the stew in play
+
+1. Press Play with `stick` and `rags` in the player's Inventory. Press **I**, click the stick (it has no use of its
+   own), then click the rags: "You wrap the rags round the stick." and a torch appears. Clicking the stick on a turnip
+   says "That doesn't work".
+2. Walk to the inn's stove (a Reaction with **station** `stove`) and press **E**: the Crafting list opens with the
+   stove's recipes.
+3. "Hearty stew" is greyed and says what's missing ("Needs 1 more turnip"). Pick up another turnip, and it can be made.
+4. Choose it: the player plays the cook clip for five seconds. Get hit halfway and the meat, water and turnips come back.
+
+Pressing **C** anywhere instead lists everything that can be made here: the torch, but not the stew.
 
 Questions: how do I combine items? how does crafting with three ingredients work? where is the crafting window? why is a
 recipe greyed out?
@@ -52,6 +90,19 @@ gamepads) ▸ **Use on...**. The item is now in hand. Then:
 A Reaction with `accepts` works for the player only with the item in hand; other users just need to carry one. It takes
 the item only if `takes` says so.
 
+### Example: a lock that needs the key in hand, and seeds sown from the hand
+
+1. Select the vault door's Reaction: **trigger** `input`, **action** `interact`, **accepts** `vault-key`, **becomes**
+   `prefabs/vault-door-open.prefab`, **text** `The lock turns.`
+2. Select the empty field's Reaction: **accepts** `seeds`, **takes** `seeds`, **becomes** `prefabs/field-seeded.prefab`.
+3. In play, press **I**, right-click the vault key ▸ **Use on...**: it's in hand. Close the inventory and press **E**
+   at the vault door: "The lock turns." and the door opens; the key isn't taken (no `takes`).
+4. Put seeds in hand the same way and click a field: one seed is taken and the field is sown.
+5. Right-click or press **Esc** to put the item away.
+
+Pressing E at the vault door with the key only in the bag does nothing: for the player, `accepts` needs it in hand. A
+guard told to `act` on the door just needs to carry it.
+
 Questions: how do I use an item on something in the world? how do I make a lock that needs the key in hand? how do I put
 an item away?
 
@@ -62,6 +113,30 @@ an item away?
 - Lua for the player: `hold_item(id)`, `held_item()`, `put_back_item()`, `craft(id[, station])`.
 - Events: `item_used` (text: the item), `item_combined` and `crafted` (text: the recipe).
 - The AI panel can write recipe records, checked like the Records page checks them.
+
+### Example: counting stews, and handing the player a fishing rod
+
+```lua
+-- scripts/cook-tally.lua, on any entity in the inn scene
+on("crafted", function(e)
+  if e.text == "stew" then
+    set_var("stews_made", (get_var("stews_made") or 0) + 1)
+    if get_var("stews_made") == 5 then unlock_achievement("master-cook") end
+  end
+end)
+
+-- on the fisherman: "here, take my rod"
+on("lend-rod", function(e)
+  local player = find_nearest("Player")
+  give_item(player, "fishing-rod", 1)
+  hold_item("fishing-rod")          -- straight into the player's hand
+end)
+```
+
+For Vara to cook the stew herself, a script package calls `craft("stew", "stove", self_id())` at the stove (see
+"Scripting", scripted AI packages). To have the AI write recipes, type:
+
+> "add recipes for bread (flour and water at the oven, 6 seconds) and a fishing rod (stick and string)"
 
 See also: Actions and Reactions, Record types.
 

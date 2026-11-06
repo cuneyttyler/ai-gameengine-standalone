@@ -15,6 +15,13 @@ project). They work the same in the viewport and in the panels.
 
 See also: menus.md.
 
+### Example: looking up the key for the Generate panel
+
+1. Press F1. The Keyboard shortcuts window opens over the editor.
+2. Find the Panels group: the row for the Generate panel shows K.
+3. Press F1 again (or Esc) to close the window, then press K: the Generate panel shows or hides.
+4. Your shortcuts are kept in your own preferences, so they are the same in every project you open on this computer.
+
 Questions: where is the list of shortcuts? what does F1 do? are shortcuts saved in the project?
 
 ## Changing a shortcut (rebinding)
@@ -33,6 +40,23 @@ Symbol keys are recorded by the character they type, so `[` works on keyboard la
 recorded in upper case ("Ctrl+S"). Menu items and tooltips show your new keys at once. Most shortcuts don't fire while
 you're typing in a text box. Ctrl+S, Ctrl+J, F11 and F1 still do. During Play, only F5, F6, F9, F3 and F1 act; the
 other keys belong to the game.
+
+### Example: duplicating with Ctrl+Shift+D as well as Ctrl+D
+
+You come from another editor where Ctrl+Shift+D duplicates.
+
+1. Press F1 and find the Edit group's Duplicate row (Ctrl+D).
+2. Click + on that row. "Press the new keys…" appears.
+3. Hold Ctrl and Shift and press D. The row now shows Ctrl+D and Ctrl+Shift+D, and Edit ▸ Duplicate in the menu
+   shows the new keys at once.
+4. If Ctrl+Shift+D had belonged to another action, a line names the action that lost it. Changed your mind? Click
+   Reset on the row to go back to Ctrl+D alone.
+
+### Example: moving Erase off E
+
+1. In Help ▸ Keyboard Shortcuts, click the E next to the Erase tool.
+2. Press X. Erase is now X.
+3. To undo every change you've made to the shortcuts, click Reset all.
 
 Questions: how do I rebind a key? how do I reset shortcuts? why doesn't my shortcut work while typing? can I add two
 keys to one action?
@@ -66,6 +90,14 @@ The defaults, all of which you can rebind:
 
 Fixed (not rebindable): **Arrows** nudge the selection a cell (Shift: a tenth).
 
+### Example: a row of fence posts in a few keystrokes
+
+1. Click the fence post by the pig pen and press Ctrl+D. A copy appears beside it, selected.
+2. Press the Right arrow to line it up a cell along, then Ctrl+D again for the next post. Repeat until the row
+   reaches the gate.
+3. The last post is a bit too tall: press { twice to make it 4% smaller.
+4. Too far? Press Ctrl+Z to step back, and Ctrl+Y (or Ctrl+Shift+Z) to step forward again.
+
 Questions: what is the shortcut for redo? how do I duplicate? what key rotates? how do I make something a little
 bigger?
 
@@ -90,6 +122,17 @@ stops playing. The game's own keys (moving, attacking, talking) come from Projec
 The single-letter panel keys only work when you're not typing in a text box.
 
 See also: panels-and-layout.md, play-mode.md, input-settings.md.
+
+### Example: more room for the viewport while painting, then the AI
+
+1. Press Ctrl+J: the bottom panels hide, keeping their tabs and size, and the viewport gets their space.
+2. Press 2 to arm the second prefab (cobblestones) and paint the square.
+3. Press I to show the AI panel and type:
+
+> "Put six market stalls around the square, facing the middle."
+
+4. Press I again to hide it, and Ctrl+J to bring the bottom panels back. If a letter key types into a text box
+   instead, click the viewport first: single-letter panel keys don't work while you're typing.
 
 Questions: how do I toggle the AI panel? what does Ctrl+J do? how do I maximise a panel? what key opens the Build
 panel?

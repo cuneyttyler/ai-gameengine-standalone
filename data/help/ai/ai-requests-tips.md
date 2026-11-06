@@ -13,6 +13,27 @@ How to word requests so the AI panel does what you mean, how to ask for NPC beha
 - **Base values, not difficulty**: "make skeletons tougher" changes the base; "Hard is too easy" changes the difficulty level.
 - **Read the notes** on the card: assumptions and how to test it.
 
+### Example: from a vague request to a clear one
+
+A vague request: "make the town better". It changes nothing specific and usually gets a question or a split.
+
+A clear one, sent as two requests:
+
+1. Select the three market stalls in the Scene panel, then type:
+
+   > Make these stalls sell bread, fish and rope, one each
+
+2. Apply the card, then follow up:
+
+   > Now give the fish stall's trader a gossip line about the smugglers
+
+Each card is small and easy to review, the selection says which stalls, and the follow-up knows which trader "the fish stall's trader" is.
+
+### Example: base value or difficulty?
+
+- "Make the bandits hit harder" changes the Bandit prefab's attack, on every difficulty.
+- "Hard is too easy, bandits should hit harder there" changes the Hard difficulty level instead, and Easy and Normal stay as they are.
+
 Questions: how should I word an AI request? how do I get better results from the AI?
 
 ## Asking for NPC behaviour
@@ -31,6 +52,34 @@ If the character has no clip for an action ("cook"), the AI can have one made (a
 
 See also: the package records and paths in the systems topics.
 
+### Example: Vara keeps the inn and cooks
+
+1. Type in the AI panel:
+
+   > Vara Bell lives in the Golden Goose, cooks now and then and never goes outside
+
+2. The card has two rows: `• Record · package/vara-live` (with a **file** badge) and `✎ Vara Bell · Behaviour.packages  → vara-live` (or `+ Vara Bell · + Behaviour` if she had none). Under ▸ the record reads:
+
+```json
+{
+  "template": "live",
+  "description": "Vara keeps the inn and cooks.",
+  "location": { "building": "golden-goose" },
+  "data": { "actions": [{ "action": "cook", "weight": 2 }], "outsideWeight": 0 }
+}
+```
+
+3. Click **Apply 2**, then press Play.
+
+Vara wanders round the inn's rooms and stops to cook now and then, and never steps out. The package shows in Project ▸ Records ▸ Packages straight away.
+
+### Example: a night patrol on the town wall
+
+1. Ask "The guard Bran patrols the town wall at night and goes to the north gate when the alarm is raised".
+2. The card writes a patrol package on the wall's Path (or adds the path first with `scene.addPath` if there is none), with a schedule from 20:00 to 06:00, and a Character Rules response for the alarm.
+
+After applying, Bran walks the wall each night; setting the `alarm_raised` flag from a dialogue or script sends him to the gate.
+
 Questions: how do I make an NPC do something with the AI? how do I ask for a patrol? how do I give a character a daily routine?
 
 ## Asking for people, story and dialogue
@@ -44,6 +93,18 @@ Questions: how do I make an NPC do something with the AI? how do I ask for a pat
 
 Gossip names neighbours and rivalries, and two people's lines agree. Quests are written only if asked. People for a building whose inside is its own scene go in that scene, as another request. A new named character, place or faction is always added to the canon in the same proposal.
 
+### Example: put people in each house of Millbrook
+
+1. Open the Millbrook scene and type:
+
+   > Put people in each house and make them gossip about the new tax collector
+
+2. The task's outline lists each house with who lives there, what they do and their gossip. Click **Approve and make it**.
+3. The final review card has, for each person: a `World Bible · character/<id> (<name>)` row, a spawn inside their house, a Talk component, a `“ Dialogue · dialogue/<name>.json` row with a greeting, their trade and gossip choices, and their idle lines. The story itself is a World Bible row too.
+4. Apply it, press Play and talk to two neighbours.
+
+Their gossip names each other and agrees: if the baker says the tax collector lodges at the inn, the innkeeper says so too. No quest was written, because none was asked for; ask "add a quest from the baker about the tax collector" next if you want one.
+
 Questions: how do I populate a village with the AI? can the AI write dialogue for NPCs? how do I make NPCs gossip?
 
 ## It didn't do everything I asked
@@ -54,6 +115,21 @@ Questions: how do I populate a village with the AI? can the AI write dialogue fo
 - **More than four characters or animations**: these go four a step in a task; it shouldn't stop at four. If it did, ask again ("all of them, step by step").
 - **It split the request**: press **Do them all, step by step**.
 - **It changed one entity instead of all**: say "all skeletons" or "the skeleton prefab".
+
+### Example: only one skeleton got faster
+
+1. With one skeleton selected, you asked "make the skeleton faster". The card changed `Skeleton · Stats.moveSpeed` on that entity only.
+2. Click **Undo** on that card, then ask:
+
+   > Make the skeleton prefab faster, so every skeleton follows
+
+The new card's row is `◈ Skeleton (prefab) · Stats.moveSpeed`, and every copy in every scene gets the new speed.
+
+### Example: a task that ran out of budget
+
+1. "Give every villager a walk and a daily routine" stopped with "Stopped: this task used its token budget (...)".
+2. Apply the review card to keep what was done.
+3. Raise the budget in ⚙, then ask "the villagers without a routine yet: give them one, step by step".
 
 Questions: why did the AI only do part of my request? why did it stop at four characters? the AI ignored part of my request
 
@@ -66,6 +142,19 @@ Questions: why did the AI only do part of my request? why did it stop at four ch
 - **"Couldn't start the AI service: ..."** or **"AI service isn't running and no service folder is configured"**: the editor couldn't launch the Python service.
 - A provider error shows under File ▸ Preferences… ▸ AI ▸ Model.
 
+### Example: no model provider on a fresh install
+
+1. The AI panel's header says "AI service running, but no model provider is configured (set MISTRAL_API_KEY in ai_service/.env)".
+2. Open `ai_service/.env` in a text editor and add your key on its own line:
+
+   ```
+   MISTRAL_API_KEY=your-key-here
+   ```
+
+3. Save the file and restart the AI (turn it off and on in the AI panel's ⚙, or restart the editor).
+
+The header changes to "AI ready (model name)" and the example requests appear.
+
 Questions: why is the AI not working? AI says no model provider is configured; how do I fix "AI service didn't start"?
 
 ## Other common problems
@@ -77,5 +166,24 @@ Questions: why is the AI not working? AI says no model provider is configured; h
 - **My request opened the Build panel or Planner**: that's routing (building a new place, designing a game). On a build card press **Ask as a change instead** if you meant a change.
 - **The script fails when the game runs**: press **Ask AI to fix** under the script check.
 - **Contradictions with the World Bible**: **Ask AI to fix**, or apply anyway if the canon should change (then edit the World Bible).
+
+### Example: the AI keeps looking things up
+
+1. "Fix the broken thing in the forest" ends with "The AI kept asking to look things up without answering; ask again, more precisely."
+2. Ask again, naming what you mean:
+
+   > The bridge entity "Old Bridge" in the forest scene doesn't let the player cross; make it walkable
+
+With the entity and the problem named, it needs one or two lookups at most and comes back with a card.
+
+### Example: the canon should change, not the dialogue
+
+1. A new dialogue makes the miller Hobb a widower, and the card warns "⚠ 1 possible contradiction with the World Bible": his entry says he is married.
+2. You decide the story is better this way: click **Apply 1** anyway.
+3. Ask "Update Hobb's World Bible entry: his wife died last winter".
+
+The canon now agrees with the dialogue, and later checks go by the new entry.
+
+Questions: what does "Stop Play mode before asking for changes" mean? how do I fix "The AI couldn't produce a valid change"?
 
 See also: ai-panel.md, ai-panel-review.md, ai-panel-tasks.md.

@@ -18,6 +18,16 @@ that clears the project's override so it follows your preference.
 
 See also: project-settings.md.
 
+### Example: why your art choice doesn't apply to one project
+
+You set Prefab art to BFL FLUX.3 Image, but in the project "Copperline" new prefabs are still drawn by PixelLab.
+
+1. Open File ▸ Preferences… (or click ⚙ in the AI panel) and go to Art and painting.
+2. Under Prefab art it says "This project uses its own: PixelLab".
+3. Click Use this choice in the project. The project's override is cleared, and Copperline follows your preference
+   from now on. There is no OK button: the change applies at once.
+4. Close the window with Esc.
+
 Questions: where are the preferences? are preferences saved in the project? why does my preference not apply to this
 project?
 
@@ -35,6 +45,15 @@ project?
 
 See also: projects.md (recovery).
 
+### Example: a bigger interface and straight into your project
+
+You work on a high-resolution laptop screen and always open the same project, "Copperline".
+
+1. Open File ▸ Preferences… ▸ General.
+2. Set Interface ▸ Interface scale to 125%. The panels' text and controls grow at once; the viewport stays the same.
+3. Tick Launch ▸ Open the last project. Next launch, Copperline opens directly instead of the welcome window.
+4. Set Recovery ▸ Keep unsaved changes to every minute, so a crash loses at most about a minute of work.
+
 Questions: how do I make the interface bigger? how do I skip the welcome screen? how often is crash recovery saved?
 
 ## Viewport page
@@ -45,6 +64,15 @@ Questions: how do I make the interface bigger? how do I skip the welcome screen?
 - **Camera ▸ Invert the wheel**: wheel-up zooms out.
 - **Camera ▸ Moving the camera**: a reminder. Drag empty ground with the Select tool, or drag with the right or middle
   button. Shift+drag draws a selection box.
+
+### Example: trackpad-friendly zooming
+
+On a laptop trackpad the zoom jumps too far and goes the wrong way for you.
+
+1. Open File ▸ Preferences… ▸ Viewport.
+2. Set Camera ▸ Zoom speed to slow.
+3. Tick Camera ▸ Invert the wheel: scrolling up now zooms out.
+4. Scroll over the viewport to try it; the change is already in effect.
 
 Questions: how do I change zoom speed? how do I invert mouse wheel zoom? how do I hide the grid at startup?
 
@@ -58,6 +86,25 @@ Questions: how do I change zoom speed? how do I invert mouse wheel zoom? how do 
     applies at once, as long as it can be put back exactly. Anything structural still waits for review: adding or
     removing components, placing, painting, deleting, scripts, prefab edits, and changing which script runs or which
     prefab a copy belongs to.
+
+### Example: letting the AI tweak values without asking
+
+You are balancing the goblins in your dungeon and accepting every number change is slow.
+
+1. Open File ▸ Preferences… ▸ AI and, under The AI ▸ Its changes, pick Apply small tweaks directly (with Undo).
+2. In the AI panel, type:
+
+> "Give the goblin prefab 12 health instead of 8."
+
+3. The new value is applied at once (Ctrl+Z puts it back). A request like "Place three more goblins in the crypt"
+   still waits for your review, because placing is structural.
+
+### Example: working offline with the AI turned off
+
+1. Open File ▸ Preferences… ▸ AI and untick The AI ▸ Use AI.
+2. The AI service isn't started and nothing is sent to any model. The AI panel's rail button reads "AI off" and AI
+   features are greyed out.
+3. Tick it again when you're back online.
 
 Questions: how do I turn the AI off? how do I stop reviewing every AI change? what counts as a small tweak?
 
@@ -76,6 +123,27 @@ Questions: how do I turn the AI off? how do I stop reviewing every AI change? wh
   they're listed first. "In use:" shows the model actually used.
 - **Keys ▸ API keys**: keys go in `ai_service/.env` (MISTRAL_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY,
   PIXELLAB_API_KEY, BFL_API_KEY). They're only sent to that service.
+
+### Example: switching the AI panel to Claude
+
+1. Open `ai_service/.env` in the engine folder in a text editor and add your key:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+2. In File ▸ Preferences… ▸ AI, set Language model ▸ Provider to Claude. If it still shows "(no key)", the key
+   isn't in `.env` yet.
+3. Leave Model empty to use the default model, or type a model name. The vision check now defaults to Claude itself.
+4. Ask the AI panel something to check it works:
+
+> "List the scenes in this project."
+
+### Example: a free model for the canon check
+
+1. In Preferences ▸ AI, under Checks ▸ Canon check, pick OpenRouter.
+2. Pick one of the free models (marked ":free", listed first). They cost nothing but are rate limited.
+3. "In use:" shows the model the check really uses.
 
 Questions: how do I switch to Claude? where do I put my API key? which model checks contradictions? how do I pick a
 vision model?
@@ -101,6 +169,15 @@ Assets).
   FLUX-3-Image (keeps the layout best), FLUX-2-Klein-4b (fast, a rough draft), FLUX-2-Pro, FLUX-2-Max,
   FLUX-3-Image-to-Pro and FLUX-3-Image-to-Klein.
 
+### Example: a sharper background painter and BFL for animated doors
+
+1. Open File ▸ Preferences… ▸ Art and painting.
+2. Set Painting ▸ Background to BFL FLUX.3 Image (keeps the map best).
+3. Set Non-humanoid animation to BFL FLUX video, so doors and chests get 12 frames taken from a 5 s clip.
+4. Set Humanoid animation to AutoSprite, so a character's 8 directions are animated at once.
+5. Make sure `BFL_API_KEY` is in `ai_service/.env`. A project with its own choice in Project Settings ▸ AI keeps it;
+   Preferences says so under each setting.
+
 Questions: which model draws prefabs? how do I change the background painter? which tool animates characters? what
 does the paint model do?
 
@@ -113,5 +190,12 @@ does the paint model do?
   and rebind every action.
 
 See also: projects.md, shortcuts.md.
+
+### Example: starting every new project as Assembled
+
+1. Open File ▸ Preferences… ▸ New projects and set Places ▸ Build method to Assembled.
+2. Click File ▸ New Project…: the New Project window starts with Assembled picked. You can still switch to Paint
+   there for this one project.
+3. To see every shortcut, go to the Keyboard page and click Keyboard shortcuts….
 
 Questions: how do I make new projects use Assembled? where do I change key bindings?

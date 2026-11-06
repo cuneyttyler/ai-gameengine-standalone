@@ -16,6 +16,14 @@ tab or **F11** (with the viewport last clicked). When the editor opens a scene, 
 
 See also: panels-and-layout.md, toolbar-and-tools.md.
 
+### Example: a big view for laying out the castle courtyard
+
+1. Click anywhere in the viewport's scene view so it was the last thing clicked.
+2. Press F11. The Viewport panel fills the whole editor window, showing the courtyard large.
+3. Place the well and the training dummies, then press F11 again: the other panels come back as they were.
+4. If the scene view turns into a grey "Viewport" placeholder, you are dragging a panel tab, or the Viewport isn't
+   the front tab of its group; click its tab to bring it forward.
+
 Questions: why did the viewport go blank while dragging a panel? how do I hide the viewport? how do I make the
 viewport fill the window?
 
@@ -33,6 +41,22 @@ selection), and **Shift+wheel** turns (or, for a tile brush, changes how many ce
 follows the player instead, at Project Settings ▸ Camera ▸ playZoom, and your editing view comes back when you stop.
 
 See also: preferences.md.
+
+### Example: getting from the docks to the lighthouse and back
+
+1. Hold the right mouse button and drag left: the view slides toward the lighthouse at the east end of the harbour.
+2. Point the cursor at the lighthouse and roll the wheel up: the view zooms in around it.
+3. Done there? Press F: the whole harbour fits in the view again, with a margin.
+4. The wheel feels too jumpy: open File ▸ Preferences…, go to Viewport and set Zoom speed to slow.
+
+### Example: making the play camera closer
+
+During Play the camera follows the player at a zoom that shows too much of the map.
+
+1. Open File ▸ Project Settings… and find Camera ▸ playZoom.
+2. Raise the value from 2 to, say, 2.5 (it goes from 0.25 to 4; a bigger zoom shows less around the player),
+   save, and press F5 to try it.
+3. Press F5 to stop: your editing view comes back exactly as you left it.
 
 Questions: how do I pan? how do I zoom? how do I invert the scroll wheel? how do I centre on the whole scene?
 
@@ -52,6 +76,19 @@ Selecting in the viewport also selects in the Scene Tree, and the other way roun
 opens the same menu as in the viewport.
 
 See also: toolbar-and-tools.md, menus.md.
+
+### Example: picking out every bench in the park
+
+1. With the Select tool (V), click the first bench.
+2. Ctrl+click each of the other three benches. The Scene Tree highlights all four.
+3. The Inspector shows what the four benches share.
+4. Ctrl+click a bench again to take it off the selection, or press Esc to clear it all.
+
+### Example: deleting one wrong ground tile
+
+1. With the Select tool, click (without dragging) the single sand tile in the middle of the lawn.
+2. The ground cell is selected. Press Delete: the cell is now empty (and a wall, since empty ground isn't walkable).
+3. Paint grass over it with the prefab brush to make it walkable again.
 
 Questions: how do I select multiple entities? how do I box select? how do I select a ground tile? how do I clear the
 selection?
@@ -75,6 +112,17 @@ go through the same shortcut list as the panels, so a key you rebind works every
 
 See also: shortcuts.md.
 
+### Example: fitting a signboard onto the bakery wall
+
+The bakery's sign is a little too big and sits half a cell off.
+
+1. Click the sign in the viewport.
+2. Press { three times: it gets 2% smaller each time.
+3. Press Shift+Up arrow five times: it moves half a cell (five tenths) up.
+4. Press Shift+R: the upright sign is mirrored to face the other way.
+5. Press Ctrl+Z once: the three quick resizes come back as a single step, since a run of resizes within a moment is
+   one undo step.
+
 Questions: how do I rotate an entity? how do I nudge by a fraction of a cell? how do I resize precisely?
 
 ## Overlays: grid, markers, paths, physics, stats
@@ -90,6 +138,20 @@ You can switch these drawings on and off over the scene:
 - **Frame stats** (F3, View menu): frame timing, also during Play.
 
 Whether the grid is square or diamond comes from Project Settings ▸ Grid ▸ style (Isometric or TopDown).
+
+### Example: finding where the villagers get stuck
+
+In Play, the baker never reaches the market.
+
+1. Press F5 to play, then turn on View ▸ Paths (and, in Play, where each character is walking).
+2. Each character's line to the point it's walking to is drawn. The baker's line ends at the bridge.
+3. Click View ▸ Physics shapes (colliders, triggers, bodies): a crate's shape blocks the bridge.
+4. Press F3 to see the frame timing at the same time, then F5 to stop and move the crate.
+
+### Example: starting every session with the grid on
+
+1. Open File ▸ Preferences… ▸ Viewport and tick Show the grid at start.
+2. Next time the editor opens, the tile grid on empty ground shows straight away. Press G to hide it for now.
 
 Questions: how do I show the grid? how do I see colliders and triggers? how do I see the frame rate? how do I hide
 markers?
@@ -107,5 +169,13 @@ Buildings with a cutaway interior can show their inside or their outside in the 
 
 These are off during Play. A building whose interior is its own scene has **Open interior scene** in its menu
 instead.
+
+### Example: dressing the second floor of the Gilded Goose inn
+
+1. Click the Gilded Goose in the viewport.
+2. Right-click it and choose Floors ▸ to see how many floors it has (three), then click Show floor 2….
+3. The cutaway shows the second floor. Place beds and a wardrobe there with the prefab brush.
+4. Press PageDown to check the ground floor, then press H until the inn shows its outside again.
+5. To check every building in the street at once, press Shift+H; press it again for all exteriors.
 
 Questions: how do I look inside a building? how do I see the upper floor? how do I show every interior?

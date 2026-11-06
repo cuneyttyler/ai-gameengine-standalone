@@ -25,6 +25,30 @@ are in cells. See "Scripting with Lua" for where scripts run and how events and 
 | `become(id, prefab)` | new id or nil | replaces it in place by a prefab, turned as it was, contents kept |
 | `set_texture(id, path)` | boolean | changes its picture |
 
+### Example: a ghost that drifts toward the player and vanishes
+
+```lua
+function update(dt)
+  local player, d = find_nearest("Player")
+  if not player then return end
+  local px, py = position_of(player)
+  if d > 6 then
+    set_visible(self_id(), false)
+  else
+    set_visible(self_id(), true)
+    move_toward(px, py, 0.8)            -- one step toward the player, walls respected
+  end
+  if d < 0.8 then
+    local x, y = random_point_near(px, py, 8)
+    if x then set_position(x, y) end   -- teleport away
+  end
+end
+```
+
+1. Attach it to the ghost with a LuaScript.
+2. In Play the ghost is hidden until the player comes within six cells, then floats toward them at 0.8 cells a second;
+   touching it makes it reappear on a walkable cell up to eight cells away.
+
 Questions: how do I move an entity from a script? how do I find an entity by name? how do I spawn a prefab? how do I pick
 a random walkable spot?
 
@@ -46,6 +70,34 @@ a random walkable spot?
 | `overlap(x, y, radius[, mask])` | ids | entities whose colliders touch a circle |
 | `line_of_sight(x0, y0, x1, y1)` | boolean | nothing solid between |
 | `apply_impulse(id, ix, iy)` / `set_velocity(id, vx, vy)` | | rigid bodies |
+
+### Example: a brazier that burns whoever stands in it, and a boss that hardens at half health
+
+```lua
+-- scripts/brazier.lua
+every(0.5, function()
+  local x, y = get_position()
+  for _, id in ipairs(overlap(x, y, 0.6)) do
+    if id ~= self_id() and is_alive(id) then apply_status(id, "burn", 2, 3) end
+  end
+end)
+```
+
+```lua
+-- scripts/boss-golem.lua
+local hardened = false
+function update(dt)
+  local hp, max = get_health()
+  if not hardened and hp and hp < max / 2 then
+    hardened = true
+    set_field(self_id(), "Stats", "defense", get_field(self_id(), "Stats", "defense") + 10)
+    say("ROCK... HARDENS!")
+  end
+end
+```
+
+Anyone standing on the brazier burns for two seconds at a time. The golem, below half health, gains 10 defense and
+shouts once.
 
 Questions: how do I read a component field in Lua? how do I damage or slow an entity? how do I check line of sight? how
 do I push a physics object?
@@ -69,6 +121,36 @@ do I push a physics object?
 | `craft(recipe[, station[, who]])` | "" or why not | made by the player, or by `who` from its own inventory |
 | `record(type, id)` / `records(type)` | table / ids | a record's fields with base and defaults; all ids of a type |
 
+### Example: a blessing fountain and a toll bridge
+
+```lua
+-- scripts/fountain.lua, on an Interactable with event "drink-fountain"
+on("drink-fountain", function(e)
+  local player = find_nearest("Player")
+  if not player then return end
+  add_modifier(player, "maxHealth", 20, 120, "fountain")     -- +20 for two minutes
+  award_xp(player, 10)
+  notify("toast", "You feel refreshed. (+20 health for 2 minutes)")
+end)
+```
+
+```lua
+-- scripts/toll.lua, on the toll keeper, with event "pay-toll"
+on("pay-toll", function(e)
+  local player = find_nearest("Player")
+  if count_item(player, "gold") < 5 then
+    say("Five gold to cross, friend.")
+    return
+  end
+  take_item(player, "gold", 5)
+  give_item(player, "toll-token", 1)
+  set_flag("paid_toll")
+end)
+```
+
+Drinking from the fountain adds 20 maximum health for 120 seconds and 10 experience. At the bridge, with 5 gold the
+player gets a token and the flag `paid_toll`; with less, the keeper asks for it.
+
 Questions: how do I give the player an item in Lua? how do I check how many items the player has? how do I make an NPC
 craft? how do I add a temporary buff?
 
@@ -88,6 +170,28 @@ craft? how do I add a temporary buff?
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / / boolean | |
 | `time_of_day()` / `day()` | hours / day number | the game clock |
 
+### Example: a notice board that hands out the next job
+
+```lua
+-- scripts/notice-board.lua, on an Interactable with event "read-board"
+on("read-board", function(e)
+  if quest_state("rats-in-the-cellar") == "inactive" then
+    start_quest("rats-in-the-cellar")
+    notify("toast", "New job: Rats in the Cellar")
+  elseif quest_state("rats-in-the-cellar") == "completed" and not get_flag("board_wolves") then
+    set_flag("board_wolves")
+    start_quest("wolf-pack")
+  elseif time_of_day() >= 20 then
+    say("Too dark to read the board.")
+  else
+    start_dialogue("dialogue/notice-board.json")
+  end
+end)
+```
+
+The first read starts the rat quest; after it's done, the next read starts the wolf hunt; in the evening the board can't
+be read, and otherwise it opens its own short dialogue.
+
 Questions: how do I set a story flag in Lua? how do I start a quest from a script? how do I check a quest's stage? how do I
 make a character speak from a script?
 
@@ -105,6 +209,35 @@ make a character speak from a script?
 | `use(id)` | boolean | used as the player would (key from their pockets, opened, taken, flag, event, becomes) |
 
 A part is named by its input action or event, its station, its clip, the event it sends, its prompt's words, or `door`.
+
+### Example: the alarm bell sends the guards running
+
+```lua
+-- scripts/alarm-bell.lua, on the bell tower, with an Interactable whose event is "ring-alarm"
+on("ring-alarm", function(e)
+  set_flag("alarm_raised")
+  for _, name in ipairs({"Corporal Hale", "Guard Pim", "Guard Ostra"}) do
+    local guard = entity_named(name)
+    if guard then push_package(guard, "guard-alarm") end
+  end
+  after(120, function()
+    set_flag("alarm_raised", false)
+    for _, name in ipairs({"Corporal Hale", "Guard Pim", "Guard Ostra"}) do
+      local guard = entity_named(name)
+      if guard then pop_package(guard, "guard-alarm") end
+    end
+  end)
+end)
+```
+
+```lua
+-- scripts/ai/cook-check.lua: is the stove already on?
+local stove = find_part("cook", 15)
+if stove and part_open(stove.id, stove.index) then say("Something's already cooking.") end
+```
+
+Ringing the bell pushes `guard-alarm` (travel to the north gate, running) on the three guards for two minutes, then pops
+it and they go back to their own packages.
 
 Questions: how do I make a character open a door in a script? how do I check if the stove is on? how do I push a package
 from Lua?
@@ -125,6 +258,29 @@ from Lua?
 | `notify(channel, text[, seconds])` | toast, feed, banner or alert |
 | `open_screen(id)` / `close_screen(id)` / `is_open(id)` | the project's screens (ui/screens/<id>.rml) and panels |
 
+### Example: a treasure chest with a show
+
+```lua
+-- scripts/treasure-chest.lua, on a chest whose Interactable sends "open-treasure"
+local opened = false
+on("open-treasure", function(e)
+  if opened then return end
+  opened = true
+  local x, y = get_position()
+  play(self_id(), "open")                               -- its "open" clip, once
+  play_sound_at("assets/audio/chest-creak.wav", x, y)
+  wait(0.4)
+  play_effect("sparkle", self_id())
+  emit_particles("door-dust", x, y, 1.5)                -- a particles record, for 1.5 seconds
+  slow_motion(0.5, 0.6)
+  drop_loot(x, y + 1, "crypt-chest", 3)
+  notify("banner", "Treasure!", 2)
+end)
+```
+
+The chest plays its open clip with a creak, sparkles, the game slows for a moment, and the `crypt-chest` loot table is
+rolled at level 3 onto the ground in front of it, with a "Treasure!" banner.
+
 Questions: how do I play an animation from a script? how do I play a sound at a position? how do I show a notification?
 how do I change the music for a boss fight?
 
@@ -142,6 +298,36 @@ how do I change the music for a boss fight?
 | `on(event, fn)` / `emit(event[, data])` | events (`"*"` for all); data may have entity, other, amount, text |
 | `after(s, fn)` / `every(s, fn)` / `cancel(handle)` | timers |
 | `start(fn)` / `wait(seconds)` | coroutines |
+
+### Example: a shrine that teaches a spell, and a cultist who casts it
+
+```lua
+-- scripts/fire-shrine.lua, on an Interactable with event "touch-shrine"
+on("touch-shrine", function(e)
+  local player = find_nearest("Player")
+  if player and not achievement_unlocked("touched-fire") then
+    learn(player, "firebolt")
+    unlock_achievement("touched-fire")
+    notify("toast", "You learned Firebolt.")
+  end
+end)
+```
+
+```lua
+-- scripts/cultist.lua
+function update(dt)
+  local player, d = find_nearest("Player")
+  if player and d < 8 and cooldown_left("firebolt") <= 0 then
+    if difficulty_step("enemies") >= 4 or math.random() < 0.5 then
+      cast("firebolt", player)
+    end
+  end
+end
+on("difficulty_changed", function(e) print("difficulty now", difficulty()) end)
+```
+
+Touching the shrine teaches Firebolt once and unlocks the achievement. The cultist casts Firebolt at the player within
+eight cells when it's off cooldown: always on enemies step 4 or 5, otherwise half the time.
 
 Questions: how do I cast a spell from a script? how do I read input in Lua? how do I check the difficulty in a script? how
 do I unlock an achievement?

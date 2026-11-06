@@ -29,6 +29,15 @@ window shows a one-line hint for the tool you're using.
 
 See also: viewport.md, status-and-notifications.md.
 
+### Example: jumping to the chapel in a big village scene
+
+The scene `millbrook` is large and you want to work near the chapel, which has a marker `chapel_door`.
+
+1. On the Viewport panel's toolbar, click Go to marker….
+2. Type `chap` in the list's search box and click `chapel_door`.
+3. The view centres on the chapel door. If Go to marker… isn't on the toolbar, the scene has no markers yet; add one
+   with the Marker tool first.
+
 Questions: where are the tools? what does the Save dot mean? how do I jump to a marker?
 
 ## Select tool
@@ -48,6 +57,22 @@ Questions: where are the tools? what does the Save dot mean? how do I jump to a 
   Ctrl+D duplicates it, Delete deletes it.
 
 See also: viewport.md, undo-and-clipboard.md.
+
+### Example: clearing a cluttered corner of the market
+
+Five crates, two sacks and some cobble tiles fill a corner of `harbour_market` and you want them gone.
+
+1. Press V for the Select tool.
+2. Hold Shift and drag a box around the corner. The crates and sacks inside are selected, plus the ground cells
+   whose middle is inside the box.
+3. Check the Inspector: it shows what the selected things share.
+4. Press Delete. Everything in the box is removed; Ctrl+Z brings it all back.
+
+### Example: lining up three market stalls
+
+1. Click the first stall, then Ctrl+click the second and third so all three are selected.
+2. Press the Left arrow twice: all three move two cells left together.
+3. Press Shift+Right arrow three times to push them back three tenths of a cell for a fine fit.
 
 Questions: how do I select several things? how do I move an entity? how do I box-select? how do I deselect?
 
@@ -72,6 +97,24 @@ If nothing is picked and you click with the brush, the editor says "Pick a prefa
 
 See also: shortcuts.md.
 
+### Example: painting a dirt road with neat edges
+
+1. In Assets ▸ Prefabs, click the dirt terrain tile. The brush button reads "Paint dirt" (with your tile's name).
+2. Tick Auto-fit on the toolbar.
+3. Press Shift+wheel up until the brush covers 2×2 cells.
+4. Drag across the grass from the village gate to the well. The road is painted, and its edges and corners are picked
+   to match the grass around it.
+5. One stroke went too far: press E for Erase and drag over the extra cells; Auto-fit puts back the plain ground and
+   refits the edges.
+
+### Example: placing a row of big oak trees
+
+1. Press 3 to pick the third prefab in the palette, the oak tree. The brush button reads "Place oak".
+2. Press ] four times: each press makes the brush 10% bigger, so Size % goes up to about 146%, and the ghost
+   preview grows.
+3. Press Shift+R to face the tree mirrored, so the row doesn't look copied.
+4. Click five times along the river bank. Each click places one oak at that size, and the last one placed is selected.
+
 Questions: how do I paint tiles? how do I place a prefab? how do I change the brush size? why does placing the player
 move it?
 
@@ -83,6 +126,13 @@ ground and refits the neighbouring pieces instead of leaving a hole. One drag is
 everything that stroke erased.
 
 To delete only what's selected, use the Select tool and press Delete instead.
+
+### Example: rubbing out a stray patch of water
+
+1. Press E (or click Erase on the toolbar).
+2. Drag over the three water cells that ended up in the middle of the field.
+3. The cells are cleared (or turned back into the terrain's plain ground if Auto-fit is on). Erased the fence too by
+   mistake? Press Ctrl+Z once: the whole stroke comes back, so erase again more carefully.
 
 Questions: how do I erase tiles? how do I delete ground? how do I undo an erase?
 
@@ -106,6 +156,27 @@ the editor names them, and Undo brings the path back.
 
 See also: menus.md (path point menu).
 
+### Example: a night watch patrol around the square
+
+Captain Orrin Vale should walk a loop around the market square.
+
+1. Click Path on the toolbar.
+2. Click the ground at the four corners of the square in turn: the path `path-1` gets a point at each cell.
+3. Shift+click the first point to join the last corner back to it, closing the loop.
+4. Press Enter (or click Finish path).
+5. Select the path, and in the Inspector rename it `night_watch`. Packages that use it follow the rename.
+6. Right-click the corner by the well, click Wait here… and type `8`: Orrin pauses there for 8 seconds.
+
+Then ask the AI panel:
+
+> "Captain Orrin Vale patrols the path night_watch from 20:00 to 06:00."
+
+### Example: a fork where the path splits to the mill
+
+1. With the Path tool on, click a point halfway along the road path to pick it.
+2. Click the ground toward the mill: a new branch starts from the picked point.
+3. Keep clicking to the mill door, then press Enter.
+
 Questions: how do I draw a path for an NPC? how do I make a fork? how do I finish a path? how do I make a character
 wait at a point?
 
@@ -118,6 +189,17 @@ ground's right-click menu (**Add a marker here…**).
 
 **◇ Markers** on the toolbar shows or hides the markers in the viewport. **Go to marker…** centres the view on the
 marker you pick.
+
+### Example: an arrival point for the harbour gateway
+
+Players coming from the road scene should arrive at the harbour's north gate.
+
+1. Click Marker on the toolbar.
+2. Click the cell just inside the north gate and type `north_gate_arrival`.
+3. The marker shows as ◇ in the viewport. To nudge it, press V, click the marker and drag it.
+4. Point the gateway in the road scene at `north_gate_arrival`, for example by asking the AI panel:
+
+> "Make the east end of the road a gateway to harbour_market, arriving at north_gate_arrival."
 
 Questions: how do I add a marker? how do I move a marker? how do I find a marker in a big scene?
 
@@ -132,6 +214,15 @@ while it's on:
 Characters walk between heights only where there's a ramp. Right-click the ground and choose **Ramp here (walk
 between heights)** to add one. Everywhere else, a height difference is a cliff.
 
+### Example: a hill for the windmill with a way up
+
+1. Click Height on the toolbar, choose Raise and set Radius to 4.
+2. Drag in small circles where the windmill will stand until the ground is a hill.
+3. Choose Level and drag over the top so the windmill has a flat place to sit.
+4. Right-click the ground at the foot of the hill, on the side facing the village, and click Ramp here (walk between
+   heights).
+5. Press F5 to test: the miller can walk up the ramp; everywhere else the hill's edge is a cliff.
+
 Questions: how do I raise terrain? how do I flatten the ground? how do characters climb between heights?
 
 ## Undo, Redo, Save, Frame and Play buttons
@@ -142,5 +233,13 @@ view). The big **▶ Play** button at the right starts a play-test. While playin
 viewport also stops.
 
 See also: play-mode.md, undo-and-clipboard.md.
+
+### Example: a quick test after moving the tavern door
+
+1. You moved the tavern's door prop; the toolbar's Save button shows a dot. Click Save: the dot goes.
+2. Click ▶ Play at the right end of the toolbar. It turns into ■ Stop and the toolbar's bottom edge turns blue.
+3. Walk the player through the door.
+4. Click ■ Stop (or press Esc in the viewport). You are back in the editor, and Frame fits the whole scene again if
+   you lost your place.
 
 Questions: where is the play button? how do I stop playing?
