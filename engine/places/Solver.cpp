@@ -287,6 +287,35 @@ private:
     // region they're in, so what they join is all there.
     std::vector<std::pair<const json*, int>> late_;
     bool lateRunning_ = false;
+    // The land's height per cell (in storeys; 0: level) and its snow, from the relief statements.
+    std::vector<float> height_;
+    std::vector<uint8_t> snow_;
+    void Relief(const json& s);
+    // The relief in the document: {rows: [[count, height in tenths]...] per row, snow: the same of 0/1}; null: level.
+    json ReliefJson() const {
+        if (height_.empty()) return json();
+        json rows = json::array(), snow = json::array();
+        for (int y = 0; y < H; ++y) {
+            json row = json::array(), srow = json::array();
+            for (int x = 0; x < W;) {
+                const int v = static_cast<int>(std::lround(height_[Cell(x, y)] * 10));
+                int n = 1;
+                while (x + n < W && static_cast<int>(std::lround(height_[Cell(x + n, y)] * 10)) == v) ++n;
+                row.push_back({n, v});
+                x += n;
+            }
+            for (int x = 0; x < W;) {
+                const int v = snow_[Cell(x, y)];
+                int n = 1;
+                while (x + n < W && snow_[Cell(x + n, y)] == v) ++n;
+                srow.push_back({n, v});
+                x += n;
+            }
+            rows.push_back(row);
+            snow.push_back(srow);
+        }
+        return {{"rows", rows}, {"snow", snow}};
+    }
     // The partial solve: whether a node is laid out again, and the previous layout restored.
     bool Redo(const std::string& node) const;
     bool Locked(const std::string& node) const;
@@ -4094,6 +4123,75 @@ void Solver::Connect(const json& s, int container) {
     instancesOf_[s.value("id", "")] = legs;
 }
 
+void Solver::Relief(const json& s) {
+    // A zone's land rising from its edge (mountains, hills): a cell's height is how far in it is (its share of the
+    // zone's reach) eased, times the peak, made rugged by smooth noise; its highest points, apart, are its peaks.
+    const auto it = regionById_.find(s.value("in", ""));
+    if (it == regionById_.end()) return;
+    const Region& g = regions_[it->second];
+    if (g.cells.empty()) return;
+    if (height_.empty()) height_.assign(static_cast<size_t>(W) * H, 0.0f), snow_.assign(static_cast<size_t>(W) * H, 0);
+    std::vector<uint8_t> mine(static_cast<size_t>(W) * H, 0);
+    for (int c : g.cells) mine[c] = 1;
+    std::vector<int> dist(static_cast<size_t>(W) * H, -1);
+    std::deque<int> q;
+    for (int c : g.cells) {
+        const int x = c % W, y = c / W;
+        bool rim = false;
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            rim = rim || !In(x + dx, y + dy) || !mine[Cell(x + dx, y + dy)];
+        }
+        if (rim) dist[c] = 0, q.push_back(c);
+    }
+    while (!q.empty()) {
+        const int c = q.front();
+        q.pop_front();
+        const int x = c % W, y = c / W;
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            if (!In(x + dx, y + dy)) continue;
+            const int n = Cell(x + dx, y + dy);
+            if (mine[n] && dist[n] < 0) dist[n] = dist[c] + 1, q.push_back(n);
+        }
+    }
+    const double peak = s.value("peak", 3.0), rugged = s.value("rugged", 0.4);
+    const double reach = std::max(3.0, s.value("rise", 0.25) * std::sqrt(static_cast<double>(g.cells.size())));
+    const uint32_t seed = static_cast<uint32_t>(std::hash<std::string>{}(g.id));
+    for (int c : g.cells) {
+        if (road_[c]) continue; // a road through it is its pass
+        const double in = std::min(1.0, dist[c] / reach);
+        const double eased = in * in * (3 - 2 * in);
+        // Ridges: where a wide noise crosses zero, the land stands highest (ridged noise), lined by a finer one.
+        const double ridge = 1.0 - std::abs(OrganicNoise(c % W, c / W, std::max(10.0, reach * 0.9), seed));
+        const double n = OrganicNoise(c % W, c / W, std::max(6.0, reach * 0.35), seed + 101);
+        height_[c] = static_cast<float>(std::clamp(peak * eased * (0.45 + 0.55 * ridge * ridge) * (1.0 + rugged * 0.5 * n), 0.0, peak * 1.2));
+        if (s.value("snow", false) && height_[c] >= peak * 0.78) snow_[c] = 1;
+    }
+    // Its peaks: the highest cells, each the top of its neighbourhood, apart from each other.
+    const std::string slot = s.value("peakSlot", "");
+    if (slot.empty()) return;
+    std::vector<int> order(g.cells.begin(), g.cells.end());
+    std::sort(order.begin(), order.end(), [&](int a, int b) { return height_[a] > height_[b]; });
+    std::vector<int> tops;
+    const double apart = std::max(8.0, reach * 0.9);
+    for (int c : order) {
+        if (height_[c] < peak * 0.75 || tops.size() >= 12) break;
+        bool close = false;
+        for (int t : tops) close = close || std::hypot(c % W - t % W, c / W - t / W) < apart;
+        if (close) continue;
+        tops.push_back(c);
+        Object o;
+        o.id = s.value("id", "") + "/peak#" + std::to_string(tops.size() - 1);
+        o.statement = s.value("id", "");
+        o.node = s.value("node", "");
+        o.slot = slot;
+        o.module = g.module;
+        o.x = std::max(0, c % W - 1), o.y = std::max(0, c / W - 1), o.w = 3, o.h = 3;
+        o.layer = kProp;
+        AddObject(o);
+    }
+    instancesOf_[s.value("id", "")] = static_cast<int>(tops.size());
+}
+
 void Solver::Flood(const json& s, int container) {
     // A moat: the container's own cells (not its sub-regions) become water; a road over it is its bridge.
     for (int c : regions_[container].cells) {
@@ -4728,6 +4826,7 @@ SolvedLayout Solver::Run() {
     for (const auto& [s, index] : late_) {
         if (s->value("op", "") == "connect") Connect(*s, index);
         else if (s->value("op", "") == "path") Path(*s);
+        else if (s->value("op", "") == "relief") Relief(*s);
     }
     late_.clear();
     lateRunning_ = false;
@@ -4812,6 +4911,7 @@ SolvedLayout Solver::Run() {
                     {"lines", lines},
                     {"anchors", anchors},
                     {"terrain", terrain},
+                    {"relief", ReliefJson()},
                     {"relations", relationScores_},
                     {"checks", checks_},
                     {"connectors", connectors_},

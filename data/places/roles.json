@@ -5713,5 +5713,19 @@
     "affordance": "environmental-object",
     "broader": "workshop",
     "solid": true
+  },
+  "peak": {
+    "label": "mountain peak",
+    "affordance": "environmental-object",
+    "broader": "rock",
+    "size": 4.0,
+    "tall": 4.0,
+    "draw": "a jagged rocky mountain peak with cliffs, ridges and scree, its top above the land around it",
+    "look": {
+      "vary": true,
+      "orient": "none",
+      "views": 1
+    },
+    "solid": true
   }
 }

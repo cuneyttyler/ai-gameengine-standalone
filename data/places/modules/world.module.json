@@ -161,11 +161,8 @@
       "class": "main",
       "width": 3,
       "terrain": "road",
-      "description": "one road network for the whole world: each site and forest joined to the main road or to the nearest one on it, and to its nearest neighbour, each road running into the place to its middle (what its section's plan keeps)",
+      "description": "one road network for the whole world, joining its settled places (their build type's reachedByRoad): each to the main road or to the nearest one on it, and to its nearest neighbour, each road running into the place to its middle",
       "neighbours": 1,
-      "also": [
-        "forest"
-      ],
       "into": true
     }
   }

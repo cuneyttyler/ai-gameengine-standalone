@@ -192,7 +192,8 @@
         "plots with fences, gardens and yards; fields with furrows outside the core",
         "unique things (the town's sign, a statue, a gallows) once, at a meaningful spot (the gate, the square)"
       ]
-    }
+    },
+    "reachedByRoad": true
   },
   {
     "id": "farmland",
@@ -309,7 +310,8 @@
         "orchards in rows; scattered trees and copses along the edges",
         "continuous ground: tracks worn into grass, no tile grid"
       ]
-    }
+    },
+    "reachedByRoad": true
   },
   {
     "id": "wilderness",
@@ -438,7 +440,8 @@
         "winding paths, never a grid; landmarks (a ruin, a shrine, an old tree) where paths meet",
         "nothing artificial or regular; clutter (stones, logs, mushrooms) in natural clusters"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "forest",
@@ -550,7 +553,8 @@
         "dense natural forest with ragged, organic edges; trees of varied species and size",
         "glades and clearings breaking it, water with soft mossy banks, trails winding through"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "camp",
@@ -667,7 +671,8 @@
         "trampled dirt ground around the fire and between the tents; grass beyond",
         "weapon racks, a cooking spot and bedrolls placed where people would use them"
       ]
-    }
+    },
+    "reachedByRoad": true
   },
   {
     "id": "harbour",
@@ -783,7 +788,8 @@
         "a waterfront road along the shore with lanes up to the houses behind",
         "water with banks, ripples and wet planks; one light from the upper left"
       ]
-    }
+    },
+    "reachedByRoad": true
   },
   {
     "id": "castle",
@@ -914,7 +920,8 @@
           "at": "wall-edge"
         }
       ]
-    }
+    },
+    "reachedByRoad": true
   },
   {
     "id": "region",
@@ -1021,7 +1028,8 @@
         "forests, hills and water in natural shapes, never a grid",
         "landmarks at meaningful spots; each settlement readable at a glance"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "world",
@@ -1171,7 +1179,8 @@
         "forests, hills, mountains and water in natural shapes, never a grid, running on across the sections",
         "coasts with beaches or cliffs; an island ringed by ocean"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "dungeon",
@@ -1325,7 +1334,8 @@
         "floors varied: cracked stone, rubble, puddles, a few stains, never one tile repeated",
         "items with a story: a key lies on the near side of its locked door, in a room found before it (never behind it, rarely right beside it), a lever by its gate, traps in corridors, bones near the lair"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "interior",
@@ -1499,7 +1509,8 @@
           "at": "lights"
         }
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "courtyard",
@@ -1637,7 +1648,8 @@
         "a centrepiece (a well, fountain or statue) at the centre",
         "buildings facing inward; planters, benches and barrels along the walls, the middle kept open"
       ]
-    }
+    },
+    "reachedByRoad": false
   },
   {
     "id": "modern-city",
@@ -1785,6 +1797,7 @@
         "parks and plazas with trees, benches and lamps; street lights along every street",
         "one consistent modern palette: concrete greys, glass blues, warm brick, green lawns"
       ]
-    }
+    },
+    "reachedByRoad": true
   }
 ]

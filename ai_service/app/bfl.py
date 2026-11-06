@@ -188,6 +188,15 @@ EMPTY_RULE = ("PURE BLACK IS EMPTY: every black area of the image (around the ma
 NO_FIGURES = "NO CREATURES OR HUMANS: paint no people, monsters, animals or any other figures anywhere in the image."
 
 
+def _relief_key(legend: dict | None) -> str:
+    """The block-out's relief (its legend's): the raised rock is mountains, painted as high land, not as walls."""
+    r = (legend or {}).get("relief") or {}
+    if not r:
+        return ""
+    return (f"RELIEF: the {r.get('shape')} are {r.get('kind')}. Paint them as real mountains (or hills where they're low) "
+            "rising as the steps rise, with ridges, cliffs, scree and shadowed slopes; never as walls, blocks or buildings.")
+
+
 def _lines_key(legend: dict | None) -> str:
     """The walls and fences the block-out draws, as key lines; a wall drawn in a marking colour (a dungeon's slate blue)
     said to be only a marking, painted in the place's own stone."""
@@ -245,6 +254,8 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
         text += " COLOUR KEY: " + "; ".join(f"{t.get('colour')} {t.get('shape')} = {t.get('what')}" for t in things)[:2600] + "."
     if _lines_key(legend):
         text += " " + _lines_key(legend) + "."
+    if _relief_key(legend):
+        text += " " + _relief_key(legend)
     if scale_sentence(legend):
         text += " " + scale_sentence(legend).strip()
     # The ground: black cells (rock, void) are left out: they're empty (EMPTY_RULE).
@@ -336,6 +347,8 @@ def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = Non
     # Walls and fences drawn in it (a dungeon's slate-blue walls): what they are; and its measure.
     if _lines_key(legend):
         text += "In the draft: " + _lines_key(legend) + ". "
+    if _relief_key(legend):
+        text += _relief_key(legend) + " "
     text += scale_sentence(legend)
     things = [t for t in (legend or {}).get("things", []) if t.get("kind")] if objects else []
     if things:

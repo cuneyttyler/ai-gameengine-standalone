@@ -210,7 +210,7 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
     for (const auto& o : solved.value("objects", json::array())) {
         const std::string slot = o.value("slot", "");
         const double cx = o.value("x", 0) + o.value("w", 1) / 2.0, cy = o.value("y", 0) + o.value("h", 1) / 2.0;
-        if (slot.empty() || cx < x0 || cy < y0 || cx >= x1 || cy >= y1) continue;
+        if (slot.empty() || slot == "peak" || cx < x0 || cy < y0 || cx >= x1 || cy >= y1) continue; // (a peak: the relief shows it)
         ++counts[slot];
         layerOf.emplace(slot, o.value("layer", "prop"));
         if (!o.value("shows", "").empty()) showsOf.emplace(slot, o.value("shows", ""));
@@ -315,6 +315,49 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
     };
     std::vector<Draw> draws;
     auto inside = [&](double x, double y) { return x >= x0 && y >= y0 && x < x1 && y < y1; };
+    // The land's relief (mountains, hills): each raised cell a column of rock as high as the land there (a storey a
+    // little over half a cell), lit from the upper left, its top snow where the relief has snow.
+    double highest = 0;
+    bool snowy = false;
+    if (const json relief = solved.value("relief", json()); relief.is_object()) {
+        auto decode = [&](const json& rows) {
+            std::vector<int> v(static_cast<size_t>(std::max(0, W * H)), 0);
+            for (int y = 0; y < static_cast<int>(rows.size()) && y < H; ++y) {
+                int x = 0;
+                for (const auto& run : rows[y]) {
+                    const int n = run[0].get<int>(), value = run[1].get<int>();
+                    for (int k = 0; k < n && x < W; ++k, ++x) v[static_cast<size_t>(y) * W + x] = value;
+                }
+            }
+            return v;
+        };
+        const std::vector<int> heights = decode(relief.value("rows", json::array()));
+        const std::vector<int> snow = decode(relief.value("snow", json::array()));
+        tDrawObject = 0;
+        const Rgb white{238, 240, 244};
+        for (int y = y0; y < y1; ++y) {
+            for (int x = x0; x < x1; ++x) {
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const double h = heights[static_cast<size_t>(y) * W + x] / 10.0;
+                if (h <= 0.05) continue;
+                highest = std::max(highest, h);
+                const bool capped = snow[static_cast<size_t>(y) * W + x] != 0;
+                snowy = snowy || capped;
+                const double up = h * th * 1.1;
+                const Rgb rock = TerrainColour(terrainAt(x, y)); // its own ground: rock for mountains, grass for hills
+                // Lit from the upper left: a top higher than its neighbour that way faces the light, a lower one is in shade.
+                const double lit = x > 0 && y > 0 ? h - heights[static_cast<size_t>(y - 1) * W + x - 1] / 10.0 : 0.0;
+                const double light = std::clamp(1.0 + 0.09 * lit, 0.62, 1.38);
+                const Rgb face = Shade(rock, 0.86), top = capped ? Shade(white, std::min(1.0, light)) : Shade(rock, light);
+                draws.push_back({static_cast<double>(x + y), [=, &canvas, &P] {
+                                     const Pt a = P(x, y + 1), b = P(x + 1, y + 1), c = P(x + 1, y);
+                                     canvas.Fill({a, b, {b.x, b.y - up}, {a.x, a.y - up}}, face);               // south-west face
+                                     canvas.Fill({b, c, {c.x, c.y - up}, {b.x, b.y - up}}, Shade(face, 0.8));   // south-east face
+                                     canvas.Fill({P(x, y, up), P(x + 1, y, up), P(x + 1, y + 1, up), P(x, y + 1, up)}, top);
+                                 }});
+            }
+        }
+    }
     // Underground (a dungeon): the rock beside a floor raised as blocks of wall, and the floors given a faint
     // flagstone grid, so an image model sees rooms of a size with walls round them, not one flat floor; the rock
     // further in stays flat and dark (empty).
@@ -384,6 +427,7 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         const int ox = o.value("x", 0), oy = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
         if (!inside(ox + w / 2.0, oy + h / 2.0)) continue;
         const std::string layer = o.value("layer", "prop"), slot = o.value("slot", "");
+        if (slot == "peak") continue; // the relief shows it
         const double depth = ox + w + oy + h - 1;
         if (layer == "building") {
             // A box as tall as it's big, a hipped roof, its door on the side it faces.
@@ -603,6 +647,13 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         for (const auto& [slot, n] : lines) {
             strips.push_back({{"kind", slot}, {"shape", slot.find("wall") != std::string::npos ? "tall grey strip along cell edges" : "thin brown strip with posts along cell edges"},
                               {"count", n}});
+        }
+        // The land's relief: what the raised rock is.
+        if (highest > 0) {
+            (*legend)["relief"] = {{"kind", "mountains and hills: high rocky land rising to ridges and peaks, with cliffs and scree"},
+                                   {"shape", std::string("grey-brown rock raised in steps, higher where the land is higher") +
+                                                 (snowy ? "; its white tops are snow" : "")},
+                                   {"highest", highest}};
         }
         // Underground: the raised rock beside the floors is the walls.
         if (wallCells > 0) {

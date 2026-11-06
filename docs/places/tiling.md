@@ -129,6 +129,19 @@ it); a run that ends inside the land (the world's road stopped at where the worl
 place's middle. Its ways in are where the world's roads cross its land's edge (`CompileOptions.entrances`). It adds its
 own streets and tracks; it never moves or drops the world's.
 
+**Only settled places are joined by road.** A build type says whether a world's roads reach a place of its kind
+(`reachedByRoad`: settlements, harbours, cities, castles, camps, farmland; not forests, the wilderness, dungeons,
+interiors); the world's links join only those sites. A road may still pass through a forest.
+
+**Mountains and hills have height.** A zone whose module's compile has `relief` (mountains: peaks of 24 storeys, hills:
+3) gets a `relief` statement, solved once the zones are laid out: each cell's height rises from the zone's edge to its
+middle (eased), lined into ridges by ridged noise, rugged by a finer one; a road through it is its pass; its highest
+points, apart, are its peaks (objects of the `peak` role, made as assets in the Assembled method); its tops are snow when
+its `peaks` are snowy. The solved plan carries it (`relief`: heights in tenths of a storey, and snow, run-length rows).
+The Paint block-out raises each cell to its height in its own ground's colour (rock for mountains, grass for hills), lit
+from the upper left by its slope, snow white on top, and the prompt says the raised rock is mountains, painted as
+mountains, never walls; the Assembled background has a `mountain` ground (terrain-kind). `mountain` is not walkable.
+
 **No woods of a section's own.** A section's root has `woods: none` (the world type's `sections.fields`), which turns off
 all of the landscape's woods set (`woods`, `woods-undergrowth`: the stands and undergrowth towards a place's edges), and
 any forest zone in its plan is dropped, whether the rules or the AI planned it.

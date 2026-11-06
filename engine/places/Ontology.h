@@ -194,6 +194,9 @@ struct BuildType {
     std::string layout = "site";
     // A single place, or an open world made of sections (docs/places/tiling.md): "place" or "world".
     std::string scope = "place";
+    // A world's roads reach a place of this kind (a settlement, a castle, a camp: people live and go there), or don't
+    // (a forest, the wilderness, a dungeon: a road may pass, it isn't joined to it).
+    bool reachedByRoad = false;
     // A world's sections (tiling.md §5): {from: [modules each a section], wild: the build type of the land between,
     // wildSide: its sections' largest side in cells, margin: the cells neighbours share, carried: what a section keeps
     // of the world plan}. Null for a place.

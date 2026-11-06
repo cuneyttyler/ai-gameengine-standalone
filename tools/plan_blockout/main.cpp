@@ -383,6 +383,11 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             }
             kept = others;
         }
+        // The Brief's settings for its parts (a component's quality: the mountains' snowy peaks), on their nodes.
+        for (auto& c : kept) {
+            const json q = brief.value("components", json::object()).value(c.value("module", ""), json::object()).value("quality", json::object());
+            for (const auto& [k, v] : q.items()) c["quality"][k] = v;
+        }
         children = kept;
     });
     for (const auto& p : world.problems) problems << "world " << p << "\n";

@@ -782,6 +782,22 @@
           98
         ]
       }
+    },
+    {
+      "id": "mountain",
+      "alt": [
+        "rocky mountain ground",
+        "scree",
+        "bare rock and boulders"
+      ],
+      "look": {
+        "hills": true,
+        "tone": [
+          122,
+          114,
+          104
+        ]
+      }
     }
   ],
   "road-class": [

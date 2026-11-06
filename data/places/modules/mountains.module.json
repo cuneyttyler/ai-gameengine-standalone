@@ -47,6 +47,10 @@
     "tree": {
       "role": "tree",
       "essential": false
+    },
+    "peak": {
+      "role": "peak",
+      "essential": false
     }
   },
   "children": {},
@@ -83,6 +87,13 @@
           }
         }
       }
-    ]
+    ],
+    "relief": {
+      "peak": 24.0,
+      "rise": 0.3,
+      "rugged": 0.5,
+      "peaks": "peaks",
+      "description": "the land rises from its edge to ridges and peaks (heights in storeys); the highest are its peaks, and snow on them when its peaks are snowy"
+    }
   }
 }

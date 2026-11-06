@@ -65,6 +65,12 @@
         "slot": "boulder",
         "density": 0.01
       }
-    ]
+    ],
+    "relief": {
+      "peak": 3.0,
+      "rise": 0.35,
+      "rugged": 0.35,
+      "description": "low rolling rises, walkable"
+    }
   }
 }

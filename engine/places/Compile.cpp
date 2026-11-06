@@ -510,9 +510,18 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
         if (cm && cm->id == "trail-network") terrain = Text(FieldOf(c, *cm, "surface"), terrain);
     }
-    // Linked by the root's network (a world's sites): it connects them all; else this zone's own trails.
+    // Linked by the root's network (a world's sites): it connects the settled ones (their build type is reached by
+    // road); else this zone's own trails.
     if (links_.is_object()) {
-        for (const auto& m : members) linkMembers_.push_back(m);
+        for (const auto& c : zone.value("children", json::array())) {
+            const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+            if (cm == nullptr || cm->level != PlaceLevel::Parcel) continue;
+            const json kind = FieldOf(c, *cm, "build-type");
+            const BuildType* build = kind.is_string() ? ontology_.Build(kind.get<std::string>()) : nullptr;
+            if (build && !build->reachedByRoad) continue;
+            const int repeat = std::max(1, c.value("repeat", 1));
+            for (int k = 0; k < repeat; ++k) linkMembers_.push_back(repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k));
+        }
         return;
     }
     if (!members.empty()) {
@@ -1091,6 +1100,13 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         if (v.is_string() && values.contains(v.get<std::string>())) {
             Emit({{"op", "fill"}, {"id", zoneId + "/ground"}, {"node", zoneId}, {"in", zoneId}, {"terrain", values[v.get<std::string>()]}});
         }
+    }
+    // Its relief (mountains, hills): the land rising from its edge, solved once the zones are laid out.
+    if (const json relief = hints.value("relief", json()); relief.is_object()) {
+        const json peaks = FieldOf(zone, m, relief.value("peaks", "peaks"));
+        Emit({{"op", "relief"}, {"id", zoneId + "/relief"}, {"node", zoneId}, {"in", zoneId}, {"peak", relief.value("peak", 3.0)},
+              {"rise", relief.value("rise", 0.25)}, {"rugged", relief.value("rugged", 0.4)}, {"snow", peaks == "snowy"},
+              {"peakSlot", std::any_of(m.slots.begin(), m.slots.end(), [](const SlotDef& sd) { return sd.name == "peak"; }) ? "peak" : ""}, {"late", true}});
     }
     auto background = [&] {
         int k = 0;
