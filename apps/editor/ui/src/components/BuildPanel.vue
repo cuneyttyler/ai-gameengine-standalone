@@ -742,7 +742,8 @@ watch(
 const makesArt = computed(() => sourcingSettings.value.defaultSource === 'generate')
 function startArt(): void {
   sendToHost({ type: 'build:findAssets', then: makesArt.value ? 'matched' : 'find' })
-  assetsTab.value = state.value?.background ? 'found' : 'background'
+  // Paint has no background (its painting is the ground): straight to the art.
+  assetsTab.value = state.value?.background || buildMethod.value === 'Paint' ? 'found' : 'background'
 }
 // ④ Result: the built place alone (the plan is ② Plan's).
 const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets' && !atPaint.value)

@@ -4883,6 +4883,7 @@ std::string PlaceBuild::BackgroundDescription() const {
 }
 
 std::string PlaceBuild::MakeBackground() {
+    if (method_ == "Paint") return "a painted place has its painting for ground"; // painted-places.md: no background
     if (!solved_.is_object() || !solved_.contains("terrain")) return "the plan isn't laid out";
     if (makingBackground_) return "already painting it";
     const json b = solved_["grid"].value("bounds", json::array({0, 0, 1, 1}));

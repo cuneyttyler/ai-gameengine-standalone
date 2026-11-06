@@ -1,4 +1,5 @@
 #include "game/Accessibility.h"
+#include "install/InstallPath.h"
 #include "game/Templates.h"
 #include "ui/UiDesign.h"
 #include "gameplay/Behaviour.h"
@@ -642,8 +643,11 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         }
         afterBackground_.clear();
         const std::string stage = build_->Stage();
-        if (build_->MakingBackground() ||
-            (build_->Background().is_null() && (stage == "planned" || stage == "sourced" || stage == "built") && build_->MakeBackground().empty())) {
+        // A painted place (the Paint method) has its painting for ground: no background is painted first.
+        const bool painted = build_->Method() == "Paint";
+        if (!painted && (build_->MakingBackground() ||
+                         (build_->Background().is_null() && (stage == "planned" || stage == "sourced" || stage == "built") &&
+                          build_->MakeBackground().empty()))) {
             afterBackground_ = then;
             PostBuild();
             return true;
@@ -772,6 +776,27 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         providerRequest_ = 0;
         if (aiConnection_) aiConnection_->Restart();
         post_(AiStatusJson());
+    } else if (type == "beta:keysRequest") {
+        post_(ApiKeysJson());
+    } else if (type == "beta:setKey" || type == "beta:removeKey") {
+        // Preferences ▸ Beta Settings: a key set or removed, kept encrypted for this user; the AI service starts
+        // again with it (a key is read when the service starts).
+        if (!apiKeys_) return true;
+        const std::string env = message.value("env", "");
+        const std::string why = apiKeys_->Set(env, type == "beta:setKey" ? message.value("value", "") : "");
+        post_(ApiKeysJson());
+        if (!why.empty()) {
+            post_({{"type", "notify"}, {"text", "Couldn't keep the key: " + why}});
+            return true;
+        }
+        post_({{"type", "notify"}, {"text", std::string(type == "beta:setKey" ? "Key kept" : "Key removed") +
+                                                (aiConnection_ && aiConnection_->Choice() == AiChoice::On ? "; the AI starts again with it" : "")}});
+        if (aiConnection_ && aiConnection_->Choice() == AiChoice::On) {
+            providerStatus_ = nlohmann::json::object();
+            providerRequest_ = 0;
+            aiConnection_->Restart();
+            post_(AiStatusJson());
+        }
     } else if (type == "ai:setArtProvider") {
         // What draws the prefabs' art: auto (follows the LLM), mistral, pixellab or bfl:<model>. Applied at once,
         // unless the project has its own (Project Settings ▸ AI).
@@ -1011,7 +1036,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         return;
     }
     if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
-    if (type.rfind("ai:", 0) == 0 && HandleAiSettingsMessage(type, message)) return;
+    // Preferences ▸ AI, and ▸ Beta Settings (beta:, the API keys).
+    if ((type.rfind("ai:", 0) == 0 || type.rfind("beta:", 0) == 0) && HandleAiSettingsMessage(type, message)) return;
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
@@ -1227,7 +1253,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             ShellExecuteW(mainWindow_, L"open", Utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
     } else if (type == "help:docs") {
-        ShellExecuteW(mainWindow_, L"open", Utf8ToWide(AIGE_EDITOR_DOCS_DIR).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteW(mainWindow_, L"open", InstalledOr(fs::u8path(AIGE_EDITOR_DOCS_DIR), "docs").wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     } else if (type == "scene:placeAt" || type == "scene:addMarker") {
         // From the viewport's right-click menu, as one undo step.
         if (playing_) {
@@ -5161,7 +5187,7 @@ bool EditorApp::HandleMagicMessage(const std::string& type, const nlohmann::json
         // The engine's preset as the project's record (to change in Records).
         const std::string kind = message.value("kind", "ability");
         const std::string id = message.value("id", "");
-        const fs::path preset = fs::path(AIGE_MAGIC_PRESETS) / (kind == "ability" ? "abilities" : "effects") / (id + ".json");
+        const fs::path preset = InstalledOr(fs::path(AIGE_MAGIC_PRESETS), "data/magic") / (kind == "ability" ? "abilities" : "effects") / (id + ".json");
         std::ifstream in(preset, std::ios::binary);
         nlohmann::json data = nlohmann::json::parse(in, nullptr, false);
         if (data.is_discarded()) data = nlohmann::json::object();
@@ -5659,6 +5685,8 @@ void EditorApp::OnAppActivated() {
 
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
+    apiKeys_ = std::make_unique<ApiKeys>(ApiKeys::DefaultPath());
+    serviceDir_ = serviceDir;
     showGrid_ = Pref("showGridAtStart", true).is_boolean() ? Pref("showGridAtStart", true).get<bool>() : true; // Preferences ▸ Viewport
     editorStateStale_ = true;
     std::string projectRoot = std::filesystem::absolute(assets_.GetProject().root).string();
@@ -5668,6 +5696,15 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
         _putenv_s("AIGE_PROVIDER", chosen.empty() ? "mistral" : chosen.c_str());
         AiClient::Options options;
         options.serviceDir = serviceDir;
+        if (apiKeys_) options.environment = apiKeys_->Environment(); // read at each start: a key just set is used
+        // The Beta package's own Python, its packages installed (tools/package_beta.py): the service runs on it, no uv needed.
+        // cmd /c strips one pair of outer quotes, so the whole command is quoted once more around the quoted exe.
+        if (const auto python = ProgramDir() / "python" / "python.exe"; std::filesystem::exists(python)) {
+            const std::u8string exe = python.u8string();
+            options.launchCommand = "\"\"" + std::string(exe.begin(), exe.end()) + "\" -m uvicorn app.main:app --host 127.0.0.1 --port {port}\"";
+            options.environment["PYTHONNOUSERSITE"] = "1"; // only its own packages, not the user's
+            options.environment["PYTHONUTF8"] = "1";
+        }
         auto client = std::make_unique<AiClient>(options);
         client->Start(EngineReflection().ExportSchema());
         client->Request("PUT", "/project", {{"root", projectRoot}}); // so it can index the World Bible
@@ -5677,6 +5714,10 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     RememberRecentProject();
     post_(ProjectInfoJson());
     post_(AiStatusJson());
+}
+
+nlohmann::json EditorApp::ApiKeysJson() const {
+    return {{"type", "beta:keys"}, {"keys", apiKeys_ ? apiKeys_->Status(serviceDir_) : nlohmann::json::array()}};
 }
 
 nlohmann::json EditorApp::Pref(const char* key, const nlohmann::json& fallback) const {
