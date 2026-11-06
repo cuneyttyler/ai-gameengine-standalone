@@ -94,7 +94,9 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
         if n > 4 and proposal.scope != "task":
             errors.append(f"{n} {kind}s to make: answer as a task (scope \"task\"), at most four a step, step after step "
                           f"until all are made")
-    if proposal.scope in ("tools", "route", "ask"):
+    if proposal.scope == "answer" and not proposal.answer.strip():
+        errors.append('an "answer" answer has its reply in "answer"')
+    if proposal.scope in ("tools", "route", "ask", "answer"):
         if proposal.operations:
             errors.append(f'a "{proposal.scope}" answer has no operations: they come once it has what it asked for')
         if proposal.scope == "tools" and not proposal.tools:

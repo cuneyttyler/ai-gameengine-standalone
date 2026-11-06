@@ -42,6 +42,7 @@ from .art_brief import better_queries, write_art_prompt
 from . import progress
 from . import style as project_style
 from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, OpenRouterProvider, Provider, ProviderError
+from .help import HelpIndex, looks_like_question
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
 
@@ -594,6 +595,7 @@ def create_app(
         "schema": schema,
         "usage": Usage(),
         "embedder": embedder,
+        "help": HelpIndex(embedder),
         "world": None,
         "checker": checker,
         "images": images,
@@ -616,6 +618,7 @@ def create_app(
     @app.put("/schema")
     def put_schema(new_schema: EngineSchema) -> dict:
         state["schema"] = new_schema
+        state["help"].set_schema(new_schema)  # its components, records and settings in the knowledge base
         return {
             "ok": True,
             "components": len(new_schema.components),
@@ -648,6 +651,9 @@ def create_app(
         if index is not None:
             # Retrieval: the canon related to what's asked (and about what).
             canon = index.canon_for(" ".join(filter(None, [request.instruction, request.context.focus])))
+        # A question: the knowledge base's most related pieces with it (help.py); any request can search it too.
+        help_index: HelpIndex = state["help"]
+        help_text = help_index.help_for(request.instruction) if looks_like_question(request.instruction) else ""
         def looked() -> list[dict]:
             """The pictures it asked to look at, as image chunks (in the project; at most four)."""
             from .vision import map_chunk
@@ -746,7 +752,7 @@ def create_app(
         try:
             result = propose(
                 writer, state["schema"], request.context, request.instruction, request.history, canon, make_art,
-                make_generated, looked()
+                make_generated, looked(), help_text, lambda query: help_index.help_for(query, k=5, max_chars=7000)
             )
         except ProviderError as error:
             return ProposeResponse(ok=False, errors=[str(error)])
@@ -768,6 +774,13 @@ def create_app(
         state["world"] = WorldIndex(root, state["embedder"])
         state["root"] = root
         return {"ok": True, "worldEntries": len(load_entries(root))}
+
+    @app.post("/help/search")
+    def help_search(request: SearchRequest) -> dict:
+        """The editor's knowledge base: the pieces most related to `query` (help.py)."""
+        hits, method = state["help"].search(request.query, request.k)
+        return {"method": method, "hits": [{"id": p.id, "title": p.title, "source": p.source, "score": s, "text": p.text}
+                                           for p, s in hits]}
 
     @app.post("/world/search")
     def world_search(request: SearchRequest) -> dict:

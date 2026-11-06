@@ -11,7 +11,7 @@ from .models import EditorContext, EngineSchema, FieldSpec, RecordFieldSpec
 OUTPUT_FORMAT = """\
 Answer with ONE JSON object and nothing else:
 {
-  "scope": "small" | "task" | "split" | "tools" | "route" | "ask",
+  "scope": "small" | "task" | "split" | "tools" | "route" | "ask" | "answer",
   "summary": "one sentence describing the change (for a task: this step), for the review panel",
   "plan": ["only for a task that benefits from planning: 2-6 short steps"],
   "reply": "task only, on its first answer: one or two short sentences to the user, first person, plain words: what you're doing and how much, e.g. \"I'm animating 21 characters with a walk, four at a time: 6 steps. Garran, Harl, Iven and Jory first.\"",
@@ -22,6 +22,7 @@ Answer with ONE JSON object and nothing else:
   "tools": [{"tool": "<name>", "args": {...}}]   (only for tools: what to read or look at first),
   "route": {"panel": "build" | "planner", "request": "<what to start it with>", "reason": "<why>"}   (only for route),
   "ask": {"question": "<one question>", "choices": ["2-5 short answers"]}   (only for ask),
+  "answer": "only for answer: the reply to a question, in plain words (short paragraphs, - lists, exact menu paths with ▸ and labels)",
   "editor": [{"do": "select", "entities": [<ids>]} | {"do": "frame", "entity": <id>} | {"do": "openScene", "path": "scenes/<name>.aige"} | {"do": "openPanel", "panel": "build"|"planner"|"generate"|"assets"} | {"do": "play"} | {"do": "animateInterior", "entity": <a building with a cutaway Interior>}]   (optional, any scope),
   "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them; one the project already has is reused unless you add "new": true, only when the user asked for a new one),
   "notes": "optional: anything the user should know (assumptions, how to test it)"
@@ -65,6 +66,8 @@ First decide how big the request is:
     read_settings {"section"?}               project settings
     read_input {}                            the input actions and their keys
     search_world {"query"}                   World Bible entries about it
+    search_help {"query"}                    the editor's knowledge base (panels, tools, menus, components, records,
+                                             settings, how-tos): answered at once, before the editor's own tools
     what_is_at {"x", "y", "radius"?}         what stands at a spot (world cells)
     buildings {}                             the buildings one can go into: footprint, kind, cells to stand someone inside
                                              (standHere), beds and counters there, how many people are in it already
@@ -77,6 +80,14 @@ First decide how big the request is:
   Everything about a place or a plan that already exists is yours, however big: adding to it, populating it with
   people, writing its story, lore, gossip and dialogue, its local quests (a task, outline first: see "task").
   "Make a story about this village and populate it" is yours, not the Planner's.
+- "answer": a question rather than a change: how the editor works or how to do something with it ("how do I make a
+  door open?", "what does the live package do?", "where do I change the art model?"), or about the project itself
+  ("who lives in the mill?", "why doesn't Vara talk?"). Answer in "answer", no operations. Ground it in EDITOR HELP
+  (given with the request when it looks like a question), the project context and tools; search_help for more of
+  the knowledge base. Give steps with the exact menu paths, panel names and labels; name the component, record or
+  field. If the knowledge base and context don't say, say you're not sure rather than guess. You may add "editor"
+  actions to show the place (openPanel, select, frame). When the user asks you to DO it ("make this door open"), do
+  it (small or task) instead.
 - "ask": the request is unclear in a way that changes what you'd do (which of two NPCs? a new
   scene or this one?). Ask one question in "ask" with 2-5 choices; the user's answer comes back.
   Don't ask about what you can find out with tools or reasonably assume (say the assumption).
@@ -832,6 +843,7 @@ def build_messages(
     history: list[dict] | None = None,
     canon: str = "",
     images: list[dict] | None = None,
+    help: str = "",
 ) -> list[dict]:
     """`images`: pictures the model asked to look at (its look tool), as image chunks on the request."""
     system = "\n\n".join(
@@ -865,11 +877,14 @@ def build_messages(
     # The canon most related to this request, in full (the context lists every
     # entry by name and summary only).
     canon_block = f"\n\nWORLD BIBLE (canon most related to this request, in full)\n{canon}" if canon else ""
+    # The editor's knowledge base, its pieces most related to a question (help.py): what answers come from.
+    help_block = f"\n\nEDITOR HELP (the knowledge base's pieces most related to this request)\n{help}" if help else ""
     user = (
         "PROJECT CONTEXT (current state of the open project)\n"
         + json.dumps(project, separators=(",", ":"))
         + focus
         + canon_block
+        + help_block
         + "\n\nREQUEST\n"
         + instruction
     )

@@ -22,3 +22,6 @@ projects/*/ai_log.jsonl
 # Live build quality runs: the pictures and data are kept, the generated test projects are not.
 tests/quality/**/project/
 tests/quality/*.out
+
+# The editor knowledge base's embeddings (ai_service/app/help.py)
+ai_service/.cache/

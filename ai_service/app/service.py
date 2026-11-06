@@ -106,6 +106,8 @@ def propose(
     make_art=None,
     make_generated=None,
     images: list[dict] | None = None,
+    help: str = "",
+    search_help=None,
 ) -> ProposalResult:
     """`make_art(requests) -> {name: path}` draws a proposal's art (the Art tool); without it, a
     proposal that needs art is told it can't have it. `make_generated(requests) -> {"character:<name>" |
@@ -113,8 +115,10 @@ def propose(
     result = ProposalResult(proposal=None, errors=[])
     made: dict[str, str] = {}
     generated: dict[str, str] = {}
-    messages = build_messages(schema, context, instruction, history, canon, images)
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    messages = build_messages(schema, context, instruction, history, canon, images, help)
+    attempt, lookups = 0, 0
+    while attempt < MAX_ATTEMPTS:
+        attempt += 1
         result.attempts = attempt
         try:
             completion = provider.complete(messages)
@@ -125,6 +129,23 @@ def propose(
         result.model = completion.model
 
         proposal, errors = _parse(completion.text, schema)
+        if (proposal is not None and proposal.scope == "tools" and search_help is not None and lookups < 3
+                and any(t.tool == "search_help" for t in proposal.tools)):
+            # The knowledge base is the service's own: searched here, at once, without a round to the editor (and
+            # not counted as an attempt).
+            lookups += 1
+            attempt -= 1
+            found = []
+            for t in proposal.tools:
+                if t.tool == "search_help":
+                    query = str(t.args.get("query", "")).strip()
+                    found.append(f'search_help "{query}":\n' + (search_help(query) or "(nothing in the knowledge base)"))
+            others = [t.tool for t in proposal.tools if t.tool != "search_help"]
+            follow = ("Now answer the request. " + (f"Ask again for the editor's tools you still need ({', '.join(others)})."
+                                                    if others else ""))
+            messages = messages + [{"role": "assistant", "content": completion.text},
+                                   {"role": "user", "content": "KNOWLEDGE BASE RESULTS\n" + "\n\n".join(found) + "\n\n" + follow}]
+            continue
         if proposal is not None and (proposal.art or proposal.generate or proposal.reply):
             # Its reply, plan and this step, shown in the AI panel now: making art or walks takes minutes, and the
             # answer (which carries them) only reaches the editor after.

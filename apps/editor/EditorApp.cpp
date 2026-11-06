@@ -8802,10 +8802,18 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
     toolRounds_.erase(requestId);
     toolTrail_.erase(requestId);
     // No one to answer a question or take a card: reported on the result page.
-    if (feature && (scope == "route" || scope == "ask" || scope == "split")) {
+    if (feature && (scope == "route" || scope == "ask" || scope == "split" || scope == "answer")) {
         FinishPlannerFeature("failed: the AI " + std::string(scope == "route" ? "sent it to another panel"
                                                             : scope == "ask" ? "asked: " + proposal.value("ask", nlohmann::json::object()).value("question", "")
                                                                              : "found it too big and split it"));
+        return;
+    }
+    if (scope == "answer") {
+        // A question answered (from the knowledge base, data/help): a reply in the chat, nothing to review.
+        const std::string text = proposal.value("answer", std::string());
+        conversation_.emplace_back("assistant", text);
+        post_({{"type", "ai:message"}, {"role", "ai"}, {"id", requestId}, {"text", text}});
+        LogAiDecision(requestId, {{"decision", "answer"}});
         return;
     }
     if (scope == "route") {

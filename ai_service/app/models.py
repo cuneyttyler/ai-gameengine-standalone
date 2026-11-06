@@ -426,7 +426,9 @@ class Proposal(BaseModel):
     #   tools - it reads or looks first: `tools`, no operations; the editor answers with the results
     #   route - another panel's work: `route`
     #   ask   - unclear: `ask`, a question with choices
-    scope: Literal["small", "task", "split", "tools", "route", "ask"] = "small"
+    scope: Literal["small", "task", "split", "tools", "route", "ask", "answer"] = "small"
+    # scope "answer": the reply to a question about the editor or the project (from the knowledge base, help.py).
+    answer: str = ""
     plan: list[str] = []
     # A task's outline, first and alone (no operations): the user approves it before any step is made.
     outline: Outline | None = None

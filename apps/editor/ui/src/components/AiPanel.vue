@@ -65,7 +65,7 @@ interface ProposalEntry {
 
 interface MessageEntry {
   kind: 'message'
-  role: 'user' | 'error'
+  role: 'user' | 'error' | 'ai' // ai: an answer to a question (scope "answer", from the knowledge base)
   text: string
 }
 
@@ -201,7 +201,7 @@ async function clearConversation(): Promise<void> {
 
 function handle(message: Record<string, unknown>): void {
   if (message.type === 'ai:message') {
-    entries.value.push({ kind: 'message', role: message.role as 'user' | 'error', text: message.text as string })
+    entries.value.push({ kind: 'message', role: message.role as 'user' | 'error' | 'ai', text: message.text as string })
   } else if (message.type === 'build:card') {
     if (!message.buildId) return
     const card = entries.value.find((e) => e.kind === 'build' && e.id === message.buildId) as BuildEntry | undefined
@@ -461,6 +461,24 @@ function taskPlan(entry: TaskEntry): string[] {
   return entry.plan.length || entry.state !== 'working' ? entry.plan : (liveTask.value?.taskPlan ?? [])
 }
 
+// An answer as light formatting: **bold**, `code`, "- " lists, paragraphs; escaped first, so nothing else is HTML.
+function answerHtml(text: string): string {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const inline = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
+  return escaped
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split('\n')
+      if (lines.every((l) => /^\s*([-*]|\d+\.)\s/.test(l))) {
+        const ordered = /^\s*\d+\./.test(lines[0]!)
+        const items = lines.map((l) => `<li>${inline(l.replace(/^\s*([-*]|\d+\.)\s/, ''))}</li>`).join('')
+        return ordered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`
+      }
+      return `<p>${inline(lines.join('<br>'))}</p>`
+    })
+    .join('')
+}
+
 // The outline: approved as it is (the steps start), or sent back with the changes asked for.
 function answerOutline(entry: TaskEntry, withChanges: boolean): void {
   const changes = withChanges ? (entry.outlineChanges ?? '').trim() : ''
@@ -674,7 +692,8 @@ const examples = [
       </div>
 
       <template v-for="(entry, entryIndex) in entries" :key="entryIndex">
-        <div v-if="entry.kind === 'message'" class="message" :class="entry.role">{{ entry.text }}</div>
+        <div v-if="entry.kind === 'message' && entry.role === 'ai'" class="message ai" v-html="answerHtml(entry.text)"></div>
+        <div v-else-if="entry.kind === 'message'" class="message" :class="entry.role">{{ entry.text }}</div>
 
         <div v-else-if="entry.kind === 'task'" class="task" :class="entry.state">
           <div class="task-head">
@@ -1377,6 +1396,23 @@ h2 {
   align-self: flex-end;
   max-width: 90%;
   background: #313148;
+}
+.message.ai {
+  white-space: normal;
+  border-left: 2px solid #6366f1;
+  background: #1b1b2c;
+}
+.message.ai :deep(p) {
+  margin: 0 0 6px;
+}
+.message.ai :deep(ul),
+.message.ai :deep(ol) {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.message.ai :deep(code) {
+  background: #2a2a3d;
+  padding: 0 3px;
 }
 .message.error {
   border-left: 2px solid #ef4444;
