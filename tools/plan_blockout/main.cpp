@@ -229,39 +229,11 @@ void PutSection(json& world, const json& section, int ox, int oy, const std::str
     auto in = [&](int sx, int sy) { return sx >= 0 && sy >= 0 && sx < SW && sy < SH && mask[static_cast<size_t>(sy) * SW + sx]; };
     std::vector<std::string> cells = TerrainCells(world, W, H);
     const std::vector<std::string> own = TerrainCells(section, SW, SH);
-    // The world's land round the box (its commonest ground just outside it): what the box is outside the section's
-    // margin (the world marked the site's lot with a surface of its own).
-    std::map<std::string, int> around;
-    for (int x = ox - 1; x <= ox + SW; ++x) {
-        for (const int y : {oy - 1, oy + SH}) {
-            if (x >= 0 && y >= 0 && x < W && y < H) ++around[cells[static_cast<size_t>(y) * W + x]];
-        }
-    }
-    for (int y = oy; y < oy + SH; ++y) {
-        for (const int x : {ox - 1, ox + SW}) {
-            if (x >= 0 && y >= 0 && x < W && y < H) ++around[cells[static_cast<size_t>(y) * W + x]];
-        }
-    }
-    std::string land = "grass";
-    int most = 0;
-    for (const auto& [t, n] : around) {
-        if (n > most && t != "water" && !t.empty()) most = n, land = t;
-    }
-    const std::string lotSurface = cells[static_cast<size_t>(std::min(H - 1, oy + SH / 2)) * W + std::min(W - 1, ox + SW / 2)];
-    // The world's roads that ran along the lot to reach its door, just outside the box: land.
-    for (int y = oy - 4; y < oy + SH + 4; ++y) {
-        for (int x = ox - 4; x < ox + SW + 4; ++x) {
-            if (x < 0 || y < 0 || x >= W || y >= H || (x >= ox && y >= oy && x < ox + SW && y < oy + SH)) continue;
-            if (cells[static_cast<size_t>(y) * W + x] == "dirt") cells[static_cast<size_t>(y) * W + x] = "grass";
-        }
-    }
+    // The section's own land inside its ragged edge; the rest stays the world's (its roads too).
     for (int y = 0; y < SH; ++y) {
         for (int x = 0; x < SW; ++x) {
             if (ox + x >= W || oy + y >= H) continue;
-            std::string& cell = cells[static_cast<size_t>(oy + y) * W + ox + x];
-            if (in(x, y) && !own[static_cast<size_t>(y) * SW + x].empty()) cell = own[static_cast<size_t>(y) * SW + x];
-            // Beyond the margin: the lot's surface, and the world's roads that hugged the lot to reach its door, are land.
-            else if ((cell == lotSurface || cell == "dirt") && cell != "water") cell = land;
+            if (in(x, y) && !own[static_cast<size_t>(y) * SW + x].empty()) cells[static_cast<size_t>(oy + y) * W + ox + x] = own[static_cast<size_t>(y) * SW + x];
         }
     }
     SetTerrain(world, cells, W, H);

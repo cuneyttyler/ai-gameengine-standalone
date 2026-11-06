@@ -3962,6 +3962,7 @@ void Solver::Connect(const json& s, int container) {
     for (auto& n : noise) n = static_cast<float>(rng.Unit());
     std::set<std::string> left(members.begin(), members.end());
     int legs = 0;
+    const bool into = s.value("into", false); // into each member, to its middle (else to its edge)
     auto entry = [&](const std::string& m) {
         // The middle of its side facing the network so far.
         const Region& g = regions_[RegionIndex(m)];
@@ -3993,13 +3994,14 @@ void Solver::Connect(const json& s, int container) {
             if (road_[c]) return 0.2;
             return 1.0 + 0.6 * noise[c];
         };
-        // To the member's nearest border cell.
+        // To the member's nearest border cell; or, going `into` it (a world's road into each place), its middle.
         const Region& g = regions_[target];
         int goal = g.cells.front();
         double goalD = 1e18;
+        const double gx = (g.x0 + g.x1) / 2.0, gy = (g.y0 + g.y1) / 2.0;
         for (int c : g.cells) {
             if (occ_[kBuilding][c] || solid_[c]) continue; // a cell a road can reach (not its own building on its edge)
-            const double d = std::hypot(c % W - bestFrom % W, c / W - bestFrom / W);
+            const double d = into ? std::hypot(c % W - gx, c / W - gy) : std::hypot(c % W - bestFrom % W, c / W - bestFrom / W);
             if (d < goalD) goalD = d, goal = c;
         }
         auto path = AStar(bestFrom, goal, cost);
@@ -4013,8 +4015,8 @@ void Solver::Connect(const json& s, int container) {
         p.cls = cls;
         p.terrain = terrain;
         p.width = width;
-        // Up to its edge: the member keeps its own ground.
-        while (!path.empty() && owner_[path.back()] == target) path.pop_back();
+        // Up to its edge: the member keeps its own ground (unless the road goes into it).
+        while (!into && !path.empty() && owner_[path.back()] == target) path.pop_back();
         p.cells = path;
         MarkRoad(path, width, RankOf(cls), -1);
         joined.insert(joined.end(), path.begin(), path.end());
@@ -4060,7 +4062,7 @@ void Solver::Connect(const json& s, int container) {
                 const auto key = m < o ? std::pair{m, o} : std::pair{o, m};
                 if (!done.insert(key).second) continue;
                 const auto [ox, oy] = centre(o);
-                const int from = edgeNear(m, ox, oy), goal = edgeNear(o, mx, my);
+                const int from = into ? edgeNear(m, mx, my) : edgeNear(m, ox, oy), goal = into ? edgeNear(o, ox, oy) : edgeNear(o, mx, my);
                 if (from < 0 || goal < 0) continue;
                 const int mi = RegionIndex(m), oi = RegionIndex(o);
                 auto cost = [&](int c) -> double {
@@ -4073,9 +4075,9 @@ void Solver::Connect(const json& s, int container) {
                 };
                 auto path = AStar(from, goal, cost);
                 if (path.empty()) continue;
-                // From one's edge to the other's: each keeps its own ground.
-                while (!path.empty() && owner_[path.front()] == mi) path.erase(path.begin());
-                while (!path.empty() && owner_[path.back()] == oi) path.pop_back();
+                // From one's edge to the other's: each keeps its own ground (unless the roads go into them).
+                while (!into && !path.empty() && owner_[path.front()] == mi) path.erase(path.begin());
+                while (!into && !path.empty() && owner_[path.back()] == oi) path.pop_back();
                 if (path.size() < 2) continue;
                 PathResult p;
                 p.id = s.value("id", "") + "/" + std::to_string(legs++);

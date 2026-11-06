@@ -973,7 +973,8 @@ void Compiler::Root(const json& root) {
         if (from.empty()) from = json::array({"site/entrance-w", "site/entrance-e"});
         Emit({{"op", "connect"}, {"id", "site/links"}, {"node", id}, {"in", "site"}, {"members", linkMembers_}, {"from", from},
               {"class", links_.value("class", "main")}, {"width", links_.value("width", 2)}, {"terrain", links_.value("terrain", "dirt")},
-              {"neighbours", links_.value("neighbours", 0)}, {"late", true}}); // once every place's land has its site
+              {"neighbours", links_.value("neighbours", 0)}, {"into", links_.value("into", false)},
+              {"late", true}}); // once every place's land has its site
         Emit({{"op", "check"}, {"id", "site/links-placed"}, {"node", id}, {"predicate", "count"},
               {"args", {{"ref", "site/links"}, {"range", {static_cast<int>(linkMembers_.size()),
                                                          static_cast<int>(linkMembers_.size()) * (1 + links_.value("neighbours", 0))}}}}});
