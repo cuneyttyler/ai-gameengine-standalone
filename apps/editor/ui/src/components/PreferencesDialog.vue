@@ -307,7 +307,8 @@ function close(): void {
               </div>
               <div class="field">
                 <label>Characters, animations</label>
-                <div class="control"><p class="desc">Always PixelLab's (Generate ▸ Character, Animate).</p></div>
+                <div class="control"><p class="desc">Characters (Generate ▸ Character) are drawn by the art model above when it's a BFL one,
+                  else by PixelLab; animations by the Humanoid and Non-humanoid animation choices below.</p></div>
               </div>
             </section>
             <section class="group">
