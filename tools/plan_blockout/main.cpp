@@ -428,6 +428,20 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     json sections = json::array();
     const int WW = b[2], WH = b[3];
     const std::vector<std::string> worldGround = TerrainCells(world.solved, WW, WH);
+    // The world's roads (its paths but rivers, and its road cells): where they cross a section's land's edge are its
+    // ways in.
+    std::vector<uint8_t> worldRoad(static_cast<size_t>(WW) * WH, 0);
+    for (const auto& p : world.solved.value("paths", json::array())) {
+        if (p.value("class", "") == "river" || p.value("terrain", "") == "water") continue;
+        for (const auto& c : p.value("cells", json::array())) {
+            const int cx = c[0], cy = c[1];
+            if (cx >= 0 && cy >= 0 && cx < WW && cy < WH) worldRoad[static_cast<size_t>(cy) * WW + cx] = 1;
+        }
+    }
+    for (const auto& c : world.solved.value("roads", json::array())) {
+        const int cx = c[0], cy = c[1];
+        if (cx >= 0 && cy >= 0 && cx < WW && cy < WH) worldRoad[static_cast<size_t>(cy) * WW + cx] = 1;
+    }
     // The world type's sections (the ontology's): which zones of the plan are sections of their own and built as what
     // (a forest as a forest), and what no section has in it (forests: they're sections of their own).
     const BuildType* worldType = ontology.Build(world.brief.value("buildType", ""));
@@ -495,7 +509,48 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             }
             return json{west ? 0 : side - 1, row};
         };
-        options.entrances = {{"w", edgeOn(side / 2, true)}, {"e", edgeOn(side / 2 + side / 10, false)}};
+        // Its ways in: where the world's roads cross its land's edge (a road cell of its land beside a road cell that
+        // isn't its land), one per crossing; the farthest two its road's ends, the rest to its middle. A road that
+        // only touches it gives one; none: its land's westmost and eastmost.
+        std::vector<std::pair<int, int>> crossings;
+        for (int yy = 0; yy < side; ++yy) {
+            for (int xx = 0; xx < side; ++xx) {
+                if (!land[static_cast<size_t>(yy) * side + xx]) continue;
+                const int wx = x + xx, wy = y + yy;
+                if (wx >= WW || wy >= WH || !worldRoad[static_cast<size_t>(wy) * WW + wx]) continue;
+                bool edge = false;
+                for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = xx + dx, ny = yy + dy, nwx = wx + dx, nwy = wy + dy;
+                    const bool outsideLand = nx < 0 || ny < 0 || nx >= side || ny >= side || !land[static_cast<size_t>(ny) * side + nx];
+                    const bool road = nwx >= 0 && nwy >= 0 && nwx < WW && nwy < WH && worldRoad[static_cast<size_t>(nwy) * WW + nwx];
+                    edge = edge || (outsideLand && road);
+                }
+                if (!edge) continue;
+                bool close = false;
+                for (const auto& [cx, cy] : crossings) close = close || std::abs(cx - xx) + std::abs(cy - yy) < 8;
+                if (!close) crossings.push_back({xx, yy});
+            }
+        }
+        json ways = {{"w", edgeOn(side / 2, true)}, {"e", edgeOn(side / 2 + side / 10, false)}};
+        if (!crossings.empty()) {
+            size_t a = 0, bIndex = crossings.size() > 1 ? 1 : 0;
+            double farthest = -1;
+            for (size_t i = 0; i < crossings.size(); ++i) {
+                for (size_t j = i + 1; j < crossings.size(); ++j) {
+                    const double d = std::hypot(crossings[i].first - crossings[j].first, crossings[i].second - crossings[j].second);
+                    if (d > farthest) farthest = d, a = i, bIndex = j;
+                }
+            }
+            if (crossings[a].first > crossings[bIndex].first) std::swap(a, bIndex); // w the western of the two
+            ways["w"] = {crossings[a].first, crossings[a].second};
+            if (crossings.size() > 1) ways["e"] = {crossings[bIndex].first, crossings[bIndex].second};
+            json more = json::array();
+            for (size_t i = 0; i < crossings.size(); ++i) {
+                if (i != a && i != bIndex) more.push_back({crossings[i].first, crossings[i].second});
+            }
+            if (!more.empty()) ways["more"] = more;
+        }
+        options.entrances = ways;
         const std::string id = landId + "/site";
         Planned section;
         std::string saved = id;
@@ -512,6 +567,14 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             section = PlanPlace(ontology, sectionBrief, id, options, [&](json& spec) {
                 if (forest) return;
                 for (const auto& [k, v] : fields.items()) spec["root"]["quality"][k] = v;
+                // What no section has (its forests: sections of their own), whoever planned it (the AI too).
+                json kept = json::array();
+                for (const auto& c : spec["root"].value("children", json::array())) {
+                    bool out = false;
+                    for (const auto& part : withoutParts) out = out || c.value("module", "") == part.get<std::string>();
+                    if (!out) kept.push_back(c);
+                }
+                spec["root"]["children"] = kept;
             }, aiSections);
         }
         for (const auto& p : section.problems) problems << id << " " << p << "\n";

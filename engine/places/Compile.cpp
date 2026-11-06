@@ -131,6 +131,10 @@ private:
     const CompileOptions& options_;
     json statements_ = json::array();
     double woods_ = -1; // the root's `woods` (a density for the landscape's woods); -1: the module's own
+    // The root's `links` (a world's: one road network joining all its sites and the main road), and its members, as
+    // the scattered zones place them; none: each zone connects its own.
+    json links_;
+    json linkMembers_ = json::array();
     std::set<std::string> ids_;
     std::string rootModule_; // the place's root module (its compile hints: the landscape set)
     // The layout form (the root's fields: zone-shape, street-grid, block-size, block-fill, coverage), and the
@@ -506,6 +510,11 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
         if (cm && cm->id == "trail-network") terrain = Text(FieldOf(c, *cm, "surface"), terrain);
     }
+    // Linked by the root's network (a world's sites): it connects them all; else this zone's own trails.
+    if (links_.is_object()) {
+        for (const auto& m : members) linkMembers_.push_back(m);
+        return;
+    }
     if (!members.empty()) {
         Emit({{"op", "connect"}, {"id", zoneId + "/trails"}, {"node", zoneId}, {"in", zoneId}, {"members", members},
               {"from", json::array({"site/entrance-w", "site/entrance-e"})}, {"class", connect.value("class", "trail")},
@@ -659,6 +668,13 @@ void Compiler::Root(const json& root) {
     }
     // Networks first: the river, the main road(s).
     int mainRoads = 0;
+    // A section's ways in beyond its two (the world's roads crossing its land's edge): anchors, their roads below.
+    json moreWays = options_.entrances.is_object() ? options_.entrances.value("more", json::array()) : json::array();
+    for (size_t k = 0; k < moreWays.size(); ++k) {
+        if (moreWays[k].is_array() && moreWays[k].size() == 2) {
+            Emit({{"op", "anchor"}, {"id", "site/entrance-" + std::to_string(k + 1)}, {"node", id}, {"at", moreWays[k]}, {"kind", "entrance"}});
+        }
+    }
     const ModuleDef* rootModule = m;
     const auto buildings = rootModule ? Range(root, *rootModule, "buildings") : std::nullopt;
     for (const auto& c : children) {
@@ -727,6 +743,19 @@ void Compiler::Root(const json& root) {
 
     // The enclosure: a moat round the inner ward, the curtain wall on its edge, towers at
     // its corners and the gatehouse where the road comes in. The zones go inside it.
+    // A section the world's roads cross (its ways in given): its road runs between them even if its kind has no main
+    // road of its own (a forest: the world's road through it), and from each further way in to its middle.
+    if (options_.entrances.is_object()) {
+        if (!ids_.contains("site/main-road")) {
+            Emit({{"op", "path"}, {"id", "site/main-road"}, {"node", id}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
+                  {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
+        }
+        for (size_t k = 0; k < moreWays.size(); ++k) {
+            if (!moreWays[k].is_array() || moreWays[k].size() != 2) continue;
+            Emit({{"op", "path"}, {"id", "site/way-" + std::to_string(k + 1)}, {"node", id}, {"in", "site"},
+                  {"from", "site/entrance-" + std::to_string(k + 1)}, {"to", "site.center"}, {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
+        }
+    }
     std::string zonesIn = "site";
     if (wallNode) {
         const int moatWidth = moatNode ? [&] {
@@ -899,7 +928,22 @@ void Compiler::Root(const json& root) {
         Emit(partition);
     }
     const json layout = m ? FieldOf(root, *m, "layout") : json();
+    links_ = rootHints.value("links", json());
+    linkMembers_ = json::array();
     for (size_t i = 0; i < zones.size(); ++i) Zone(*zones[i].first, *zones[i].second, static_cast<int>(i), layout);
+    // One network for all the sites (a world's): each joined to the main road, or to the nearest site already on it.
+    if (links_.is_object() && !linkMembers_.empty()) {
+        json from = json::array();
+        for (const char* road : {"site/main-road", "site/main-road-2", "site/main-road-3", "site/cross-road"}) {
+            if (ids_.contains(road)) from.push_back(road);
+        }
+        if (from.empty()) from = json::array({"site/entrance-w", "site/entrance-e"});
+        Emit({{"op", "connect"}, {"id", "site/links"}, {"node", id}, {"in", "site"}, {"members", linkMembers_}, {"from", from},
+              {"class", links_.value("class", "main")}, {"width", links_.value("width", 2)}, {"terrain", links_.value("terrain", "dirt")},
+              {"late", true}}); // once every place's land has its site
+        Emit({{"op", "check"}, {"id", "site/links-placed"}, {"node", id}, {"predicate", "count"},
+              {"args", {{"ref", "site/links"}, {"range", {static_cast<int>(linkMembers_.size()), static_cast<int>(linkMembers_.size())}}}}});
+    }
     if (m) Traffic(*m, id, "site", true);
     Landscape(id, zonesIn, zones);
 
@@ -958,7 +1002,11 @@ void Compiler::Landscape(const std::string& root, const std::string& zonesIn, co
                 if (sd.name == slotName) slot = &sd;
             }
             double density = b.value("density", 0.0);
-            if (b.value("name", "") == "woods" && woods_ >= 0) density = woods_; // the Brief's woods
+            // The Brief's woods: its density for the woods; its undergrowth and the rest of the woods' set (woods-*) with
+            // them, none at all when there are no woods.
+            const std::string name = b.value("name", "");
+            if (name == "woods" && woods_ >= 0) density = woods_;
+            else if (name.rfind("woods-", 0) == 0 && woods_ == 0) density = 0;
             if (slot == nullptr || density <= 0) continue;
             json st = {{"op", "scatter"}, {"id", in + "/landscape-" + tag + "-" + b.value("name", slotName)}, {"node", root}, {"in", in}, {"slot", slotName},
                        {"density", density}, {"own", true}, {"spacing", {{"min", b.value("spacing", 1)}}}, {"layer", LayerForSlot(ontology_, *slot)},

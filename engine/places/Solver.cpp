@@ -283,6 +283,10 @@ private:
 
     // Steps.
     void SolveRegion(int index);
+    // Statements marked `late` (a world's links between its sites): run once the whole region tree is solved, in the
+    // region they're in, so what they join is all there.
+    std::vector<std::pair<const json*, int>> late_;
+    bool lateRunning_ = false;
     // The partial solve: whether a node is laid out again, and the previous layout restored.
     bool Redo(const std::string& node) const;
     bool Locked(const std::string& node) const;
@@ -3987,6 +3991,7 @@ void Solver::Connect(const json& s, int container) {
         int goal = g.cells.front();
         double goalD = 1e18;
         for (int c : g.cells) {
+            if (occ_[kBuilding][c] || solid_[c]) continue; // a cell a road can reach (not its own building on its edge)
             const double d = std::hypot(c % W - bestFrom % W, c / W - bestFrom / W);
             if (d < goalD) goalD = d, goal = c;
         }
@@ -4228,6 +4233,10 @@ void Solver::SolveRegion(int index) {
         else if (op == "flood") Flood(s, index);
     };
     for (const json* s : list) {
+        if (s->value("late", false) && !lateRunning_) {
+            late_.push_back({s, index});
+            continue;
+        }
         const std::string in = s->value("in", "");
         const size_t star = in.find("[*]");
         if (star == std::string::npos) {
@@ -4643,6 +4652,14 @@ SolvedLayout Solver::Run() {
         }
     }
     for (int r : roots) SolveRegion(r);
+    // What waited for the whole tree (a world's links), each in its region.
+    lateRunning_ = true;
+    for (const auto& [s, index] : late_) {
+        if (s->value("op", "") == "connect") Connect(*s, index);
+        else if (s->value("op", "") == "path") Path(*s);
+    }
+    late_.clear();
+    lateRunning_ = false;
     const json terrain = Terrain();
     Checks();
 

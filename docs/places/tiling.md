@@ -117,6 +117,16 @@ cells that aren't its land given as `outside` (nothing planned on them) and its 
 meadows and water go round it towards the land's edge (`edge`), each with its organic edge: no forest of a section meets
 a square corner. A site's own size has room round it for that land (its compile's `padding`, 1.35).
 
+**Roads.** The world plan joins every site in one road network (the world root's compile `links`): a tree from the main
+road, each site joined to it or to the nearest site already on it, its legs reusing roads already there; it runs once
+every place's land has its site (a `late` statement). A section's ways in are where the world's roads cross its land's
+edge (`CompileOptions.entrances`: the farthest two its road's ends, the rest roads to its middle), so its own road carries
+the world's on through it; a forest gets that road too (the world's road through the wood).
+
+**No woods of a section's own.** A section's root has `woods: none` (the world type's `sections.fields`), which turns off
+all of the landscape's woods set (`woods`, `woods-undergrowth`: the stands and undergrowth towards a place's edges), and
+any forest zone in its plan is dropped, whether the rules or the AI planned it.
+
 **Forests are sections of their own.** The world type's `sections` says which zones of the world plan are sections and
 built as what (`kinds`: a `forest` zone is built as a `forest`), what no other section has in it (`withoutParts`:
 `forest`), and what each section's own root is set to (`fields`: `woods: none`, no edge woods of its own). A forest

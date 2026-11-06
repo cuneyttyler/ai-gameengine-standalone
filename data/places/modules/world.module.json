@@ -156,6 +156,12 @@
     "roads": {
       "width": 2,
       "surface": "dirt"
+    },
+    "links": {
+      "class": "main",
+      "width": 2,
+      "terrain": "dirt",
+      "description": "one road network for the whole world: each site joined to the main road or to the nearest site on it"
     }
   }
 }
