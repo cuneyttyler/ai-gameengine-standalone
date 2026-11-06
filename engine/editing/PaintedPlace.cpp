@@ -212,7 +212,109 @@ int PaintTiles(int across, int down) {
     return std::max(1, (std::max(0, across) + std::max(0, down) + kPaintTileSpan - 1) / kPaintTileSpan);
 }
 
-json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::path& folder, int width) {
+FreePaintPlan PlanFreePaint(int across, int down) {
+    FreePaintPlan p;
+    const int cw = std::max(1, across), ch = std::max(1, down);
+    const double tw = kFreePaintCell, th = tw / 2, top = th * 3.0;
+    p.width = (cw + ch) * kFreePaintCell / 2;
+    p.height = static_cast<int>(std::ceil((cw + ch) * th / 2 + top + th / 2));
+    auto grid = [](int size, int tile) { return size <= tile ? 1 : 1 + (size - tile + (tile - kFreeTileOverlap) - 1) / (tile - kFreeTileOverlap); };
+    p.cols = grid(p.width, kFreeTileW);
+    p.rows = grid(p.height, kFreeTileH);
+    // The land's diamond: its corners (as RenderPlanBlockout draws it).
+    const double cx = ch * tw / 2;
+    auto inside = [&](double x, double y) {
+        // Within the diamond: |x - cx| / (half width) + |y - middle| / (half height) <= 1.
+        const double hw = (cw + ch) * tw / 4, hh = (cw + ch) * th / 4, my = top + hh;
+        const double mx = cx + (cw - ch) * tw / 4;
+        return std::abs(x - mx) / hw + std::abs(y - my) / hh <= 1.0;
+    };
+    for (int r = 0; r < p.rows; ++r) {
+        for (int c = 0; c < p.cols; ++c) {
+            const int x0 = std::min(c * (kFreeTileW - kFreeTileOverlap), std::max(0, p.width - kFreeTileW));
+            const int y0 = std::min(r * (kFreeTileH - kFreeTileOverlap), std::max(0, p.height - kFreeTileH));
+            bool any = false;
+            for (int sy = 0; sy <= 6 && !any; ++sy) {
+                for (int sx = 0; sx <= 6 && !any; ++sx) any = inside(x0 + kFreeTileW * sx / 6.0, y0 + kFreeTileH * sy / 6.0);
+            }
+            p.tiles += any;
+        }
+    }
+    p.calls = 1 + p.tiles;
+    return p;
+}
+
+json LandOnly(const json& solved) {
+    json land = solved;
+    static const std::set<std::string> kGrows = {"tree", "bush", "hedge", "shrub", "grass", "flower", "plant", "reed", "fern", "herb", "weed"};
+    json kept = json::array();
+    for (const auto& o : solved.value("objects", json::array())) {
+        if (o.value("layer", "") != "building" && kGrows.contains(o.value("slot", ""))) kept.push_back(o);
+    }
+    land["objects"] = kept;
+    land["lines"] = json::array();
+    if (!solved.contains("terrain") || !solved.contains("grid")) return land;
+    const json b = solved["grid"].value("bounds", json::array({0, 0, 0, 0}));
+    const int W = b[2].get<int>(), H = b[3].get<int>();
+    if (W <= 0 || H <= 0) return land;
+    std::vector<uint8_t> main(static_cast<size_t>(W) * H, 0);
+    for (const auto& p : solved.value("paths", json::array())) {
+        if (p.value("class", "") != "main") continue;
+        const int r = std::max(1, p.value("width", 2)) / 2 + 1;
+        for (const auto& c : p.value("cells", json::array())) {
+            for (int dy = -r; dy <= r; ++dy) {
+                for (int dx = -r; dx <= r; ++dx) {
+                    const int x = c[0].get<int>() + dx, y = c[1].get<int>() + dy;
+                    if (x >= 0 && y >= 0 && x < W && y < H) main[static_cast<size_t>(y) * W + x] = 1;
+                }
+            }
+        }
+    }
+    const json palette = solved["terrain"].value("palette", json::array());
+    json newPalette = json::array();
+    std::map<std::string, int> index;
+    json rows = json::array();
+    const json oldRows = solved["terrain"].value("rows", json::array());
+    for (int y = 0; y < H && y < static_cast<int>(oldRows.size()); ++y) {
+        std::vector<std::string> row;
+        for (const auto& run : oldRows[y]) {
+            const int n = run[0].get<int>(), i = run[1].get<int>();
+            const std::string t = i >= 0 && i < static_cast<int>(palette.size()) ? palette[i].get<std::string>() : "";
+            for (int k = 0; k < n; ++k) row.push_back(t);
+        }
+        json out = json::array();
+        for (int x = 0; x < static_cast<int>(row.size());) {
+            auto at = [&](int xx) {
+                std::string t = row[xx];
+                if (t == "road") return std::string("dirt"); // a world's road: a road, as a road looks
+                if ((t == "dirt" || t == "plaza" || t == "cobble" || t == "paved" || t == "gravel") && !(xx < W && main[static_cast<size_t>(y) * W + xx])) return std::string("grass");
+                return t;
+            };
+            const std::string t = at(x);
+            int n = 1;
+            while (x + n < static_cast<int>(row.size()) && at(x + n) == t) ++n;
+            if (!index.contains(t)) index[t] = static_cast<int>(newPalette.size()), newPalette.push_back(t);
+            out.push_back({n, index[t]});
+            x += n;
+        }
+        rows.push_back(out);
+    }
+    land["terrain"]["palette"] = newPalette;
+    land["terrain"]["rows"] = rows;
+    return land;
+}
+
+json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::path& folder, int width, bool landOnly) {
+    if (landOnly) {
+        // The land alone, at the free density: the painter composes what's built on it.
+        const json land = LandOnly(solved);
+        const auto b = OccupiedBounds(land);
+        if (width <= 0) width = PlanFreePaint(b[2] - b[0], b[3] - b[1]).width;
+        json painting = PrepareBlockout(land, ontology, folder, width, false);
+        painting["free"] = true;
+        WriteJsonFile(folder / "painting.json", painting);
+        return painting;
+    }
     // Only what's painted: the things the player uses are sprites over the painting, so they aren't in it.
     json painted = solved;
     painted["objects"] = json::array();
@@ -246,6 +348,63 @@ json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::pat
 }
 
 json LoadPainting(const fs::path& folder) { return ReadJson(folder / "painting.json"); }
+
+json MarksFromStructures(const json& land, const Ontology* ontology, const fs::path& folder, const json& structures) {
+    // The land's own marks first (water, what's solid), then what stands on it.
+    json marks = PrefillMarks(land, ontology, folder, true);
+    if (!marks.is_object()) return marks;
+    const json painting = LoadPainting(folder);
+    if (!painting.is_object() || !painting.contains("view")) return marks;
+    const PaintView view = PaintView::From(painting["view"]);
+    const int W = painting["size"][0].get<int>(), H = painting["size"][1].get<int>();
+    json rows = marks.value("walk", json::object()).value("rows", json::array());
+    auto block = [&](int x, int y) {
+        if (y < 0 || y >= static_cast<int>(rows.size())) return;
+        std::string row = rows[y].get<std::string>();
+        if (x < 0 || x >= static_cast<int>(row.size())) return;
+        row[static_cast<size_t>(x)] = '#';
+        rows[y] = row;
+    };
+    std::set<std::string> used;
+    for (const auto& o : marks.value("occluders", json::array())) used.insert(o.value("id", ""));
+    int next = 0;
+    std::error_code ec;
+    fs::create_directories(folder / "marks", ec);
+    for (const auto& s : structures) {
+        const json box = s.value("box", json());
+        if (!box.is_array() || box.size() != 4) continue;
+        const int bx = std::clamp(box[0].get<int>(), 0, W - 1), by = std::clamp(box[1].get<int>(), 0, H - 1);
+        const int bw = std::clamp(box[2].get<int>(), 1, W - bx), bh = std::clamp(box[3].get<int>(), 1, H - by);
+        if (bw < 8 || bh < 8) continue;
+        // Its footprint: the lower third of its box, on the ground; those cells can't be walked.
+        for (int py = by + bh * 2 / 3; py < by + bh; py += 2) {
+            for (int px = bx + bw / 8; px < bx + bw - bw / 8; px += 2) {
+                const auto [cx, cy] = view.Cell(px, py);
+                block(static_cast<int>(std::floor(cx)), static_cast<int>(std::floor(cy)));
+            }
+        }
+        // Tall enough to go behind (a building, a tower, a wall): an occluder, its box.
+        if (s.value("tall", true)) {
+            std::string id;
+            do id = "s" + std::to_string(++next);
+            while (used.contains(id));
+            used.insert(id);
+            ImageData mask;
+            mask.width = static_cast<uint32_t>(bw);
+            mask.height = static_cast<uint32_t>(bh);
+            mask.rgba.assign(static_cast<size_t>(bw) * bh * 4, 255);
+            WritePng(folder / "marks" / (id + ".png"), mask);
+            const std::string kind = s.value("kind", "building");
+            marks["occluders"].push_back({{"id", id}, {"mask", "marks/" + id + ".png"}, {"box", {bx, by, bw, bh}}, {"kind", kind},
+                                          {"name", kind + " " + std::to_string(next)},
+                                          {"base", {{bx, by + bh}, {bx + bw, by + bh}}}, // its foot: the box's bottom
+                                          {"prefilled", true}, {"edited", false}, {"found", true}});
+        }
+    }
+    marks["walk"]["rows"] = rows;
+    SaveMarks(folder, marks);
+    return LoadMarks(folder);
+}
 
 void PaintingMade(const fs::path& folder, const json& answer) {
     json painting = LoadPainting(folder);

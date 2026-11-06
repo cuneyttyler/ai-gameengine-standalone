@@ -219,6 +219,18 @@ for pixel: the Mark step, the occluders and the interiors are unchanged.
 - Tested (`builder_tests/bfl_paint/dungeon_test/packed/tiles-1`): a 50 × 50 dungeon in 2 × 2 tiles at 4000 ×
   2140 holds about 2.5 times the detail of the one-image painting, with no visible seam.
 
+### A section painted freely
+
+A world's sections are painted the free way (painted-places.md §2a): each section's land block-out (its land, its
+roads and the world's through it, its water and woods; no buildings), and a prompt with its kind, its buildings by kind
+and count from its plan, and the world's design. Forests are sections of their own, painted as woods. The world's own
+land between the sections (the coast, the sea, the hills, the mountains) is painted on its own, in a grid, with a
+prompt for open country (no buildings; mountains only where the block-out raises rock, fields only where it has them).
+
+**Joined**: the world's land as the base, each section's painting over it, masked to its own land with a soft edge.
+Tested on the coastal world (builder_tests/world_test/scene): 22 images at 9 px a cell, the whole world 8,100 × 4,066 px;
+with FLUX.2 klein (two calls each, 44) and FLUX-3-Image (one each, 22).
+
 ### Sections are painted the same way
 
 An image is always a rectangle; a section's isn't. So a world is painted in layers, each a rectangle, joined by masks:

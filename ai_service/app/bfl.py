@@ -405,6 +405,157 @@ def write_place_words(provider, request: str, guide: str, place: dict, story: di
     return " ".join(answer.strip().strip('"').split())[:900]
 
 
+# --- Painted freely (docs/places/painted-places.md §2a) --------------------------------------------------------------
+# The block-out is the land alone (ground, roads, water, woods, fields); the painter composes the place on it from what
+# it's to hold (its kind, size, each kind of building and how many) and its design, decorating as it likes. One call
+# composes it on the whole land; then tiles of FREE_TILE (overlapping FREE_OVERLAP) repaint it at the painting's full size
+# (48 px a cell: the editor's PlanFreePaint, which shows the count), each tile with some land in it.
+FREE_TILE = (2864, 1432)
+FREE_OVERLAP = 160
+FIELDS_EMPTY = ("FARM FIELDS STAY EMPTY: where the land has fields (brown tilled soil), paint them as bare, freshly "
+                "ploughed soil in furrows with nothing growing on them: no crops, plants, scarecrows or things inside "
+                "them (they're for the game's characters to plant).")
+
+
+def free_grid(width: int, height: int) -> list[tuple[int, int, int, int]]:
+    """The free painting's tiles over a width × height painting, row by row (the editor's PlanFreePaint grid)."""
+    tw, th = FREE_TILE
+
+    def starts(size: int, tile: int) -> list[int]:
+        if size <= tile:
+            return [0]
+        n = 1 + -(-(size - tile) // (tile - FREE_OVERLAP))
+        return [min(i * (tile - FREE_OVERLAP), size - tile) for i in range(n)]
+
+    return [(x, y, min(width, x + tw), min(height, y + th)) for y in starts(height, th) for x in starts(width, tw)]
+
+
+def free_prompt(place: dict, scale: str, contents: list, design: str, request: str, guide: str, notes: str = "") -> str:
+    """The composing call's prompt: the land kept, the place built on it (its kind, size, buildings by kind and count, its
+    design), decorated as the painter likes, fields empty, black empty."""
+    kind = str(place.get("type") or "place")
+    name = place.get("name") or "the place"
+    size = f" a {scale.replace('-', ' ')}" if scale else ""
+    def name(kind: str) -> str:  # the plan's kind as a building ("house plot" is a house)
+        for tail in (" plot", " yard", " lot", " site"):
+            if kind.endswith(tail):
+                return kind[: -len(tail)]
+        return kind
+
+    built = ", ".join(f"{c.get('count')} {name(str(c.get('kind')))}{'s' if int(c.get('count') or 0) != 1 else ''}" for c in contents
+                      if c.get("kind") and c.get("count"))
+    total = sum(int(c.get("count") or 0) for c in contents)
+    text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a block-out "
+            "of the LAND only: green is grass, brown strips are dirt roads, blue is water, dark green dots are trees, brown "
+            "patches are farm fields, grey is a paved square. STAY TRUE TO THE BLOCK-OUT'S LAND: every road, river, lake, "
+            "coast and the sea exactly where it is in the block-out, the same course, width and shape; the woods and fields "
+            "where they are. Don't move, add or remove a road or any water; build the place around them. ")
+    text += f"Build {name},{size} {kind}, on it"
+    text += f": about {total} buildings: {built}. " if built else ". "
+    text += ("Place them as a real place of its kind grows: along and around the roads, densest at its heart, thinning at its "
+             "edges, with its own streets, lanes, yards, gardens and squares between them. ")
+    if request.strip():
+        text += f"What it is: {request.strip()[:400]}. "
+    if design.strip():
+        text += f"Its design: {design.strip()[:300]}; every building, material and detail fits it. "
+    if guide.strip():
+        text += guide.strip()[:600] + " "
+    text += ("Decorate it as you like: carts, barrels, crates, wells, fences, hedges, flowers, signs, wash lines, paths. "
+             + FIELDS_EMPTY + " " + EMPTY_RULE + " " + NO_FIGURES + " No text.")
+    if notes.strip():
+        text += f" Also: {notes.strip()[:300]}"
+    return text
+
+
+FREE_DETAIL = ("This image is one part of a painted isometric game map, enlarged: repaint it as finished, detailed, hand-crafted "
+               "art. Keep everything exactly where it is: every building, road, lane, river, lake, the coast, bridges, woods, fields and the black "
+               "outside the map; keep each building's size, shape and roof. Sharpen it into crisp detail: roof tiles and thatch, "
+               "walls, windows, doors, chimneys, fences, cobbles, barrels, flowers, grass and leaves. "
+               + FIELDS_EMPTY + " No people, animals or creatures, no text. ")  # (and TILE_NOTE, at its use)
+
+
+KLEIN_GROUND = (
+    "Refine this painted isometric game map. Keep everything exactly where it is: every building, road, river, lake, the sea, "
+    "mountains, trees, fences, fields and gardens, and the black outside the map; nothing moves, nothing is added or removed. "
+    "Only the plain flat green areas change: paint them as real ground, in the same hand-crafted style: lush grass with natural "
+    "light and darker patches, wildflowers, tall grass tufts, small bushes, clover, scattered stones and worn footpaths. Green "
+    "stays ground: no water, river, pond, stream or marsh anywhere on it. No people, animals or text.")
+
+
+def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents: list, design: str, request: str,
+               guide: str = "", notes: str = "", seed: int = 7, report=None, tiles_dir=None,
+               model: str = "flux-3-image") -> tuple[bytes, str]:
+    """A place painted freely on its land block-out (at its full size, 48 px a cell): composed in one call, then its
+    tiles repainted at full size and joined; its black kept black. Tiles saved to `tiles_dir` as they're painted and
+    reused. The painting (PNG bytes, the block-out's size) and the prompts."""
+    import io
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
+    W, H = src.size
+    painter = BflPainter(key, model if model in ("flux-3-image", "flux-2-klein-4b", "flux-2-pro", "flux-2-max") else "flux-3-image")
+    compose_prompt = free_prompt(place, scale, contents, design, request, guide, notes)
+    saved = Path(tiles_dir) if tiles_dir else None
+    boxes = free_grid(W, H)
+    black = src.getpixel((2, 2))
+    land = [b for b in boxes if any(sum(abs(a - c) for a, c in zip(px, black)) > 30
+                                    for px in src.crop(b).resize((32, 16)).getdata())]
+    total = (2 if painter.model == "flux-2-klein-4b" else 1) + len(land)
+    if report:
+        report(0, total, f"Composing the place on its land (1 call), then {len(land)} tiles")
+    composed_file = saved / "compose.png" if saved else None
+    if composed_file and composed_file.is_file():
+        composed = Image.open(composed_file).convert("RGB")
+    else:
+        size = _four_mp(W, H)
+        small = src.resize((size["width"], size["height"]), Image.LANCZOS)
+        buf = io.BytesIO()
+        small.save(buf, format="PNG")
+        composed = Image.open(io.BytesIO(painter.repaint(buf.getvalue(), compose_prompt, seed=seed, **size))).convert("RGB")
+        if painter.model == "flux-2-klein-4b":
+            # klein re-lays land it's free to decorate: its composing is strict (the ground left plain), then a call that
+            # paints the ground only, everything else kept (painted-places.md §2a).
+            buf = io.BytesIO()
+            composed.save(buf, format="PNG")
+            composed = Image.open(io.BytesIO(painter.repaint(buf.getvalue(), KLEIN_GROUND, seed=seed, width=composed.width,
+                                                             height=composed.height))).convert("RGB")
+        if composed_file:
+            composed_file.parent.mkdir(parents=True, exist_ok=True)
+            composed.save(composed_file)
+    big = composed.resize((W, H), Image.LANCZOS)
+    done = [1]
+
+    def tile(box):
+        file = saved / f"tile-{boxes.index(box)}.png" if saved else None
+        if file and file.is_file():
+            im = Image.open(file).convert("RGB")
+        else:
+            part = big.crop(box)
+            b = io.BytesIO()
+            part.save(b, format="PNG")
+            im = Image.open(io.BytesIO(painter.repaint(b.getvalue(), FREE_DETAIL + TILE_NOTE, seed=seed, **_four_mp(*part.size)))).convert("RGB")
+            if file:
+                im.save(file)
+        done[0] += 1
+        if report:
+            report(done[0], total, f"Painted tile {done[0] - 1} of {len(land)}")
+        return im
+
+    with ThreadPoolExecutor(min(TILES_AT_ONCE, max(1, len(land)))) as pool:
+        tiles = list(pool.map(tile, land))
+    # The tiles over the composed painting (where no tile is: black), joined; black wherever the land isn't.
+    joined = join_tiles(tiles, land, W, H) if land else big
+    import numpy as np
+    mask = (np.abs(np.asarray(src, dtype=int) - np.array(black)).sum(axis=2) <= 30)
+    out_arr = np.asarray(joined).copy()
+    out_arr[mask] = black
+    out = io.BytesIO()
+    Image.fromarray(out_arr).save(out, format="PNG")
+    return out.getvalue(), compose_prompt + "\n---\n(" + str(len(land)) + " tiles) " + FREE_DETAIL
+
+
 # Who paints a place whole (Project Settings ▸ AI ▸ paint), as shown.
 PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro", "flux-2-max": "FLUX-2-Max", "flux-3-image": "FLUX-3-Image",
                 "flux-3-to-pro": "FLUX-3-Image-to-Pro", "flux-3-to-klein": "FLUX-3-Image-to-Klein"}

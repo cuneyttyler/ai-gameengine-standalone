@@ -3325,6 +3325,19 @@ across them. And paintings and backgrounds are made of **tiles**, as many as the
 - The Mark page lists the sections on the left and shows the selected section's marks on the right.
 - Tests: neighbours' paintings agree over the margin; marks per section line up in world cells.
 
+### 31.6a Painted freely (painted-places.md §2a)
+
+- The Paint method on a site place is painted freely: its plan's land alone in the block-out (ground, main and world
+  roads, water, mountains, woods, fields as bare soil; no buildings), 48 px a cell, flat; the painter composes the place
+  in one call from a prompt with its kind and size, each kind of building and how many, the request's and Brief's
+  design, "decorate it as you like", farm fields empty, the land kept at exactly its location; then tiles of 2864 × 1432
+  repaint it at full size (saved and resumable); the black put back.
+- ③ Plan and ④ Paint show the calls before painting.
+- ⑤ Mark: the land's marks, and what the vision model finds standing in the painting as occluders and blocked
+  footprints, for the user to adjust.
+- For FLUX.2 klein: a strict composing call, then a ground-only call.
+- A whole world: each section and the world's own land painted so, joined by masks (tested: 22 images).
+
 ### 31.7 The AI panel
 
 - New ops: build an open world, list its sections, select one, lay out / plan / paint a section again.

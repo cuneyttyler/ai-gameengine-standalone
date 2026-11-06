@@ -238,6 +238,17 @@ class PaintRequest(BaseModel):
     seed: int = 7
     reference: str = ""                # in dir: a picture the painting is made after (docs/places/scene-types.md)
     objects: bool = True               # the block-out shows its things (props, doors) as coloured markers; else its ground only
+    # Painted freely (painted-places.md §2a): the block-out is the land alone; the painter composes the place from these.
+    free: bool = False
+    contents: list = []                # [{kind, count}]: each kind of building and how many
+    design: str = ""                   # the Brief's style, in words
+    request: str = ""                  # the user's request
+    scale: str = ""                    # its size class (large-village)
+
+
+class FindMarksRequest(BaseModel):
+    dir: str                           # the place's folder (places/<id>): its painting is there
+    painting: str = "painting.png"
 
 
 class InteriorsRequest(BaseModel):
@@ -1006,6 +1017,22 @@ def create_app(
             query = str(json.loads((folder / "request.json").read_text(encoding="utf-8")).get("query", ""))
         except (OSError, ValueError):
             pass
+        if request.free:
+            # Composed by the painter on the land, then its tiles (saved as they're painted: a run cut short goes on).
+            from .bfl import paint_free
+            try:
+                png, prompt = paint_free(key, (folder / request.blockout).read_bytes(), request.place, request.scale, request.contents,
+                                         request.design, request.request or query, guide, request.notes, request.seed, report,
+                                         folder / "paint-tiles", request.model)
+            except Exception as error:  # noqa: BLE001 - said to the editor
+                return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
+            (folder / "painting.png").write_bytes(png)
+            (folder / "painting-prompt.txt").write_text(prompt, encoding="utf-8")
+            import shutil
+            shutil.rmtree(folder / "paint-tiles", ignore_errors=True)  # painted: the next painting starts afresh
+            report(1, 1, "Painted")
+            return {"ok": True, "provider": f"{PAINT_MODELS.get(request.model, request.model)} (composed, then tiles)", "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
+                    "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
         written = write_place_words(state["provider"], query, guide, request.place, request.story, request.look, request.legend)
         try:
             reference = (folder / request.reference) if request.reference else None
@@ -1020,6 +1047,28 @@ def create_app(
         report(1, 1, "Painted")
         return {"ok": True, "provider": PAINT_MODELS[request.model], "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
                 "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
+
+    @app.post("/places/find-marks")
+    def places_find_marks(request: FindMarksRequest) -> dict:
+        """What stands in a freely painted place (painted-places.md §2a): its buildings, walls, towers and big things, by
+        the vision model, as [{kind, box: [x, y, w, h], tall}] in the painting's pixels."""
+        from PIL import Image
+        from .vision import find_structures
+        Image.MAX_IMAGE_PIXELS = None
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not (folder / request.painting).is_file():
+            return {"ok": False, "errors": [f"No painting in {request.dir}"]}
+        vision = state["vision"] or state["provider"]
+        if vision is None:
+            return {"ok": False, "errors": ["No vision model: set one in Preferences ▸ AI"]}
+        report = progress.reporter()
+        report(0, 1, "Finding the buildings and what stands in the painting")
+        structures = find_structures(vision, Image.open(folder / request.painting))
+        report(1, 1, f"{len(structures)} found")
+        return {"ok": True, "structures": structures}
 
     @app.post("/places/interiors")
     def places_interiors(request: InteriorsRequest) -> dict:

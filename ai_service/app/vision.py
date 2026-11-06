@@ -354,6 +354,68 @@ def locate_doors(provider: Provider, picture: Image.Image) -> list[list[int]]:
     return [[round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)] for x0, y0, x1, y1 in _boxes(answer, shown.width, shown.height)]
 
 
+FIND_STRUCTURES = """The picture is part of a painted 2D isometric game map. Find everything in it that stands up from the ground
+and that a character could walk behind or can't walk through: buildings (houses, shops, halls, churches, barns, mills),
+towers, walls, gates, market stalls, sheds, wells, big carts, standing stones. Not trees, bushes, flowers, fences low
+enough to step over, fields, roads or water. For each, the smallest box round all of it (roof and walls included) as
+[x0, y0, x1, y1] in thousandths of the picture (0-1000; x from the left edge, y from the top), and its kind in a word or
+two. Answer as JSON exactly: {"structures": [{"kind": "house", "box_2d": [x0, y0, x1, y1]}, ...]} ({"structures": []} when
+there are none)."""
+
+
+def find_structures(provider: Provider, picture: Image.Image, piece: int = 1024, overlap: int = 128, scale_to: int = 4096) -> list[dict]:
+    """What stands in a painting (docs/places/painted-places.md §2a): the vision model looks at it in pieces of `piece` px
+    (the painting scaled to `scale_to` px wide first), and each structure it sees is kept once:
+    [{kind, box: [x, y, w, h] in the painting's pixels, tall}]."""
+    if provider is None:
+        return []
+    k = min(1.0, scale_to / picture.width)
+    shown = picture.convert("RGB")
+    if k < 1:
+        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
+    found: list[dict] = []
+
+    def overlaps(a, b) -> float:
+        ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+        iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+        inter = ix * iy
+        area = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+        return inter / area if area > 0 else 0.0
+
+    step = piece - overlap
+    for y in range(0, max(1, shown.height - overlap), step):
+        for x in range(0, max(1, shown.width - overlap), step):
+            crop = shown.crop((x, y, min(shown.width, x + piece), min(shown.height, y + piece)))
+            pixels = list(crop.resize((16, 16)).getdata())
+            if sum(1 for p in pixels if sum(p) < 90) > 240:
+                continue  # all black: outside the map
+            buffer = io.BytesIO()
+            crop.save(buffer, "PNG")
+            url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+            content = [{"type": "text", "text": FIND_STRUCTURES}, {"type": "image_url", "image_url": url}]
+            try:
+                text = provider.complete([{"role": "user", "content": content}]).text
+                answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
+            except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+                continue
+            items = answer.get("structures", []) if isinstance(answer, dict) else []
+            for item in items if isinstance(items, list) else []:
+                boxes = _boxes([item], crop.width, crop.height) if isinstance(item, dict) else []
+                if not boxes:
+                    continue
+                x0, y0, x1, y1 = boxes[0]
+                box = [(x + x0) / k, (y + y0) / k, (x + x1) / k, (y + y1) / k]
+                if any(overlaps(box, f["_xy"]) > 0.6 for f in found):
+                    continue
+                kind = str(item.get("kind") or "building")[:40]
+                low = kind.lower()
+                found.append({"kind": kind, "_xy": box,
+                              "tall": not any(w in low for w in ("well", "cart", "stall", "stone", "crate", "barrel"))})
+    return [{"kind": f["kind"], "tall": f["tall"],
+             "box": [round(f["_xy"][0]), round(f["_xy"][1]), round(f["_xy"][2] - f["_xy"][0]), round(f["_xy"][3] - f["_xy"][1])]}
+            for f in found]
+
+
 LOCATE_BUILDING = """The picture is part of a painted 2D isometric game place. Is there a building in its middle (a house, a shop, a
 hall: something with walls and a roof one could go into; not a tree, a tent's cloth alone, a wall or a fence)? If so, give
 the smallest box round that one building, its roof and walls included, as [x0, y0, x1, y1] in thousandths of the picture

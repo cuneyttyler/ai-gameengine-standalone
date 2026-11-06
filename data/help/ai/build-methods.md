@@ -74,6 +74,8 @@ Questions: how is the ground painted? which model paints the background?
 
 In a Paint build, **④ Paint** ("Paint the place whole?") paints the place from its plan: the plan's block-out, colour-coded by kind, is given to the paint model, and comes back as one painting in the game's view (about a minute). You can add notes ("a darker, rainier mood; the river wider; no snow").
 
+A village, town, camp, castle, farm or forest is **painted freely**: the block-out holds only its land (ground, roads, water, mountains, woods, fields) and the painter builds the place on it from the plan's counts (each kind of building and how many) and your request's design, decorating as it likes and leaving farm fields empty. It's composed in one call, then sharpened in tiles; ③ Plan shows how many calls before you paint. ⑤ Mark is then filled in from what the vision model finds in the painting. Dungeons and buildings' insides are painted from their plan. See Painted places and Open worlds and tiles.
+
 - **Paint the place**, then **Paint again** with your notes (the marks you made by hand are kept);
 - the painting is shown beside its plan (click to zoom);
 - **⑤ Mark →** goes on.

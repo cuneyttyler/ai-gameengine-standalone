@@ -37,7 +37,8 @@
           {"id": "scenes", "nav": "Scenes and gateways"},
           {"id": "scene-tree", "nav": "Scene panel and tree"},
           {"id": "backgrounds", "nav": "Background images"},
-          {"id": "painted-places", "nav": "Painted places"}
+          {"id": "painted-places", "nav": "Painted places"},
+          {"id": "open-worlds", "nav": "Open worlds and tiles"}
         ]},
         {"title": "Entities", "pages": [
           {"id": "inspector", "nav": "The Inspector"},

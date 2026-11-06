@@ -6372,6 +6372,10 @@ void EditorApp::ApplyBackground(PlaceSceneOptions& options) {
         // Painted whole (docs/places/painted-places.md): the painting is the ground and holds its things.
         options.paintedFolder = build_->Folder().string();
         options.paintedIds = PaintedObjectIds(&Places(), build_->Solved());
+        // Painted freely: everything the plan had is the painting's (where the painter put it), none of it placed.
+        if (build_->FreePaint()) {
+            for (const auto& o : build_->Solved().value("objects", nlohmann::json::array())) options.paintedIds.insert(o.value("id", ""));
+        }
         return;
     }
     if (const nlohmann::json bg = build_->Background(); bg.is_object() && bg.value("cellPx", 0) > 0) {
@@ -8597,7 +8601,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
                                      : "Couldn't pre-fill: " + why;
                 post_({{"type", "build:marks"}, {"place", build_->Id()}, {"marks", LoadMarks(build_->Folder())}, {"painting", LoadPainting(build_->Folder())}});
             } else {
-                const auto issues = CheckMarks(build_->Solved(), &Places(), build_->Folder());
+                const auto issues = CheckMarks(build_->MarkSolved(), &Places(), build_->Folder());
                 answer = issues.empty() ? "Nothing looks off in the marks: every tall thing has an occluder and no building can be walked through. "
                                           "Whether each region fits its painted outline is yours to judge in ⑤ Mark."
                                         : "In the marks:";

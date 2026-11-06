@@ -760,7 +760,14 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
     if (what.kind == "paint") {
         painting_ = false;
         Log({{"step", "painted"}, {"answer", body}});
-        if (body.value("ok", false)) {
+        if (body.value("ok", false) && FreePaint()) {
+            // ⑤ Mark starts from the land (water, what's solid); then the vision model finds what stands in the painting.
+            PaintingMade(Folder(), body);
+            aige::PrefillMarks(MarkSolved(), &host_.ontology(), Folder(), true);
+            const std::string why = FindMarks();
+            status_ = "Painted in " + std::to_string(static_cast<int>(body.value("seconds", 0.0))) + " s. " +
+                      (why.empty() ? "Finding the buildings and what stands in it, for ⑤ Mark…" : "⑤ Mark: mark what stands in it by hand (" + why + ").");
+        } else if (body.value("ok", false)) {
             PaintingMade(Folder(), body);
             // ⑤ Mark starts from the plan; what the user marked by hand stays.
             const json marks = aige::PrefillMarks(solved_, &host_.ontology(), Folder());
@@ -768,6 +775,19 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
                       std::to_string(marks.value("occluders", json::array()).size()) + " occluders pre-filled from the plan, to trim to the painting.";
         } else {
             Notice("The place wasn't painted: " + FirstError(body));
+        }
+        Save();
+        return;
+    }
+    if (what.kind == "find-marks") {
+        findingMarks_ = false;
+        Log({{"step", "marks found"}, {"answer", body}});
+        if (body.value("ok", false)) {
+            const json marks = MarksFromStructures(MarkSolved(), &host_.ontology(), Folder(), body.value("structures", json::array()));
+            status_ = "⑤ Mark: " + std::to_string(body.value("structures", json::array()).size()) + " buildings and things found in the painting (" +
+                      std::to_string(marks.value("occluders", json::array()).size()) + " occluders): adjust them to the painting.";
+        } else {
+            Notice("What stands in the painting wasn't found (" + FirstError(body) + "): mark it by hand in ⑤ Mark.");
         }
         Save();
         return;
@@ -4934,7 +4954,8 @@ std::string PlaceBuild::PaintModel() const {
 std::string PlaceBuild::Paint(const std::string& notes) {
     if (!solved_.is_object() || !solved_.contains("objects")) return "the plan isn't laid out";
     if (painting_) return "already painting it";
-    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder());
+    const bool free = FreePaint();
+    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder(), 0, free);
     const json legend = [&] {
         std::ifstream in(Folder() / "blockout.legend.json", std::ios::binary);
         try {
@@ -4956,8 +4977,43 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"notes", notes},
                        {"reference", reference_},
                        {"model", PaintModel()}};
-    if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
+    json send = body;
+    if (free) {
+        // What it's to be: its kind and size, each kind of building and how many (the plan's counts), and its design
+        // (the request and the Brief's style), for the painter to compose on the land and decorate as it likes.
+        std::map<std::string, int> kinds;
+        for (const auto& o : solved_.value("objects", json::array())) {
+            if (o.value("layer", "") == "building" && o.value("primary", true)) ++kinds[o.value("slot", "building")];
+        }
+        json contents = json::array();
+        for (const auto& [slot, n] : kinds) {
+            std::string kind = slot;
+            std::replace(kind.begin(), kind.end(), '-', ' ');
+            contents.push_back({{"kind", kind}, {"count", n}});
+        }
+        std::string design;
+        if (const json style = brief_.value("style", json::object()); style.is_object()) {
+            for (const auto& [k, v] : style.items()) {
+                if (v.is_string() && !v.get<std::string>().empty()) design += (design.empty() ? "" : "; ") + k + ": " + v.get<std::string>();
+            }
+        }
+        send["free"] = true;
+        send["contents"] = contents;
+        send["design"] = design;
+        send["request"] = query_;
+        send["scale"] = brief_.value("scale", json::object()).value("class", "");
+    }
+    if (!Send({"paint", -1, "", "/places/paint", send, 3600})) return "the AI is off";
     painting_ = true;
+    if (free) {
+        const auto bounds = OccupiedBounds(solved_);
+        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+        status_ = "Painting the place on its land: composed in one call, then " + std::to_string(plan.tiles) + " tiles (" + std::to_string(plan.calls) +
+                  " calls)…";
+        Log({{"step", "paint"}, {"notes", notes}, {"free", true}, {"calls", plan.calls}});
+        Save();
+        return {};
+    }
     const auto bounds = OccupiedBounds(solved_);
     const int tiles = PaintTiles(bounds[2] - bounds[0], bounds[3] - bounds[1]);
     status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting" +
@@ -5011,9 +5067,36 @@ bool PlaceBuild::Painted() const {
     return p.is_object() && p.contains("paintedAt");
 }
 
+bool PlaceBuild::FreePaint() const {
+    if (method_ != "Paint" || fromPicture_) return false;
+    const BuildType* type = brief_.is_object() ? host_.ontology().Build(brief_.value("buildType", "")) : nullptr;
+    return type == nullptr || type->layout == "site";
+}
+
+json PlaceBuild::MarkSolved() const { return FreePaint() && solved_.is_object() ? LandOnly(solved_) : solved_; }
+
+std::string PlaceBuild::FindMarks() {
+    if (findingMarks_) return "already looking";
+    if (!Painted()) return "the place isn't painted";
+    const json painting = LoadPainting(Folder());
+    if (!Send({"find-marks", -1, "", "/places/find-marks", {{"dir", "places/" + id_}, {"painting", painting.value("painting", "painting.png")}}, 1200})) {
+        return "the AI is off";
+    }
+    findingMarks_ = true;
+    Save();
+    return {};
+}
+
 std::string PlaceBuild::PrefillMarks(bool replaceEdited) {
     if (!solved_.is_object()) return "the plan isn't laid out";
     if (!LoadPainting(Folder()).is_object()) return "the place isn't painted";
+    if (FreePaint()) {
+        // The land's marks, then what the vision model finds standing in the painting.
+        aige::PrefillMarks(MarkSolved(), &host_.ontology(), Folder(), replaceEdited);
+        const std::string why = FindMarks();
+        Log({{"step", "marks pre-filled"}, {"free", true}});
+        return why;
+    }
     const json marks = aige::PrefillMarks(solved_, &host_.ontology(), Folder(), replaceEdited);
     if (!marks.is_object()) return "the painting's view can't be read";
     Log({{"step", "marks pre-filled"}, {"occluders", marks.value("occluders", json::array()).size()}, {"replaceEdited", replaceEdited}});
@@ -5518,6 +5601,14 @@ json PlaceBuild::State() {
         if (type) state["buildType"] = type->id;
     }
     state["paintModel"] = PaintModel();
+    // Painted freely: how big its painting is and how many calls it takes (shown before painting, on ③ Plan).
+    if (FreePaint() && solved_.is_object() && solved_.contains("grid")) {
+        const auto bounds = OccupiedBounds(solved_);
+        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+        // (klein composes in two calls: strict, then its ground.)
+        state["paintPlan"] = {{"calls", plan.calls + (PaintModel() == "flux-2-klein-4b" ? 1 : 0)}, {"tiles", plan.tiles}, {"width", plan.width},
+                              {"height", plan.height}, {"cellPx", kFreePaintCell}};
+    }
     state["paintFixed"] = brief_.value("buildType", "") == "dungeon"; // painted by FLUX-3-Image, whatever the project says
     state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint
     state["reference"] = reference_;
@@ -5526,7 +5617,13 @@ json PlaceBuild::State() {
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.
         const std::string rel = "places/" + id_ + "/";
-        json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}, {"makingInteriors", makingInteriors_}};
+        json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}, {"makingInteriors", makingInteriors_}, {"findingMarks", findingMarks_}};
+        if (FreePaint()) {
+            const auto bounds = OccupiedBounds(solved_);
+            const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+            paint["free"] = true;
+            paint["plan"] = {{"calls", plan.calls}, {"tiles", plan.tiles}, {"width", plan.width}, {"height", plan.height}, {"cellPx", kFreePaintCell}};
+        }
         // Each building type's interior (docs/places/interiors.md §1): the Assets step's choice.
         state["interiors"] = InteriorChoices(solved_, &host_.ontology(), Folder());
         if (const json p = LoadPainting(Folder()); p.is_object()) {

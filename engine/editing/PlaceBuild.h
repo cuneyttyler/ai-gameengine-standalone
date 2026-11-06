@@ -270,6 +270,17 @@ public:
     void SetModels(const nlohmann::json& models);
     // Built from its painting: the Paint method, and painted.
     bool Painted() const;
+    // Painted freely (docs/places/painted-places.md §2a): the Paint method on a place laid out on a site (not a dungeon
+    // or a building's inside): its block-out is the land alone and the painter composes what's built from the plan's
+    // counts and the Brief's design.
+    bool FreePaint() const;
+    // The plan the marks are made from: the land alone when painted freely (what's built is the painting's, found by
+    // the vision model), else the plan.
+    nlohmann::json MarkSolved() const;
+    // ⑤ Mark, painted freely: the vision model finds what stands in the painting (buildings, walls, towers, big
+    // things): occluders and blocked footprints, on top of the land's marks.
+    std::string FindMarks();
+    bool FindingMarks() const { return findingMarks_; }
     // ⑤ Mark: pre-filled again (an occluder the user edited stays, unless `replaceEdited`), or saved from the editor.
     std::string PrefillMarks(bool replaceEdited);
     std::string SaveMarks(const nlohmann::json& marks);
@@ -408,6 +419,7 @@ private:
     bool makingInteriors_ = false; // the interiors (docs/places/interiors.md §7): asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
     std::string scope_ = "place";      // place or world (Scope)
+    bool findingMarks_ = false;        // the vision model looking for what stands in a free painting
     bool fromPicture_ = false;   // StartFromPicture: no Layout, Plan or Paint
     std::string reference_;      // SetReference: the picture ④ Paint paints after, in the build's folder
     std::string artModel_, backgroundModel_; // SetModels

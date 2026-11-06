@@ -48,10 +48,35 @@ int PaintWidth(int across, int down);
 inline constexpr int kPaintTileSpan = 60;
 int PaintTiles(int across, int down);
 
+// Painted freely (docs/places/painted-places.md §2a: a place's buildings composed by the painter, not by the plan): the
+// painting at kFreePaintCell px across a cell, composed in one call on the land, then repainted in tiles of kFreeTileW ×
+// kFreeTileH px (overlapping by kFreeTileOverlap), each tile with some of the land in it (the AI service's
+// bfl.free_grid, which decides; this says it).
+inline constexpr int kFreePaintCell = 48;
+inline constexpr int kFreeTileW = 2864, kFreeTileH = 1432, kFreeTileOverlap = 160;
+struct FreePaintPlan {
+    int width = 0, height = 0; // the painting, px
+    int cols = 0, rows = 0;    // its tile grid
+    int tiles = 0;             // the tiles with land in them
+    int calls = 0;             // the painter's calls: 1 to compose, and the tiles
+};
+FreePaintPlan PlanFreePaint(int across, int down);
+
+// The plan's land alone (painted freely): its ground (the main roads and the world's roads kept, the plots' lanes, yards
+// and squares grass; fields kept, as bare soil), its water, and what grows on it; no buildings, fences, walls or things.
+nlohmann::json LandOnly(const nlohmann::json& solved);
+
 // ④ Paint, before the provider paints: the block-out of the painted things (blockout.png, its id map and legend)
 // drawn `width` px across (0: PaintWidth of its cells) and painting.json started ({size, view, objects: the ids in
-// the id map's order}). Returns painting.json.
-nlohmann::json PrepareBlockout(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder, int width = 0);
+// the id map's order}); with `landOnly`, of the land alone (LandOnly) at kFreePaintCell. Returns painting.json.
+nlohmann::json PrepareBlockout(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder, int width = 0,
+                               bool landOnly = false);
+
+// ⑤ Mark for a freely painted place: what the vision model found standing in the painting (buildings, walls, towers,
+// large things: [{box: [x, y, w, h] in its pixels, kind}]) as occluders (each its box) and their footprints blocked (the
+// box's lower part, on the ground); on top of the land's own marks (PrefillMarks of the land: water, what's solid).
+nlohmann::json MarksFromStructures(const nlohmann::json& land, const Ontology* ontology, const std::filesystem::path& folder,
+                                   const nlohmann::json& structures);
 
 // painting.json, or null.
 nlohmann::json LoadPainting(const std::filesystem::path& folder);

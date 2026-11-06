@@ -134,6 +134,8 @@ interface PaintState {
   seconds?: number
   prompt?: string
   marks?: { painted?: boolean; marked?: boolean; confirmed?: boolean; occluders?: number; edited?: number; blocked?: number; walkable?: number; stale?: boolean }
+  free?: boolean // painted freely: the painter composed what's built
+  findingMarks?: boolean // the vision model finding what stands in it
 }
 interface BuildState {
   paint?: PaintState
@@ -141,6 +143,8 @@ interface BuildState {
   scope?: 'place' | 'world' // a single place, or an open world of sections (docs/places/tiling.md): its build type's
   buildType?: string // its build type (the ontology's)
   paintModel?: string // who paints it (Paint)
+  // Painted freely (painted-places.md §2a): the painting's size and the calls it takes (1 to compose, then its tiles).
+  paintPlan?: { calls: number; tiles: number; width: number; height: number; cellPx: number }
   paintFixed?: boolean // a dungeon: always FLUX-3-Image, whatever the project's paint model
   projectMethod?: 'Assembled' | 'Paint'
   fromPicture?: boolean // built from a picture given as its painting: no Layout, Plan or Paint (docs/places/scene-types.md)
@@ -1969,7 +1973,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <section v-if="paint.painting" class="build-progress">
         <h4>Painting {{ state.name || 'the place' }} from its plan</h4>
         <div class="bar indeterminate"><i /></div>
-        <p>{{ paintCall?.step || 'FLUX.3 Image paints the block-out, the layout kept' }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
+        <p>{{ paintCall?.step || (state.paintPlan ? 'Composing the place on its land, then its tiles' : 'FLUX.3 Image paints the block-out, the layout kept') }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
         <p class="dim">About a minute. Then ⑤ Mark opens with what can be walked on and the occluders pre-filled from the plan.</p>
       </section>
       <section v-else-if="paint.file" class="painting">
@@ -1987,7 +1991,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </section>
       <section v-else class="note">
         <h4>Paint the place whole?</h4>
-        <p>
+        <p v-if="state.paintPlan">
+          The plan gives the land only: the ground, its roads, water, woods and fields. The painter composes the place on it: its
+          kind and size, each kind of building and how many, in the design of your request; it decorates it as it likes and
+          leaves the fields empty for planting. Then the buildings and what stands in it are found in the painting and become
+          ⑤ Mark's occluders and blocked ground, for you to adjust. Painting takes <strong>{{ state.paintPlan.calls }} calls</strong>
+          (1 to compose it, then {{ state.paintPlan.tiles }} tiles), a painting of {{ state.paintPlan.width }} × {{ state.paintPlan.height }} px.
+        </p>
+        <p v-else>
           The place is painted as one picture from its plan: every building, tree, fence and road where the plan put it, with the
           place's own look. Next you mark where one can walk and what a character goes behind (pre-filled from the plan). Only the
           things the player uses (doors, chests, items) and characters are made as art of their own.
@@ -2730,6 +2741,10 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div v-if="!showResult" class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
+        <span v-if="stage === 'plan' && buildMethod === 'Paint' && state?.paintPlan" class="dim"
+              :title="`1 call composes the place on its land, then ${state.paintPlan.tiles} tiles at ${state.paintPlan.cellPx} px a cell`">
+          Painting: {{ state.paintPlan.calls }} calls
+        </span>
         <button v-if="stage === 'plan' && buildMethod === 'Paint'" class="primary" title="Approve the plan and paint the place from it"
                 @click="approveAndPaint()">
           Paint →

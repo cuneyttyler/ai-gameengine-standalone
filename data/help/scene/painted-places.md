@@ -31,6 +31,38 @@ You painted `highvale.png`, an isometric view of a mountain village.
 
 Questions: what is a painted scene? how do I use my own painting as a level? what does the Mark step do?
 
+## Painted freely: the painter builds the place
+
+A village, town, camp, castle, farm or forest built with the Paint method is **painted freely**. The plan still decides
+its size, its kinds of building and how many of each, its roads, water, woods and fields; but the block-out given to
+the painter holds **only the land**: the ground, the main roads, rivers, lakes, the sea, mountains, trees and farm
+fields. No buildings. Painters paint far more beautifully composing a place themselves than copying a plan's boxes.
+
+The prompt tells the painter:
+- to keep every road, river, lake and coast exactly where the block-out has it, and that green is ground;
+- what to build: the place's kind and size, and each kind of building with how many ("61 houses, 4 workshops, a
+  temple, an inn…");
+- its design, from your request and the Brief (medieval or modern, its materials);
+- to decorate it as it likes, and to leave **farm fields empty** (bare ploughed soil), for the game's characters to plant.
+
+It's composed in one call, then sharpened in tiles. ③ Plan shows how many calls painting takes before you paint.
+FLUX-3-Image keeps the land best; with FLUX.2 klein the place is composed in two calls (a strict one, then one that
+paints only the ground). Dungeons and buildings' insides are still painted from their plan.
+
+Since no building plan says where the buildings are, ⑤ Mark is filled in by looking at the painting: the land's water
+and solid ground from the plan, and each building, tower, wall, stall or well the vision model finds becomes an
+occluder with its footprint blocked. Check and adjust them as usual; **Pre-fill** looks again.
+
+### Example: a large village painted freely
+
+1. Build a *"large medieval village by a river with a market and a church"* with the Paint method.
+2. At ③ Plan the land is shown, and beside **Paint →**: *Painting: 31 calls*.
+3. ④ Paint composes the village on the land (about 105 houses, workshops, a temple, an inn, as the plan counted), then
+   sharpens it in 30 tiles. The fields are left as bare soil.
+4. ⑤ Mark opens with the houses and the church found as occluders and their footprints blocked: fix the few it missed.
+
+Questions: why are there no buildings in the block-out? how does the painter know how many houses to paint? why are the fields empty? how are occluders found without a plan?
+
 ## The Mark step (Build ⑤ Mark)
 
 After ④ Paint, the Mark step shows the painting with the marks pre-filled from the plan:

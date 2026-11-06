@@ -72,6 +72,66 @@ py = (x - x0 + y - y0) * th/2 + top - up
 
 Everything in Mark and Build converts through it: cells to pixels, and pixels on the ground back to cells.
 
+## 2a. Painted freely: the land planned, the place composed by the painter
+
+The Paint method on a place laid out on a site (a village, a town, a camp, a castle, farmland, a forest; not a dungeon
+or a building's inside, which keep §2) is painted **freely** (`PlaceBuild::FreePaint`). Painters paint far more
+beautifully composing a place themselves than copying a plan's boxes, so the plan gives the **land** and the painter
+builds the place on it.
+
+**The plan.** It's made as before (Confirm, Layout, Plan): it still decides the place's size, its kinds of building and
+how many of each, its roads, water, woods and fields. What's painted from it is the land alone (`LandOnly`):
+- the ground; the main roads and a world's roads (the plots' lanes, yards and paved squares are grass: the painter lays
+  its own streets);
+- rivers, lakes, the sea, beaches, mountains (raised, with snow);
+- what grows: trees, bushes, plants;
+- farm fields, as bare soil;
+- no buildings, fences, walls or things.
+
+The block-out of it (`PrepareBlockout(..., landOnly)`) is drawn at **48 px a cell** (`kFreePaintCell`), flat (no per-cell
+shading: a painter copies it as a checkerboard), the editor's natural colours.
+
+**The prompt** (`bfl.free_prompt`) says:
+- what the block-out's colours are, and to **stay true to the land**: every road, river, lake, coast and the sea at
+  exactly its location, course and shape; no road or water moved, added or removed; green is ground and stays ground;
+- what to build: the place's name, kind and size class, about how many buildings, and **each kind of building and how
+  many** (the plan's counts: "61 houses, 4 workshops, a temple, an inn…");
+- its **design**: the user's request and the Brief's style (medieval or modern, its climate, materials);
+- to grow it as a real place grows (along the roads, densest at its heart), and to **decorate it as it likes** (carts,
+  wells, hedges, flowers, wash lines);
+- **farm fields stay empty**: bare ploughed soil, nothing growing (the game's characters plant them);
+- black is outside the map; no people, animals or text.
+
+**Painting** (`bfl.paint_free`):
+1. **Compose**: the whole block-out, scaled to one 4 MP image, painted in one call: the place composed as one.
+2. **Tiles**: that painting, enlarged to the block-out's full size, cut into tiles of 2864 × 1432 px overlapping by
+   160 px (`free_grid`; tiles with no land skipped), each repainted at full size to sharpen it (everything kept where
+   it is, fields empty), then joined by cross-fading the overlaps. Each tile is saved as it's painted and reused, so a
+   run cut short (credit, a timeout) goes on where it stopped.
+3. The black outside the map is put back from the block-out.
+
+The calls: 1 to compose + the tiles with land. ③ Plan shows it before painting (`PlanFreePaint`: "Painting: 31
+calls"), and ④ Paint says the painting's size. Brinemouth (319 × 319 cells) at 48 px a cell: 15,312 × 7,740 px, 31
+calls; at 18 px a cell: 10 calls.
+
+**Painters.** FLUX-3-Image keeps the land and decorates it in one call (the default). FLUX.2 klein composes beautifully
+but re-lays land it's free to decorate (water on grass, woods moved); for klein the composing is two calls: a strict
+call that keeps the land (its ground left plain), then a call that paints its ground only ("only the plain green
+changes; green stays ground"), which keeps every building and road where it is (builder_tests/world_test/brinemouth-land).
+
+**Marks.** With no building plan, ⑤ Mark is made by the system:
+- the land's own marks from the plan (`PrefillMarks` of the land): water blocked (and water the painter added, by
+  colour), what's solid;
+- what stands in the painting, found by the vision model (`/places/find-marks`, `vision.find_structures`): the painting
+  is looked at in pieces, and each building, tower, wall, gate, stall, well or big thing it sees comes back with a box;
+  each becomes an occluder (its box) with its footprint blocked (the box's lower third), on top of the land's marks
+  (`MarksFromStructures`).
+
+The user adjusts them in ⑤ Mark as ever. Pre-fill there (and the AI panel's "pre-fill the marks") looks again.
+
+**The scene.** The painting holds everything the plan had: no plan object is placed over it (Assets makes the doors,
+chests and characters the user or the AI panel then puts where the painting has them).
+
 ## 3. Marks
 
 Stored as `places/<id>/marks.json`, with masks under `places/<id>/marks/`:
