@@ -288,6 +288,40 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
     };
     std::vector<Draw> draws;
     auto inside = [&](double x, double y) { return x >= x0 && y >= y0 && x < x1 && y < y1; };
+    // Underground (a dungeon): the rock beside a floor raised as blocks of wall, and the floors given a faint
+    // flagstone grid, so an image model sees rooms of a size with walls round them, not one flat floor; the rock
+    // further in stays flat and dark (empty).
+    int wallCells = 0;
+    if (indoor) {
+        auto solid = [&](int x, int y) { const std::string t = terrainAt(x, y); return t == "rock-wall" || t == "void" || t == "rock"; };
+        tDrawObject = 0;
+        for (int y = y0; y < y1; ++y) {
+            for (int x = x0; x < x1; ++x) {
+                if (!solid(x, y)) {
+                    // The grid: each cell's back edges a shade darker.
+                    const Rgb c = Shade(TerrainColour(terrainAt(x, y)), 0.82);
+                    const double e = 0.06;
+                    canvas.Fill({P(x, y), P(x + 1, y), P(x + 1, y + e), P(x, y + e)}, c);
+                    canvas.Fill({P(x, y), P(x + e, y), P(x + e, y + 1), P(x, y + 1)}, c);
+                    continue;
+                }
+                bool edge = false;
+                for (int dy = -1; dy <= 1 && !edge; ++dy) {
+                    for (int dx = -1; dx <= 1 && !edge; ++dx) edge = inside(x + dx + 0.5, y + dy + 0.5) && !solid(x + dx, y + dy);
+                }
+                if (!edge) continue;
+                ++wallCells;
+                const double up = th * 0.9;
+                const Rgb stone{118, 114, 106};
+                draws.push_back({static_cast<double>(x + y), [=, &canvas, &P] {
+                                     const Pt a = P(x, y + 1), b = P(x + 1, y + 1), c = P(x + 1, y);
+                                     canvas.Fill({a, b, {b.x, b.y - up}, {a.x, a.y - up}}, Shade(stone, 1.0));  // south-west face
+                                     canvas.Fill({b, c, {c.x, c.y - up}, {b.x, b.y - up}}, Shade(stone, 0.78)); // south-east face
+                                     canvas.Fill({P(x, y, up), P(x + 1, y, up), P(x + 1, y + 1, up), P(x, y + 1, up)}, Shade(stone, 1.22));
+                                 }});
+            }
+        }
+    }
     // Fences and walls along their cells' edges: a strip with posts.
     tDrawObject = kBlockoutLine;
     for (const auto& line : solved.value("lines", json::array())) {
@@ -541,6 +575,11 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         for (const auto& [slot, n] : lines) {
             strips.push_back({{"kind", slot}, {"shape", slot.find("wall") != std::string::npos ? "tall grey strip along cell edges" : "thin brown strip with posts along cell edges"},
                               {"count", n}});
+        }
+        // Underground: the raised rock beside the floors is the walls.
+        if (wallCells > 0) {
+            strips.push_back({{"kind", "stone wall (the walls round each room and corridor)"}, {"shape", "raised grey stone blocks along the floors' edges"},
+                              {"hex", Hex({118, 114, 106})}, {"count", wallCells}});
         }
         *legend = {{"things", entries}, {"ground", ground}, {"lines", strips}, {"placed", placed}, {"size", {width, height}},
                    // The view (a cell (x, y) at height up lands at P below), for reading the image back by cells.

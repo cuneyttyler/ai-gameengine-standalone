@@ -300,6 +300,10 @@ def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = Non
     grounds = [g for g in (legend or {}).get("ground", []) if not g.get("empty")]
     if grounds and not objects:
         text += "In the draft: " + ", ".join(f"{g.get('hex')} = {g.get('terrain')}" for g in grounds) + ". "
+    # Walls and fences drawn in it (a dungeon's raised stone blocks): what they are.
+    lines = (legend or {}).get("lines", [])
+    if lines:
+        text += "In the draft: " + "; ".join(f"{l.get('shape')} = {l.get('kind')}" for l in lines) + ". "
     things = [t for t in (legend or {}).get("things", []) if t.get("kind")] if objects else []
     if things:
         text += "In the draft: " + ", ".join(f"{t['colour']} = {t['kind']}" for t in things[:14]) + ". "
