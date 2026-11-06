@@ -4,7 +4,7 @@
 // ⑤ Result. Not modal: the viewport stays in view. The host (PlaceBuild)
 // holds the Brief; every edit here goes back to it as (path, value).
 import { BACKGROUND_MODELS } from '../backgroundModels'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { aiCalls, callName } from '../aiProgress'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -666,9 +666,12 @@ const paintCall = computed(() => aiCalls.value.find((c) => c.path === '/places/p
 const paintNotes = ref('')
 const paintCompare = ref(false)
 const markEditor = ref<InstanceType<typeof MarkEditor> | null>(null)
-// A plan just approved: ④ Paint first, unless it's painted or skipped already.
+// A plan just approved: ④ Paint first, unless it's painted or skipped already. After the tick: a stage change clears
+// the page shown (the watcher further down), which would undo it.
 watch(stage, (s, was) => {
-  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && buildMethod.value === 'Paint' && !paint.value.file) viewing.value = 'paint'
+  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && buildMethod.value === 'Paint' && !paint.value.file) {
+    void nextTick(() => (viewing.value = 'paint'))
+  }
 })
 // Painted: on to ⑤ Mark (the marks pre-filled from the plan).
 watch(
@@ -698,7 +701,7 @@ function goPaint(): void {
 watch(stage, (s) => {
   if (s === 'planned' && paintWhenPlanned.value) {
     paintWhenPlanned.value = false
-    goPaint()
+    void nextTick(goPaint) // after the page-clearing watcher below
   }
 })
 function confirmMarks(): void {
