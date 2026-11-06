@@ -30,6 +30,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <set>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -649,7 +650,7 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
 
 // A place's solved plan prepared for painting as the editor's ④ Paint does (PrepareBlockout: the painted things, the
 // id map, the legend), at `cellPx` pixels across a cell.
-int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx) {
+int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx, bool landOnly) {
     Ontology ontology;
     ontology.Load({EnginePlacesDir()});
     json solved;
@@ -659,6 +660,18 @@ int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx) {
     }
     const json b = solved["grid"]["bounds"];
     const int width = (b[2].get<int>() + b[3].get<int>()) * cellPx / 2;
+    if (landOnly) {
+        // The land alone: its ground, roads, water and what grows on it (trees, bushes, plants); no buildings, fences,
+        // walls or other things.
+        static const std::set<std::string> kGrows = {"tree", "bush", "hedge", "shrub", "grass", "flower", "crop", "plant", "reed", "fern",
+                                                     "herb", "weed"};
+        json kept = json::array();
+        for (const auto& o : solved.value("objects", json::array())) {
+            if (o.value("layer", "") != "building" && kGrows.contains(o.value("slot", ""))) kept.push_back(o);
+        }
+        solved["objects"] = kept;
+        solved["lines"] = json::array();
+    }
     const json painting = PrepareBlockout(solved, &ontology, out, width);
     std::cout << "block-out " << painting["size"].dump() << " at " << cellPx << " px a cell\n";
     return 0;
@@ -666,7 +679,7 @@ int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx) {
 
 int main(int argc, char** argv) {
     if (argc >= 4 && std::string(argv[1]) == "--brief") return FromBrief(argv[2], argv[3]);
-    if (argc >= 5 && std::string(argv[1]) == "--prepare") return Prepare(argv[2], argv[3], std::atoi(argv[4]));
+    if (argc >= 5 && std::string(argv[1]) == "--prepare") return Prepare(argv[2], argv[3], std::atoi(argv[4]), argc >= 6 && std::string(argv[5]) == "--land");
     if (argc < 3) {
         std::cerr << "plan_blockout <spec.json> <out dir>  |  plan_blockout --brief <brief.json> <out dir>\n";
         return 2;

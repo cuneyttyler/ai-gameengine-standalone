@@ -99,6 +99,15 @@ std::string Hex(Rgb c) {
 }
 
 // A thing's own colour in words (ThingColour's), for the key.
+// A building's roof in a real roofing colour (natural block-outs): by its kind, so kinds still differ a little.
+struct Roof {
+    const char* name;
+    Rgb rgb;
+};
+constexpr Roof kRoofs[] = {{"red clay tiles", {150, 78, 58}}, {"grey slate", {104, 106, 112}}, {"straw thatch", {176, 148, 92}},
+                           {"dark wooden shingles", {104, 82, 62}}, {"brown tiles", {132, 96, 70}}};
+constexpr Rgb kPlaster{204, 192, 168};
+
 std::string MaterialName(const std::string& slot) {
     const Rgb c = ThingColour(slot);
     const std::string hex = " (" + Hex(c) + ")";
@@ -271,6 +280,11 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         if (Plant(slot)) {
             colourOf[slot] = slot == "tree" ? Rgb{44, 74, 40} : slot == "flower" ? Rgb{200, 170, 90} : slot == "crop" ? Rgb{100, 140, 50} : Rgb{58, 96, 50};
             name = slot == "tree" ? "dark green" : slot == "flower" ? "pale yellow" : slot == "crop" ? "leaf green (in rows)" : "mid green";
+        } else if (natural && layerOf[slot] == "building") {
+            // Plaster walls and a real roof: no key colour for the painter to copy (the id map says which is which).
+            const Roof& r = kRoofs[std::hash<std::string>{}(slot) % std::size(kRoofs)];
+            colourOf[slot] = r.rgb;
+            name = std::string("plaster walls and ") + r.name + " (" + Hex(r.rgb) + ")";
         } else if (natural && layerOf[slot] != "building") {
             colourOf[slot] = ThingColour(slot);
             name = MaterialName(slot);
@@ -444,7 +458,7 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
             const double wallUp = floors > 0 ? th * 0.6 * floors : th * (1.4 + 0.25 * std::min(w, h));
             const double roofUp = floors > 0 ? (roofKind == "flat" ? th * 0.12 : th * 0.5) : th * (0.9 + 0.3 * std::min(w, h));
             // The whole box in its kind's colour (the roof a little darker): the colour says what it is.
-            const Rgb walls = colour(slot), roof = Shade(colour(slot), 0.72);
+            const Rgb walls = natural ? kPlaster : colour(slot), roof = natural ? colour(slot) : Shade(colour(slot), 0.72);
             {
                 const Pt l = P(ox, oy + h), r = P(ox + w, oy), t = P(ox, oy, wallUp + roofUp), b = P(ox + w, oy + h);
                 placed.push_back({{"id", o.value("id", "")}, {"kind", slot}, {"layer", "building"},

@@ -93,6 +93,12 @@ class BflPainter:
         headers = {"x-key": self.api_key, "accept": "application/json"}
         with httpx.Client(timeout=120) as client:
             r = client.post(f"{BASE}/{self.model}", json=body, headers=headers)
+            # Busy (429: too many tasks at once, or low credit capping them at one): wait and ask again, up to ~10 min.
+            waited = 0
+            while r.status_code == 429 and waited < 600:
+                time.sleep(15)
+                waited += 15
+                r = client.post(f"{BASE}/{self.model}", json=body, headers=headers)
             if r.status_code != 200:
                 raise ProviderError(f"BFL {self.model}: {r.status_code} {r.text[:300]}")
             task = r.json()
