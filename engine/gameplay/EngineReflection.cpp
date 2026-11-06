@@ -734,7 +734,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("paint", &AiSettings::paint,
                "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows "
                "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "
-               "paints the plan, then FLUX.2 pro or klein repaints its look.")
+               "paints the plan, then FLUX.2 pro or klein repaints its look. Dungeons are always painted with FLUX-3-Image.")
         .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"})
         .Field("animate", &AiSettings::animate,
                "What animates people and creatures (Generate ▸ Animate, the AI panel's walks; empty: the app's). AutoSprite: "

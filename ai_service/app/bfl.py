@@ -183,6 +183,22 @@ EMPTY_RULE = ("PURE BLACK IS EMPTY: every black area of the image (around the ma
               "outside the place. Leave every black pixel pure black: paint no ground, floor, rock, wall top, corridor, "
               "room, door, light or anything else in it, and don't extend any part into it.")
 
+# Characters are placed separately (their own sprites): none in any painting.
+NO_FIGURES = "NO CREATURES OR HUMANS: paint no people, monsters, animals or any other figures anywhere in the image."
+
+
+def _lines_key(legend: dict | None) -> str:
+    """The walls and fences the block-out draws, as key lines; a wall drawn in a marking colour (a dungeon's slate blue)
+    said to be only a marking, painted in the place's own stone."""
+    parts = []
+    for l in (legend or {}).get("lines", []):
+        part = f"{l.get('shape')}" + (f" ({l['hex']})" if l.get("hex") else "") + f" = {l.get('kind')}"
+        if l.get("colour"):
+            part += (f"; the {l['colour']} only marks where the walls stand: paint them as real grey stone walls, "
+                     f"with no {l['colour']} or any blue tint left on them")
+        parts.append(part)
+    return "; ".join(parts)
+
 
 def _look_words(look: dict) -> str:
     """The look's goals as words (a list joined, not its Python form), cut at a sentence."""
@@ -218,7 +234,7 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
                   "things of your own that suit the place may be added on its ground.")
     text = (f"Paint this isometric game map of a {kind} ({name}) as finished, hand-crafted art, as in classic isometric "
             "RPGs. The image is a colour-coded BLOCK-OUT of the place's plan, not art: each colour stands for one kind of "
-            f"thing (the colour key below), and its shape says how it stands. {layout} {EMPTY_RULE}")
+            f"thing (the colour key below), and its shape says how it stands. {layout} {EMPTY_RULE} {NO_FIGURES}")
     if guide.strip():
         text += f" THIS KIND OF PLACE: {guide.strip()}"
     if written.strip():
@@ -226,10 +242,8 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
     things = (legend or {}).get("things", []) if objects else []
     if things:
         text += " COLOUR KEY: " + "; ".join(f"{t.get('colour')} {t.get('shape')} = {t.get('what')}" for t in things)[:2600] + "."
-    lines = (legend or {}).get("lines", [])
-    if lines:
-        text += " " + "; ".join(f"{l.get('shape')}" + (f" ({l['hex']})" if l.get("hex") else "") + f" = {l.get('kind')}"
-                                for l in lines) + "."
+    if _lines_key(legend):
+        text += " " + _lines_key(legend) + "."
     if scale_sentence(legend):
         text += " " + scale_sentence(legend).strip()
     # The ground: black cells (rock, void) are left out: they're empty (EMPTY_RULE).
@@ -310,6 +324,7 @@ def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = Non
              "the draft's coloured areas, keeping their exact shapes. Keep the exact framing: the whole map as the image "
              "shows it, from as far above, every part as small as it is in the image and the black all round it; do not "
              "zoom in, crop or enlarge any part. ")
+    text += NO_FIGURES + " "
     if guide.strip():
         text += guide.strip() + " "
     if written.strip():
@@ -318,9 +333,8 @@ def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = Non
     if grounds and not objects:
         text += "In the draft: " + ", ".join(f"{g.get('hex')} = {g.get('terrain')}" for g in grounds) + ". "
     # Walls and fences drawn in it (a dungeon's slate-blue walls): what they are; and its measure.
-    lines = (legend or {}).get("lines", [])
-    if lines:
-        text += "In the draft: " + "; ".join(f"{l.get('shape')} = {l.get('kind')}" for l in lines) + ". "
+    if _lines_key(legend):
+        text += "In the draft: " + _lines_key(legend) + ". "
     text += scale_sentence(legend)
     things = [t for t in (legend or {}).get("things", []) if t.get("kind")] if objects else []
     if things:

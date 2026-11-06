@@ -253,6 +253,8 @@ public:
     // ④ Paint (docs/places/painted-places.md): the place painted whole from its plan's block-out (FLUX.3 Image), then
     // ⑤ Mark pre-filled from the plan. `notes`: the user's, painting again. "" when asked.
     std::string Paint(const std::string& notes = {});
+    // Who paints it: FLUX-3-Image for a dungeon (the only one that keeps its rooms and walls), else the project's.
+    std::string PaintModel() const;
     bool Painting() const { return painting_; }
     // The painted buildings' interiors (docs/places/interiors.md §7), after ⑤ Mark: each building with one, its region
     // of the painting cut away by BFL. "" when asked or nothing needs one.

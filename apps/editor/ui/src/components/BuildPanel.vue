@@ -136,6 +136,8 @@ interface PaintState {
 interface BuildState {
   paint?: PaintState
   method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
+  paintModel?: string // who paints it (Paint)
+  paintFixed?: boolean // a dungeon: always FLUX-3-Image, whatever the project's paint model
   projectMethod?: 'Assembled' | 'Paint'
   fromPicture?: boolean // built from a picture given as its painting: no Layout, Plan or Paint (docs/places/scene-types.md)
   reference?: string // a picture the painting is made after
@@ -1921,6 +1923,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           place's own look. Next you mark where one can walk and what a character goes behind (pre-filled from the plan). Only the
           things the player uses (doors, chests, items) and characters are made as art of their own.
         </p>
+        <p v-if="state.paintFixed" class="dim">Dungeons are always painted with FLUX-3-Image: it keeps their rooms and walls as planned
+          (the project's paint model is used for other places).</p>
         <img v-if="paint.blockout" :src="urlOf(paint.blockout)" alt="" class="blockout-thumb" />
       </section>
       <div class="actions">

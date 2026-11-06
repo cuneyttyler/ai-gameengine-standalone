@@ -370,7 +370,7 @@ function close(): void {
                     <option value="flux-3-to-pro">FLUX-3-Image-to-Pro</option>
                     <option value="flux-3-to-klein">FLUX-3-Image-to-Klein</option>
                   </select>
-                  <p class="desc">Who paints a place whole for the Paint build method, when the project doesn't say.</p>
+                  <p class="desc">Who paints a place whole for the Paint build method, when the project doesn't say. Dungeons are always painted with FLUX-3-Image (the others lose their rooms and walls).</p>
                 </div>
               </div>
             </section>

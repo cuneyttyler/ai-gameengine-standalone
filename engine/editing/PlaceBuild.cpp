@@ -4906,6 +4906,12 @@ std::string PlaceBuild::MakeBackground() {
     return {};
 }
 
+std::string PlaceBuild::PaintModel() const {
+    // A dungeon by FLUX-3-Image whatever the project says: klein paints a whole level as one room (builder_tests/bfl_paint).
+    if (brief_.value("buildType", "") == "dungeon") return "flux-3-image";
+    return host_.paintModel && !host_.paintModel().empty() ? host_.paintModel() : std::string("flux-3-image");
+}
+
 std::string PlaceBuild::Paint(const std::string& notes) {
     if (!solved_.is_object() || !solved_.contains("objects")) return "the plan isn't laid out";
     if (painting_) return "already painting it";
@@ -4930,7 +4936,7 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"look", LookFor(brief_.value("buildType", ""))},
                        {"notes", notes},
                        {"reference", reference_},
-                       {"model", host_.paintModel && !host_.paintModel().empty() ? host_.paintModel() : std::string("flux-3-image")}};
+                       {"model", PaintModel()}};
     if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
     painting_ = true;
     status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting)…";
@@ -5482,6 +5488,8 @@ json PlaceBuild::State() {
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
     state["method"] = method_; // Assembled or Paint: which steps it has
+    state["paintModel"] = PaintModel();
+    state["paintFixed"] = brief_.value("buildType", "") == "dungeon"; // painted by FLUX-3-Image, whatever the project says
     state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint
     state["reference"] = reference_;
     state["models"] = {{"art", artModel_}, {"background", backgroundModel_}};
