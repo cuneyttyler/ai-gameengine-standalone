@@ -116,7 +116,9 @@ Renderer2D::~Renderer2D() {
 
     vkDestroyPipeline(device, pipeline_, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout_, nullptr);
-    vkDestroyDescriptorPool(device, descriptorPool_, nullptr);
+    for (VkDescriptorPool pool : descriptorPools_) vkDestroyDescriptorPool(device, pool, nullptr);
+    descriptorPools_.clear();
+    poolUsed_.clear();
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout_, nullptr);
     vkDestroySampler(device, sampler_, nullptr);
 }
@@ -226,6 +228,10 @@ void Renderer2D::CreateDescriptorLayoutAndPool() {
     VkCheck(vkCreateDescriptorSetLayout(rhi_.Device(), &layoutInfo, nullptr, &descriptorSetLayout_),
             "vkCreateDescriptorSetLayout");
 
+    NewDescriptorPool();
+}
+
+VkDescriptorPool Renderer2D::NewDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     poolSize.descriptorCount = kMaxTextures;
@@ -235,7 +241,40 @@ void Renderer2D::CreateDescriptorLayoutAndPool() {
     poolInfo.maxSets = kMaxTextures;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    VkCheck(vkCreateDescriptorPool(rhi_.Device(), &poolInfo, nullptr, &descriptorPool_), "vkCreateDescriptorPool");
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    VkCheck(vkCreateDescriptorPool(rhi_.Device(), &poolInfo, nullptr, &pool), "vkCreateDescriptorPool");
+    descriptorPools_.push_back(pool);
+    poolUsed_[pool] = 0;
+    return pool;
+}
+
+VkDescriptorSet Renderer2D::AllocateTextureSet(VkDescriptorPool& from) {
+    // A pool with room counted by us, not the driver's word: some drivers hand out sets past a pool's size and the
+    // memory behind them is overrun (926 textures in one painted scene crashed the editor so).
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    for (VkDescriptorPool p : descriptorPools_) {
+        if (poolUsed_[p] < kMaxTextures) {
+            pool = p;
+            break;
+        }
+    }
+    if (pool == VK_NULL_HANDLE) pool = NewDescriptorPool();
+    VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    allocInfo.descriptorPool = pool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout_;
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    VkResult result = vkAllocateDescriptorSets(rhi_.Device(), &allocInfo, &set);
+    if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
+        // Full (or fragmented) after all: a fresh pool.
+        pool = NewDescriptorPool();
+        allocInfo.descriptorPool = pool;
+        result = vkAllocateDescriptorSets(rhi_.Device(), &allocInfo, &set);
+    }
+    VkCheck(result, "vkAllocateDescriptorSets");
+    ++poolUsed_[pool];
+    from = pool;
+    return set;
 }
 
 Renderer2D::Texture Renderer2D::UploadTexture(const ImageData& image) {
@@ -320,11 +359,7 @@ Renderer2D::Texture Renderer2D::UploadTexture(const ImageData& image) {
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     VkCheck(vkCreateImageView(rhi_.Device(), &viewInfo, nullptr, &texture.view), "vkCreateImageView");
 
-    VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    allocInfo.descriptorPool = descriptorPool_;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &descriptorSetLayout_;
-    VkCheck(vkAllocateDescriptorSets(rhi_.Device(), &allocInfo, &texture.descriptorSet), "vkAllocateDescriptorSets");
+    texture.descriptorSet = AllocateTextureSet(texture.pool);
 
     VkDescriptorImageInfo descriptorImage{};
     descriptorImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -343,8 +378,10 @@ Renderer2D::Texture Renderer2D::UploadTexture(const ImageData& image) {
 }
 
 void Renderer2D::DestroyTexture(Texture& texture) {
-    if (texture.descriptorSet != VK_NULL_HANDLE) {
-        vkFreeDescriptorSets(rhi_.Device(), descriptorPool_, 1, &texture.descriptorSet);
+    if (texture.descriptorSet != VK_NULL_HANDLE && texture.pool != VK_NULL_HANDLE) {
+        vkFreeDescriptorSets(rhi_.Device(), texture.pool, 1, &texture.descriptorSet);
+        if (auto it = poolUsed_.find(texture.pool); it != poolUsed_.end() && it->second > 0) --it->second;
+        texture.descriptorSet = VK_NULL_HANDLE;
     }
     if (texture.view != VK_NULL_HANDLE) {
         vkDestroyImageView(rhi_.Device(), texture.view, nullptr);

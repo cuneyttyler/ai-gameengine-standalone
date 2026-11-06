@@ -7068,17 +7068,23 @@ std::string EditorApp::PrefabForSheet(const std::string& path, std::string name)
     std::string prefab = "prefabs/" + name + ".prefab";
     for (int n = 2; prefabs_.Find(prefab) != nullptr; ++n) prefab = "prefabs/" + name + "-" + std::to_string(n) + ".prefab";
     name = std::filesystem::path(prefab).stem().string();
-    CreatePrefabFromAsset(sheet->texture, 0, false, false, name, false);
-    if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
+    // What's needed of the sheet and its picture, copied first: making the prefab refreshes the assets, which reads the
+    // sheets again (the sheet and the picture's info it pointed to are gone after).
     const bool character = sheet->Clip("walk") || sheet->Clip("attack") || sheet->Clip("cast");
-    const AnimClip* first = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
-    const AnimFrame* frame = first && !first->directions.empty() && !first->directions.begin()->second.empty() ? &first->directions.begin()->second.front() : nullptr;
+    const AnimClip* firstClip = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
+    std::optional<AnimFrame> firstFrame;
+    if (firstClip && !firstClip->directions.empty() && !firstClip->directions.begin()->second.empty()) firstFrame = firstClip->directions.begin()->second.front();
+    const AnimFrame* frame = firstFrame ? &*firstFrame : nullptr;
+    const std::string texture = sheet->texture;
+    const uint32_t pictureWidth = picture->width, pictureHeight = picture->height;
+    CreatePrefabFromAsset(texture, 0, false, false, name, false);
+    if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
     prefabs_.VisitTemplate(prefab, [&](Registry& r, Entity e) {
         auto& animator = r.get_or_emplace<Animator>(e);
         animator.sheet = path;
         animator.animator = character ? "humanoid" : "prop";
         if (auto* sprite = r.try_get<Sprite>(e); sprite && frame && frame->w > 0 && frame->h > 0) {
-            const float tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
+            const float tw = static_cast<float>(pictureWidth), th = static_cast<float>(pictureHeight);
             sprite->u0 = frame->x / tw, sprite->u1 = (frame->x + frame->w) / tw;
             sprite->v0 = frame->y / th, sprite->v1 = (frame->y + frame->h) / th;
             sprite->width *= frame->w / tw;

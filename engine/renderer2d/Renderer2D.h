@@ -114,12 +114,17 @@ private:
         VmaAllocation allocation = nullptr;
         VkImageView view = VK_NULL_HANDLE;
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        VkDescriptorPool pool = VK_NULL_HANDLE; // the pool its set came from (freed back to it)
         uint32_t width = 0;
         uint32_t height = 0;
     };
 
     void CreateSampler();
     void CreateDescriptorLayoutAndPool();
+    // A texture's descriptor set, from a pool with room (a new pool when they're all full): a scene can show any number
+    // of textures (a painted place's occluders are hundreds), never more sets than a pool holds.
+    VkDescriptorSet AllocateTextureSet(VkDescriptorPool& from);
+    VkDescriptorPool NewDescriptorPool();
     void CreatePipeline();
     void CreateVertexBuffers();
     // Grows (never shrinks) this frame's vertex buffer to hold `vertices`. The
@@ -144,7 +149,8 @@ private:
 
     VkSampler sampler_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout descriptorSetLayout_ = VK_NULL_HANDLE;
-    VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
+    std::vector<VkDescriptorPool> descriptorPools_; // each holds kMaxTextures sets
+    std::unordered_map<VkDescriptorPool, uint32_t> poolUsed_; // sets taken from each
 
     Texture builtinAtlas_;
     Texture pending_;                   // not loaded yet this frame: skipped
