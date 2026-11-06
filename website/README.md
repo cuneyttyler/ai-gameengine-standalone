@@ -41,6 +41,21 @@ sections and `### Example: ...` headings its worked examples. `backend/docs.py` 
 `/api/docs/<area>/<page>`, `/api/docs-search?q=`), rereading a file when it changes; `frontend/src/docs/DocsApp.vue`
 shows them with the sidebar. Edit the Markdown and reload: no rebuild needed.
 
+## Beta (/beta)
+
+`/beta` describes the beta and takes registrations (the main page's "Register for Beta" form posts there too).
+`backend/beta.py` keeps them in a small SQLite database, `backend/data/beta.sqlite`, and:
+
+1. On a registration it emails the support address (`AIGE_SUPPORT_EMAIL`) with a **Send download link** button.
+2. The button opens a page to confirm (a POST sends, so mail scanners opening the link can't); sending stores a fresh
+   UUID that expires in 7 days and emails the person their link (`/beta/download/<uuid>`), saying when it expires.
+   Sending again replaces the link.
+3. The link serves `BETA_DOWNLOAD_FILE` (or redirects to `BETA_DOWNLOAD_URL`) until it expires; then a page says so.
+
+Settings live in `backend/.env` (copy `backend/.env.example`; it stays out of git): the support address, the SMTP
+server, `SITE_URL` (the links in emails start with it) and the beta file. Without `SMTP_HOST`, emails are written to
+`backend/data/outbox/` as `.eml` and `.html` files instead of being sent, so the whole flow can be tried locally.
+
 ## Editing the content
 
 Change the text in `backend/content.py`, and the site follows (no frontend rebuild needed). Facts come from

@@ -13,7 +13,7 @@ defineProps({ hero: Object, pillars: Array })
         </h1>
         <p class="lead">{{ hero.lead }}</p>
         <div class="actions">
-          <a href="#signup" class="btn primary">Get early access</a>
+          <a href="/beta" class="btn primary">Register for Beta</a>
           <a href="#planner" class="btn ghost">See the AI Planner</a>
         </div>
       </div>

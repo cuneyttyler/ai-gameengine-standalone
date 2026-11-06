@@ -25,3 +25,10 @@ tests/quality/*.out
 
 # The editor knowledge base's embeddings (ai_service/app/help.py)
 ai_service/.cache/
+
+# The Beta Release package (tools/package_beta.py)
+dist/
+
+# The website: its settings (secrets) and its data (beta registrations, the email outbox)
+website/backend/.env
+website/backend/data/

@@ -9,8 +9,9 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory
 
+import beta
 import docs
 from content import CONTENT
 
@@ -48,6 +49,88 @@ def docs_page(area: str, page: str):
 @app.get("/api/docs-search")
 def docs_search():
     return jsonify({"hits": docs.search(str(request.args.get("q", ""))[:200])})
+
+
+# --- the beta (beta.py) ---
+
+@app.get("/api/beta")
+def beta_info():
+    return jsonify({**CONTENT["beta"], "linkDays": beta.LINK_DAYS})
+
+
+@app.post("/api/beta/register")
+def beta_register():
+    """A registration: stored, and the support team emailed with a "Send download link" button."""
+    body = request.get_json(silent=True) or {}
+    if str(body.get("website", "")).strip():  # the hidden field only bots fill in
+        return jsonify({"ok": True})
+    email = str(body.get("email", "")).strip()
+    if len(email) > 320 or not beta.EMAIL.match(email):
+        return jsonify({"ok": False, "error": "That doesn't look like an email address."}), 400
+    if not beta.allowed(request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()):
+        return jsonify({"ok": False, "error": "Too many registrations from here: please try again later."}), 429
+    name = " ".join(str(body.get("name", "")).split())[:80]
+    note = " ".join(str(body.get("note", "")).split())[:300]
+    row, new = beta.register(email, name, note)
+    if new:
+        def notify():
+            try:
+                where = beta.send(beta.setting("AIGE_SUPPORT_EMAIL"), lambda cid: beta.support_email(row, cid))
+                app.logger.info("beta registration %s: support email %s", email, where)
+            except Exception as error:  # noqa: BLE001 - the registration is kept; the email is logged as failed
+                app.logger.error("beta registration %s: the support email failed: %s", email, error)
+        threading.Thread(target=notify, daemon=True).start()
+    return jsonify({"ok": True, "already": not new})
+
+
+@app.route("/beta/admin/send/<key>", methods=["GET", "POST"])
+def beta_send(key: str):
+    """The support email's button: a page to confirm (GET), then the link sent (POST)."""
+    row = beta.by_approve_key(key)
+    if row is None:
+        return beta.page("Unknown registration", "<p>This button doesn't match a registration. It may have been made on "
+                                                 "another server.</p>", "error"), 404
+    who = beta.html.escape(row["email"])
+    if request.method == "GET":
+        earlier = (f"<p>A link was already sent {row['sent_count']} time(s), last on <strong>{beta._when(row['token_created_at'])}</strong>. "
+                   "Sending again makes a new link and the old one stops working.</p>") if row["sent_count"] else ""
+        return beta.page("Send the beta download link?", f"""
+<dl><dt>Email</dt><dd>{who}</dd><dt>Name</dt><dd>{beta.html.escape(row['name']) or '—'}</dd>
+<dt>Making</dt><dd>{beta.html.escape(row['note']) or '—'}</dd><dt>Registered</dt><dd>{beta._when(row['created_at'])}</dd></dl>
+{earlier}<p>They'll get a personal link that works for {beta.LINK_DAYS} days.</p>
+<form method="post"><button type="submit">Send download link</button></form>""")
+    row = beta.issue_link(key)
+    try:
+        where = beta.send(row["email"], lambda cid: beta.download_email(row, cid))
+    except Exception as error:  # noqa: BLE001 - shown on the page: the link is made, the email isn't
+        app.logger.error("beta link for %s: the email failed: %s", row["email"], error)
+        return beta.page("The email couldn't be sent", f"<p>The link was made but emailing {who} failed: "
+                                                        f"{beta.html.escape(str(error))}. Check the SMTP settings in .env and "
+                                                        "press the button again.</p>", "error"), 502
+    note = "" if where == "sent" else f"<p>(Not emailed: {beta.html.escape(where)}. The email is in data/outbox.)</p>"
+    return beta.page("Download link sent", f"""<p>The beta download link went to <strong>{who}</strong>.</p>
+<p>It works until <strong>{beta._when(row['token_expires_at'])}</strong>.</p>{note}""", "ok")
+
+
+@app.get("/beta/download/<token>")
+def beta_download(token: str):
+    """A personal download link: the beta while it's valid, else a page saying why not."""
+    state, row = beta.check_token(token)
+    if state == "unknown":
+        return beta.page("This link doesn't work", "<p>It isn't a beta download link, or a newer link replaced it. "
+                                                   "Use the newest email we sent, or <a href=\"/beta\">register again</a>.</p>", "error"), 404
+    if state == "expired":
+        return beta.page("This link has expired", f"<p>Beta download links work for {beta.LINK_DAYS} days; this one ended on "
+                                                  f"<strong>{beta._when(row['token_expires_at'])}</strong>.</p><p>Reply to the email "
+                                                  "it came in for a new one.</p>", "warn"), 410
+    file = beta.setting("BETA_DOWNLOAD_FILE")
+    if file and Path(file).is_file():
+        return send_file(Path(file).resolve(), as_attachment=True, download_name=Path(file).name)
+    url = beta.setting("BETA_DOWNLOAD_URL")
+    if url:
+        return redirect(url, code=302)
+    return beta.page("The download isn't ready yet", "<p>Your link is valid, but the beta file isn't on the server yet. "
+                                                     "Please try again a little later.</p>", "warn"), 503
 
 
 @app.post("/api/signup")

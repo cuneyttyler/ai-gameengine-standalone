@@ -306,7 +306,39 @@ CONTENT = {
         "everyVersion": ["AI editing", "A Planner genre profile", "Generators", "AI assets", "A playtest bot", "An off switch"],
     },
     "signup": {
-        "title": "Make your first place today",
-        "lead": "Leave your email and we'll tell you when AIGE 1.0 is ready to download.",
+        "title": "Register for the beta",
+        "lead": "Leave your email and we'll send you a personal download link for the AIGE beta.",
+    },
+    "beta": {
+        "eyebrow": "AIGE beta",
+        "title": "Try AIGE before 1.0",
+        "lead": (
+            "The beta is the whole editor as it is today: scenes, prefabs, records and scripts by hand, and the AI "
+            "panel, Builder and Planner to make any part of a game from words. Register, and we'll email you a "
+            "personal download link."
+        ),
+        "platform": "Windows 10 or 11, 64-bit",
+        "included": [
+            {"title": "The editor", "text": "Scenes, prefabs, the Inspector, tile layers, buildings with interiors, "
+                                            "paths and markers, Play mode and export."},
+            {"title": "The AI panel", "text": "Ask for changes in words: it plans, makes them on a working copy and "
+                                              "shows you the result to review. Ask questions, and it answers from the docs."},
+            {"title": "Builder and Planner", "text": "Whole places from a description, and whole games from a brief: "
+                                                     "concept, story, characters, quests and places."},
+            {"title": "Generate", "text": "Art, characters seen from every direction, walks and other animations, "
+                                          "effects, and moving parts of buildings."},
+        ],
+        "requirements": [
+            "Windows 10 or 11 (64-bit) and a GPU with Vulkan support",
+            "An internet connection and your own API keys for the AI features (Mistral, Claude or OpenRouter; "
+            "PixelLab, BFL or AutoSprite for art and animation). Everything else works without them.",
+        ],
+        "steps": [
+            {"title": "Register", "text": "Leave your email below, and what you'd like to make."},
+            {"title": "We send your link", "text": "We review registrations and email you a personal download link."},
+            {"title": "Download within a week", "text": "Your link works for 7 days. After that, ask us for a new one."},
+        ],
+        "note": "The beta is a work in progress: expect rough edges, and tell us about them. Your link is personal: "
+                "please don't share it.",
     },
 }

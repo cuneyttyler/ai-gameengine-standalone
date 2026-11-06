@@ -28,7 +28,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
       <nav class="links" aria-label="Sections">
         <a v-for="link in links" :key="link.href" :href="link.href" @click="open = false">{{ link.label }}</a>
       </nav>
-      <a href="#signup" class="btn primary cta">Get early access</a>
+      <a href="/beta" class="btn primary cta">Register for Beta</a>
       <button class="burger" :aria-expanded="open" aria-label="Menu" @click="open = !open">
         <span></span><span></span><span></span>
       </button>
