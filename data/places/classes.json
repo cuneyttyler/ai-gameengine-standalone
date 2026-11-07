@@ -178,5 +178,9 @@
   "Woodland": {
     "label": "Woodland",
     "description": "A forest built as a place of its own (a world's forest section)."
+  },
+  "Padding": {
+    "label": "Padding",
+    "description": "Open land whose part is to keep a world's places apart."
   }
 }

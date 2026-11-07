@@ -1,0 +1,55 @@
+{
+  "schema": "aige.module/1",
+  "id": "border-woods",
+  "name": "Border woods",
+  "level": "zone",
+  "description": "Woods along the edge of a world: dense trees growing in from its border, so the map's edge is never bare grass. Painted with the world's own land (not a section of its own); no roads run in it except those leaving the world.",
+  "buildTypes": [
+    "world"
+  ],
+  "classes": [
+    "NatureArea",
+    "Padding"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        8000,
+        60000
+      ],
+      "min": 1000,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": false,
+      "primary": true
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "fill": "grass",
+    "background": [
+      {
+        "slot": "tree",
+        "density": 0.45
+      },
+      {
+        "slot": "bush",
+        "density": 0.04
+      }
+    ],
+    "edge": {
+      "organic": true
+    }
+  },
+  "prefersSite": {}
+}

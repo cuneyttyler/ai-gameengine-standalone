@@ -111,6 +111,16 @@
       "min": 0,
       "weight": 0.2,
       "max": 2
+    },
+    "residential-ward": {
+      "min": 0,
+      "max": 2,
+      "weight": 0.8
+    },
+    "market-ward": {
+      "min": 0,
+      "max": 1,
+      "weight": 0.4
     }
   },
   "constraints": [

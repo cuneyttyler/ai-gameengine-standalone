@@ -44,7 +44,10 @@
         "farmland",
         "dungeon",
         "wilderness",
-        "forest"
+        "forest",
+        "harbour",
+        "region",
+        "modern-city"
       ],
       "default": "settlement",
       "ask": true
@@ -62,7 +65,30 @@
         "large",
         "grove",
         "wood",
-        "great-forest"
+        "great-forest",
+        "farm",
+        "countryside",
+        "large-countryside",
+        "glade",
+        "woods",
+        "wild-land",
+        "small-camp",
+        "camp",
+        "war-camp",
+        "landing",
+        "harbour",
+        "port",
+        "tower-house",
+        "castle",
+        "fortress",
+        "valley",
+        "region",
+        "kingdom",
+        "huge",
+        "block",
+        "neighbourhood",
+        "district",
+        "metropolis"
       ],
       "default": "village",
       "ask": true

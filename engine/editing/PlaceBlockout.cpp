@@ -7,6 +7,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,9 @@ struct Pt {
 };
 
 // A plain colour per terrain: enough for an image model to tell grass from road from water.
+// A bridge's timber: dark red-brown, unlike any road or ground (the prompts name it).
+constexpr Rgb kBridgeColour{122, 52, 38};
+
 Rgb TerrainColour(const std::string& t) {
     if (t == "water") return {52, 96, 150};
     if (t == "dirt" || t == "road" || t == "path" || t == "mud") return {150, 118, 78};
@@ -306,18 +310,22 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
                            {"layer", layerOf[slot]}});
     }
     auto colour = [&](const std::string& slot) { const auto it = colourOf.find(slot); return it == colourOf.end() ? ThingColour(slot) : it->second; };
-    // The ground.
+    // The ground. A bridge (a road over water: the road's own cells, their terrain the road's) in its own colour, dark
+    // red timber, so the painter sees a bridge, not a road running on the water.
+    std::set<std::pair<int, int>> bridges;
+    if (solved.contains("terrain")) {
+        for (const auto& b : solved["terrain"].value("bridges", json::array())) {
+            if (b.is_array() && b.size() >= 2) bridges.insert({b[0].get<int>(), b[1].get<int>()});
+        }
+    }
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
             const std::string t = terrainAt(x, y);
             Rgb c = TerrainColour(t);
-            if (t == "water" && solved.contains("terrain")) {
-                for (const auto& b : solved["terrain"].value("bridges", json::array())) {
-                    if (b[0].get<int>() == x && b[1].get<int>() == y) c = {120, 84, 50}; // a bridge's planks
-                }
-            }
+            if (bridges.contains({x, y})) c = kBridgeColour;
             // A little light and dark from the upper left, so the ground isn't one flat sheet.
-            const double k = 1.0 + 0.03 * std::sin(x * 0.7 + y * 0.3) + 0.03 * std::cos(x * 0.31 - y * 0.83);
+            // (Natural block-outs: flat; a painter copies per-cell shading as a checkerboard.)
+            const double k = natural ? 1.0 : 1.0 + 0.03 * std::sin(x * 0.7 + y * 0.3) + 0.03 * std::cos(x * 0.31 - y * 0.83);
             canvas.Fill({P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)}, Shade(c, k));
         }
     }
@@ -353,11 +361,13 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
             for (int x = x0; x < x1; ++x) {
                 if (x < 0 || y < 0 || x >= W || y >= H) continue;
                 const double h = heights[static_cast<size_t>(y) * W + x] / 10.0;
-                if (h <= 0.05) continue;
+                // Only mountains are drawn raised: hills are rolling walkable ground, drawn flat (raised, a painter makes
+                // little mountains of them).
+                if (h <= 0.05 || terrainAt(x, y) != "mountain") continue;
                 highest = std::max(highest, h);
                 const bool capped = snow[static_cast<size_t>(y) * W + x] != 0;
                 snowy = snowy || capped;
-                const double up = h * th * 1.1;
+                const double up = h * th * 2.2; // high: a mountain towers over what's built
                 const Rgb rock = TerrainColour(terrainAt(x, y)); // its own ground: rock for mountains, grass for hills
                 // Lit from the upper left: a top higher than its neighbour that way faces the light, a lower one is in shade.
                 const double lit = x > 0 && y > 0 ? h - heights[static_cast<size_t>(y - 1) * W + x - 1] / 10.0 : 0.0;

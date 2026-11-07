@@ -1173,7 +1173,129 @@ void ApplyZoneAnswer(const Ontology& ontology, const json& brief, json& spec, co
     (*zone)["children"] = children;
 }
 
+void PlacesIntoWorld(const Ontology& ontology, const json& brief, json& spec) {
+    const json places = brief.value("places", json());
+    if (!places.is_object() || places.empty() || !spec.contains("root")) return;
+    json& children = spec["root"]["children"];
+    if (!children.is_array()) children = json::array();
+    json kept = json::array(), heart;
+    std::map<std::string, json> before; // the places already in (a replan keeps their relations)
+    for (const auto& c : children) {
+        if (c.value("module", "") == "heartland") {
+            if (heart.is_null()) heart = c;
+            before[c.value("id", "")] = c;
+            continue;
+        }
+        kept.push_back(c);
+    }
+    if (heart.is_null()) heart = {{"module", "heartland"}, {"quality", json::object()}, {"quantity", json::object()}};
+    heart.erase("rel"); // one settled land's directions aren't every place's: the spacing places each
+    // The world's size for its places (the Brief's root or quality settlementSize, else the plan's).
+    std::string worldSize = brief.value("root", json::object()).value("settlementSize", "");
+    if (worldSize.empty()) worldSize = brief.value("quality", json::object()).value("settlementSize", "");
+    if (worldSize.empty()) worldSize = spec["root"].value("quality", json::object()).value("settlementSize", "");
+    for (const auto& [key, p] : places.items()) {
+        if (!p.is_object()) continue;
+        const std::string id = "heartland-" + key;
+        json h = before.contains(id) ? before[id] : heart;
+        h["id"] = id;
+        const std::string kind = p.value("type", "settlement");
+        const BuildType* bt = ontology.Build(kind);
+        if (bt == nullptr) continue;
+        // A harbour by the sea (the world's first open water).
+        if (kind == "harbour" && !before.contains(id)) {
+            for (const auto& c : kept) {
+                if (c.value("module", "") == "sea" || c.value("module", "") == "ocean") {
+                    h["rel"] = json::array({json{{"type", "near"}, {"to", c.value("id", "")}, {"weight", 4.0}}});
+                    break;
+                }
+            }
+        }
+        const std::string size = p.value("size", worldSize.empty() ? std::string("small") : worldSize);
+        std::string cls = p.value("class", "");
+        if (auto it = bt->sizes.find(size); cls.empty() && it != bt->sizes.end()) cls = it->second;
+        const ScaleClass* sc = cls.empty() ? nullptr : bt->Scale(cls);
+        if (sc == nullptr && !bt->scale.empty()) sc = &bt->scale[std::min<size_t>(1, bt->scale.size() - 1)];
+        if (sc) cls = sc->id;
+        const int side = sc ? (sc->side.first + sc->side.second) / 2 : 60;
+        // Room round it: its fields, its approach, a little wild land of its own.
+        const int around = static_cast<int>(side * 1.35 * 1.2) + 2 * 12;
+        h["quantity"] = {{"sites", {{"count", 1}}}, {"area", {{"area", around * around}}}};
+        h["children"] = json::array({json{{"id", id + "/site"}, {"module", "site"},
+                                          {"quality", {{"build-type", kind}, {"scale-class", cls}, {"name", p.value("name", "")}}},
+                                          {"quantity", json::object()}, {"children", json::array()}}});
+        kept.push_back(h);
+    }
+    children = kept;
+}
+
+// A world's edges decorated (its root's compile `borders`: {module: how many}): that many zones of each, growing in from
+// the border (at-edge), so the map's edge is woods and a range, not bare grass. Not when the Brief turns the module off;
+// the ones already there are kept.
+static void BordersIntoWorld(const Ontology& ontology, const json& brief, json& spec) {
+    if (!spec.contains("root")) return;
+    const ModuleDef* root = ontology.Module(spec["root"].value("module", ""));
+    if (root == nullptr || !root->compile.is_object()) return;
+    const json borders = root->compile.value("borders", json::object());
+    if (!borders.is_object() || borders.empty()) return;
+    json& children = spec["root"]["children"];
+    if (!children.is_array()) children = json::array();
+    for (const auto& [module, count] : borders.items()) {
+        if (!count.is_number_integer() || ontology.Module(module) == nullptr || Disabled(brief, module)) continue;
+        for (int k = 1; k <= count.get<int>(); ++k) {
+            const std::string id = "border-" + module + "-" + std::to_string(k);
+            bool there = false;
+            for (const auto& c : children) there = there || c.value("id", "") == id;
+            if (there) continue;
+            children.push_back({{"id", id}, {"module", module}, {"quantity", json::object()}, {"quality", json::object()},
+                                {"rel", json::array({json{{"type", "at-edge"}, {"to", "site"}, {"weight", 3.0}}})}, {"children", json::array()}});
+        }
+    }
+}
+
+// Parcels put straight under the root (a harbour's houses: the AI's answer) are laid out only inside a zone: each kind
+// gathered into one zone that holds it (a residential ward for houses; one the build type allows first), so they get
+// their streets and lots instead of being left out.
+static void GatherLooseParcels(const Ontology& ontology, const json& brief, json& spec) {
+    if (!spec.contains("root") || !spec["root"].contains("children")) return;
+    const BuildType* build = ontology.Build(brief.value("buildType", ""));
+    json& children = spec["root"]["children"];
+    std::map<std::string, json> gathered; // zone module -> its new node
+    json kept = json::array();
+    for (const auto& c : children) {
+        const ModuleDef* cm = ontology.Module(c.value("module", ""));
+        if (cm == nullptr || cm->level != PlaceLevel::Parcel || c.contains("at")) {
+            kept.push_back(c);
+            continue;
+        }
+        std::string zone;
+        for (const auto& [id, zm] : ontology.Modules()) {
+            if (zm.level != PlaceLevel::Zone) continue;
+            const bool holds = std::any_of(zm.children.begin(), zm.children.end(), [&](const ChildDef& r) { return r.module == cm->id; });
+            if (!holds) continue;
+            const bool allowed = build && std::find(build->components.begin(), build->components.end(), id) != build->components.end();
+            if (zone.empty() || allowed || id == "residential-ward") zone = id;
+            if (allowed) break;
+        }
+        if (zone.empty()) {
+            kept.push_back(c);
+            continue;
+        }
+        if (!gathered.contains(zone)) {
+            gathered[zone] = {{"id", zone + "-gathered"}, {"module", zone}, {"quantity", json::object()}, {"quality", json::object()},
+                              {"children", json::array()}};
+        }
+        gathered[zone]["children"].push_back(c);
+    }
+    if (gathered.empty()) return;
+    for (auto& [zone, node] : gathered) kept.push_back(node);
+    children = kept;
+}
+
 void ExpandSpec(const Ontology& ontology, const json& brief, json& spec) {
+    PlacesIntoWorld(ontology, brief, spec);
+    BordersIntoWorld(ontology, brief, spec);
+    GatherLooseParcels(ontology, brief, spec);
     std::set<std::string> used;
     CollectIds(spec["root"], used);
     // depthBelowParcel: 0 at a parcel; expansion stops two levels below it.

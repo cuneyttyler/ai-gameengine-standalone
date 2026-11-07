@@ -205,6 +205,8 @@ struct BuildType {
     bool isDefault = false;              // the one a request that names none gets
     int rank = 0;                        // a request naming several: the one holding the others wins (a region's towns)
     nlohmann::json look;                 // how it shows: lighting (sun, indoor), parts ([{key, role, at}])
+    // A size a request asks for (small, medium, big, huge: "big villages") as its scale class.
+    std::map<std::string, std::string> sizes;
 
     const ScaleClass* Scale(const std::string& id) const;
 };

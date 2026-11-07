@@ -472,6 +472,7 @@ std::pair<const BuildType*, int> NamedBuild(const Ontology& ontology, const std:
     std::string text;
     for (const auto& w : Words(query)) text += " " + w;
     text += " ";
+    std::replace(text.begin(), text.end(), '-', ' '); // "open-world" says "open world" (and "world")
     // Where a phrase is first said (npos: not said).
     auto at = [&](const std::string& phrase) {
         const size_t a = text.find(" " + phrase + " "), b = text.find(" " + phrase + "s ");
@@ -520,6 +521,34 @@ std::pair<const BuildType*, int> NamedBuild(const Ontology& ontology, const std:
             bestRank = s.build->rank;
             chosen = s.build;
         }
+    }
+    // A world named at all ("an open-world scene with villages and forests") is the subject: it holds the others.
+    for (const auto& s : scores) {
+        if (s.score > 0 && s.build->scope == "world") return {s.build, std::max(best, s.score)};
+    }
+    // So is a request naming several settled places ("several big settlements and small ones joined by roads",
+    // "three villages and a castle"): the places are a world's.
+    const BuildType* world = nullptr;
+    for (const auto& [id, b] : ontology.Builds()) {
+        if (b.scope == "world" && world == nullptr) world = &b;
+    }
+    if (world != nullptr) {
+        auto plural = [](std::string w) {
+            std::replace(w.begin(), w.end(), '-', ' ');
+            if (w.size() > 1 && w.back() == 'y' && std::string("aeiou").find(w[w.size() - 2]) == std::string::npos) return w.substr(0, w.size() - 1) + "ies";
+            return w + "s";
+        };
+        int named = 0;
+        for (const auto& [id, b] : ontology.Builds()) {
+            if (!b.reachedByRoad) continue;
+            std::set<std::string> said; // its kinds of place (villages, towns, castles, ports), not its parts' words (docks)
+            for (const auto& c : b.scale) said.insert(plural(c.id));
+            said.insert(plural(id));
+            for (const auto& p : said) {
+                if (p.find(' ') == std::string::npos && text.find(" " + p + " ") != std::string::npos) ++named;
+            }
+        }
+        if (named >= 1) return {world, std::max(best, 1)};
     }
     return {chosen, best};
 }

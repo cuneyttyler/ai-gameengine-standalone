@@ -230,6 +230,17 @@ static json NestedSiteSize(const Ontology& ontology, const json& parcel, const M
     return json{{"w", json::array({lo, mid})}, {"h", json::array({lo, mid})}};
 }
 
+// The side of a nested site of its build type's medium size (its second scale class: a village, a harbour, a castle):
+// the unit a world's spacing is counted in, so big places take more of the world rather than making it bigger.
+static double MediumSiteSide(const Ontology& ontology, const json& parcel, const ModuleDef& m) {
+    if (!m.compile.is_object() || !m.compile.value("nested", false)) return 0;
+    const json type = FieldOf(parcel, m, "build-type");
+    const BuildType* build = type.is_string() ? ontology.Build(type.get<std::string>()) : nullptr;
+    if (build == nullptr || build->scale.empty()) return 0;
+    const ScaleClass& scale = build->scale[std::min<size_t>(1, build->scale.size() - 1)];
+    return (scale.side.first + scale.side.second) / 2.0 * std::max(1.0, m.compile.value("padding", 1.0));
+}
+
 json Compiler::LotSize(const json& parcel, const ModuleDef& m, int index, int instances) const {
     if (const json site = NestedSiteSize(ontology_, parcel, m); site.is_object()) return site;
     json lot = SizeOf(parcel, m, json{{"w", 5}, {"h", 6}});
@@ -563,6 +574,9 @@ void Compiler::Root(const json& root) {
             if (auto it = density.find(w.get<std::string>()); it != density.end()) woods_ = it->second;
         }
     }
+    // A world's section (its land handed over by the world: `outside`): no woods round it, whatever its kind; the
+    // world's forests are sections of their own. (A single place keeps its surrounding woods.)
+    if (options_.outside.is_array() && !options_.outside.empty()) woods_ = 0;
     if (const BuildType* build = m ? ontology_.BuildOfRoot(m->id) : nullptr) {
         if (build->layout == "dungeon") return DungeonRoot(root, *m);
         if (build->layout == "interior") return InteriorRoot(root, *m);
@@ -609,6 +623,48 @@ void Compiler::Root(const json& root) {
             side_ = std::max(24, fit);
         } else if (!options_.fixedSide) {
             side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))) + 2 * margin);
+        }
+    }
+    // A world's spacing (its root's `spacing`: the empty land between two settlements, in settlement sizes): big enough
+    // to hold its places on a lattice that far apart (each place's land claiming its site, docs/places/tiling.md).
+    if (m && !options_.fixedSide) {
+        const json spacing = FieldOf(root, *m, "spacing");
+        if (spacing.is_number() && spacing.get<double>() > 0) {
+            int places = 0;
+            double site = 0, unit = 0; // the biggest place's side; the gap's unit (a place of its type's base size)
+            for (const auto& c : root.value("children", json::array())) {
+                const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+                if (cm == nullptr || !cm->compile.is_object() || !cm->compile.value("edge", json::object()).value("claim", false)) continue;
+                for (const auto& p : c.value("children", json::array())) {
+                    const ModuleDef* pm = ontology_.Module(p.value("module", ""));
+                    const json size = pm ? NestedSiteSize(ontology_, p, *pm) : json();
+                    if (!size.is_object()) continue;
+                    ++places;
+                    const json w = size["w"];
+                    site = std::max(site, w.is_array() ? w.back().get<double>() : w.is_number() ? w.get<double>() : 0.0);
+                    unit = std::max(unit, MediumSiteSide(ontology_, p, *pm));
+                }
+            }
+            if (places > 0 && site > 0) {
+                // The lattice the places sit on: neighbours a site plus `spacing` gaps apart, middle to middle (the gaps
+                // counted in base-size places: a big town keeps the same open country round it as a village, so it
+                // takes more of the world rather than making it that much bigger); its columns and rows; each outer
+                // place off the edge as the solver keeps it (its own width, or an eighth of the side). Then room for
+                // the land's parts (their least shares: the sea, the forests, the border woods), and no more.
+                const double pitch = site + (unit > 0 ? unit : site) * spacing.get<double>();
+                const int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(places))));
+                const int rows = (places + cols - 1) / cols;
+                const double span = (std::max(cols, rows) - 1) * pitch;
+                double lattice = std::max(span + 2 * (site + 4), span / (1.0 - 2 * 0.12));
+                double shared = 0;
+                const json shares = m->compile.is_object() ? m->compile.value("shares", json::object()) : json::object();
+                for (const auto& c : root.value("children", json::array())) {
+                    const std::string module = c.value("module", "");
+                    if (shares.contains(module) && shares[module].is_number()) shared += shares[module].get<double>();
+                }
+                lattice /= std::sqrt(1.0 - std::min(0.6, shared));
+                side_ = std::max(side_, static_cast<int>(std::ceil(lattice)));
+            }
         }
     }
     const int s = side_;
@@ -675,6 +731,16 @@ void Compiler::Root(const json& root) {
         const std::string module = c.value("module", "");
         if (ontology_.Module(module) && (module == "river" || ontology_.IsA(module, "WaterBody"))) water_.push_back(c.value("id", module));
     }
+    // The open water first (the sea, the ocean): what a coast lies by, before a river or a lake.
+    std::stable_sort(water_.begin(), water_.end(), [&](const std::string& a, const std::string& b) {
+        auto open = [&](const std::string& id) {
+            for (const auto& c : children) {
+                if (c.value("id", "") == id) return c.value("module", "") == "sea" || c.value("module", "") == "ocean";
+            }
+            return false;
+        };
+        return open(a) && !open(b);
+    });
     // Networks first: the river, the main road(s).
     int mainRoads = 0;
     // The world's roads through a section, kept as they are: the longest its main road (what its streets join).
@@ -770,16 +836,36 @@ void Compiler::Root(const json& root) {
             }
         }
     }
-    if (mainRoads == 0) {
-        Emit({{"op", "path"}, {"id", "site/main-road"}, {"node", id}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
-              {"via", json::array({"site.center"})}, {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
+    // A place with no road of its own (its root's compile says `mainRoad: false`: a forest) gets none. A world's
+    // (`roadsAfterLand`) is laid once its land is: round the sea and the lakes, not under them.
+    if (mainRoads == 0 && rootHints.value("mainRoad", true)) {
+        json road = {{"op", "path"}, {"id", "site/main-road"}, {"node", id}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
+                     {"via", json::array({"site.center"})}, {"class", "main"}, {"width", 2}, {"terrain", "dirt"}};
+        if (rootHints.value("roadsAfterLand", false)) road["late"] = true;
+        Emit(road);
+    }
+    // Roads leading out over its border (the root's `exits`: a world's roads to the lands beyond), from the edges it names
+    // to its main road, laid once the main road is there.
+    {
+        int k = 0;
+        for (const auto& side : rootHints.value("exits", json::array())) {
+            const std::string e = side.get<std::string>();
+            const double f = 0.3 + 0.4 * ((k * 37) % 10) / 10.0;
+            const json at = e == "n" ? json{static_cast<int>(s * f), 0} : e == "s" ? json{static_cast<int>(s * f), s - 1}
+                          : e == "w" ? json{0, static_cast<int>(s * f)} : json{s - 1, static_cast<int>(s * f)};
+            const std::string anchor = "site/exit-" + std::to_string(++k);
+            Emit({{"op", "anchor"}, {"id", anchor}, {"node", id}, {"at", at}, {"kind", "entrance"}});
+            Emit({{"op", "path"}, {"id", anchor + "/road"}, {"node", id}, {"in", "site"}, {"from", anchor}, {"to", "site/main-road"}, {"class", "main"},
+                  {"width", rootHints.value("roads", json::object()).value("width", 2)}, {"terrain", rootHints.value("roads", json::object()).value("surface", "dirt")},
+                  {"late", true}});
+        }
     }
 
     // The enclosure: a moat round the inner ward, the curtain wall on its edge, towers at
     // its corners and the gatehouse where the road comes in. The zones go inside it.
     // A section the world's roads cross (its ways in given): its road runs between them even if its kind has no main
     // road of its own (a forest: the world's road through it), and from each further way in to its middle.
-    if (options_.entrances.is_object()) {
+    if (options_.entrances.is_object() && carried) { // only where the world's roads run (a forest has none of its own)
         if (!ids_.contains("site/main-road")) {
             Emit({{"op", "path"}, {"id", "site/main-road"}, {"node", id}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
                   {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
@@ -844,14 +930,24 @@ void Compiler::Root(const json& root) {
         for (const auto& [criterion, weight] : cm->prefersSite) prefers[criterion] = weight;
         // A place of its own shape (a world's section, its land bigger than the place): what's built keeps together in
         // the middle, its woods, meadows and water go round it towards the land's edge.
-        if (options_.outside.is_array() && !options_.outside.empty()) {
+        // (A place that builds nothing, a forest: its woods fill it, no middle kept for anything.)
+        bool builds = false;
+        for (const auto& other : children) {
+            const ModuleDef* om = ontology_.Module(other.value("module", ""));
+            builds = builds || (om && om->level == PlaceLevel::Zone && !ontology_.IsA(om->id, "NatureArea") && !ontology_.IsA(om->id, "WaterBody"));
+        }
+        if (builds && options_.outside.is_array() && !options_.outside.empty()) {
             const bool nature = ontology_.IsA(cm->id, "NatureArea") || ontology_.IsA(cm->id, "WaterBody");
             if (nature) prefers["edge"] = std::max(prefers.value("edge", 0.0), 1.5);
             else prefers["centre"] = std::max(prefers.value("centre", 0.0), 3.0);
         }
         // A zone has room for its parcels: about 1.9 times their lots, with its streets and open land.
         const double needed = ParcelArea(c);
-        const double planned = area ? (area->first + area->second) / 2 : 400.0;
+        double planned = area ? (area->first + area->second) / 2 : 400.0;
+        // Its least share of the place (the root's `shares`: a world's sea, mountains, forests), whatever the plan said.
+        if (const json shares = rootHints.value("shares", json::object()); shares.contains(cm->id)) {
+            planned = std::max(planned, shares[cm->id].get<double>() * side_ * side_);
+        }
         double scale = 1.0;
         if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
         const double need = needed * 1.9 * scale;
@@ -875,6 +971,17 @@ void Compiler::Root(const json& root) {
                     }
                 }
                 if (side > 0) zone["edge"]["claimRadius"] = std::ceil(side * 0.7072) + 3;
+                // How far apart the places are (the root's `spacing`, in settlement sizes: the user's "close together"
+                // or "far apart"), middle to middle.
+                // (The gap in medium places' widths, its own half-width on each side: a big town keeps the same open
+                // country round it as a village.)
+                if (const json spacing = m ? FieldOf(root, *m, "spacing") : json(); side > 0 && spacing.is_number()) {
+                    double medium = 0;
+                    for (const auto& p : c.value("children", json::array())) {
+                        if (const ModuleDef* pm = ontology_.Module(p.value("module", ""))) medium = std::max(medium, MediumSiteSide(ontology_, p, *pm));
+                    }
+                    zone["edge"]["apart"] = std::ceil(side + (medium > 0 ? medium : side) * spacing.get<double>());
+                }
             }
         }
         if (flexible) zone["flexible"] = true;
@@ -990,6 +1097,19 @@ void Compiler::Root(const json& root) {
     }
     if (m) Traffic(*m, id, "site", true);
     Landscape(id, zonesIn, zones);
+    // A place that is a wood (its root's treeDensity: a world's forest section): the land between its stands is wood too,
+    // at the same density (the land outside it is its own zone, so untouched).
+    if (rootHints.contains("treeDensity") && m) {
+        const json level = FieldOf(root, *m, "density");
+        const json map = rootHints["treeDensity"];
+        const double density = level.is_string() && map.contains(level.get<std::string>()) ? map[level.get<std::string>()].get<double>() : 0.5;
+        const ModuleDef* fm = ontology_.Module("forest");
+        const SlotDef* tree = fm ? PrimarySlot(*fm) : nullptr;
+        if (tree) {
+            Emit({{"op", "scatter"}, {"id", "site/wood"}, {"node", id}, {"in", "site"}, {"slot", tree->name}, {"density", density}, {"own", true},
+                  {"spacing", {{"min", 1}}}, {"layer", LayerForSlot(ontology_, *tree)}, {"module", "forest"}});
+        }
+    }
 
     // Walls round the site, with gates where the roads cross.
     for (const auto& c : children) {
@@ -1144,6 +1264,13 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         double density = 0.15;
         for (const char* field : {"trees", "flowers", "rocks"}) {
             if (const auto r = Range(zone, m, field)) density = (r->first + r->second) / 2;
+        }
+        // A forest that is the place (a world's forest section): as close as the place's density says.
+        if (const ModuleDef* rm = ontology_.Module(rootModule_); rm && rm->compile.is_object() && rm->compile.contains("treeDensity")) {
+            const json root = spec_["root"];
+            const json level = FieldOf(root, *rm, "density");
+            const json map = rm->compile["treeDensity"];
+            if (level.is_string() && map.contains(level.get<std::string>())) density = map[level.get<std::string>()].get<double>();
         }
         if (slot) {
             Emit({{"op", "scatter"}, {"id", zoneId + "/" + slot->name}, {"node", zoneId}, {"in", zoneId}, {"slot", slot->name},

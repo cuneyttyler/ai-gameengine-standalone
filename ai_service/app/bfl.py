@@ -446,7 +446,7 @@ def free_prompt(place: dict, scale: str, contents: list, design: str, request: s
                       if c.get("kind") and c.get("count"))
     total = sum(int(c.get("count") or 0) for c in contents)
     text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a block-out "
-            "of the LAND only: green is grass, brown strips are dirt roads, blue is water, dark green dots are trees, brown "
+            "of the LAND only: green is grass, brown strips are dirt roads, dark red-brown strips across water are wooden bridges (paint them as bridges), blue is water, dark green dots are trees, brown "
             "patches are farm fields, grey is a paved square. STAY TRUE TO THE BLOCK-OUT'S LAND: every road, river, lake, "
             "coast and the sea exactly where it is in the block-out, the same course, width and shape; the woods and fields "
             "where they are. Don't move, add or remove a road or any water; build the place around them. ")

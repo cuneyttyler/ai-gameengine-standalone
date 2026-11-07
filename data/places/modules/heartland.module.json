@@ -40,7 +40,7 @@
         0.08
       ],
       "unit": "per free cell",
-      "default": "rare"
+      "default": "some"
     }
   },
   "quality": {},
@@ -49,6 +49,10 @@
       "role": "tree",
       "essential": true,
       "primary": true
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
     }
   },
   "children": {
@@ -77,6 +81,10 @@
       {
         "slot": "tree",
         "density": "trees"
+      },
+      {
+        "slot": "bush",
+        "density": 0.01
       }
     ],
     "edge": {

@@ -39,7 +39,13 @@ std::vector<std::string> ZoneIds(const Ontology& ontology, const nlohmann::json&
 void ApplyZoneAnswer(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec, const std::string& zoneId,
                      const nlohmann::json& answer);
 
-// The lower levels, from the expansion rules.
+// An open world's places (its Brief's `places`: {key: {name, type, size}}, chosen on the Confirm page): one settled
+// zone (a heartland, "heartland-<key>") each holding its site, of its type's scale class for its size (the build
+// type's `sizes`; a place without one takes the world's settlementSize), with its land round it. The AI's own
+// heartlands give way to them; a harbour is put by the world's sea. Nothing when the Brief has no places.
+void PlacesIntoWorld(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec);
+
+// The lower levels, from the expansion rules (an open world's places first: PlacesIntoWorld).
 void ExpandSpec(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec);
 
 // Fixes that need no AI, before each validation: a mix's or set's values that

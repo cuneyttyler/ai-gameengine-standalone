@@ -46,7 +46,7 @@ Value FieldValueOf(const FieldDef& field, const json& given) {
     const json& value = given.is_null() ? field.defaultValue : given;
     if (value.is_null()) return Value::Unknown();
     const std::string& t = field.type;
-    if (t == "count" || t == "area" || t == "length" || t == "width" || t == "share" || t == "ratio") {
+    if (t == "count" || t == "area" || t == "length" || t == "width" || t == "share" || t == "ratio" || t == "number") {
         if (auto i = IntervalOf(value, t)) return Value::Num(*i);
         return Value::Unknown();
     }
@@ -110,7 +110,7 @@ std::string CheckFieldValue(const Ontology& ontology, const FieldDef& f, const j
         if (f.max && i.hi > *f.max) return "can't be above " + std::to_string(static_cast<long long>(*f.max));
         return {};
     };
-    if (t == "count" || t == "area" || t == "length" || t == "width" || t == "share" || t == "ratio") {
+    if (t == "count" || t == "area" || t == "length" || t == "width" || t == "share" || t == "ratio" || t == "number") {
         auto i = IntervalOf(value, t);
         if (!i) return "needs a number or [low, high]" + std::string(t == "count" ? "" : "");
         if (t == "count" && (std::floor(i->lo) != i->lo || std::floor(i->hi) != i->hi)) return "a count is a whole number";

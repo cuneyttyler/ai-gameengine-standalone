@@ -1,6 +1,12 @@
 [
   {
     "id": "settlement",
+    "sizes": {
+      "small": "village",
+      "medium": "large-village",
+      "big": "town",
+      "huge": "city"
+    },
     "name": "Settlement",
     "paint": "A lived-in settlement seen from above at the isometric angle: houses, shops and halls with real roofs (tiles, thatch, slate) and walls of their region's materials, set along the plan's streets; streets and squares paved or packed earth, worn where people walk; gardens, yards and fields behind the houses; trees and hedges as the plan has them. Small life may be added where it fits (barrels by a door, carts, wash lines, market stalls in a square).",
     "root": "settlement",
@@ -197,6 +203,12 @@
   },
   {
     "id": "farmland",
+    "sizes": {
+      "small": "countryside",
+      "medium": "large-countryside",
+      "big": "large-countryside",
+      "huge": "large-countryside"
+    },
     "name": "Farmland",
     "paint": "Open farmland at the isometric angle: fields of crops in rows following the plan's fields, pastures with grass, hedges, fences and dry-stone walls along the plan's lines, farm tracks of packed earth with ruts, farmsteads with barns and yards. Small farm life may be added where it fits (hay bales, carts, troughs, scarecrows).",
     "root": "farmland",
@@ -483,8 +495,7 @@
       "shrine-site",
       "standing-stones",
       "campsite",
-      "cave-entrance",
-      "trail-network"
+      "cave-entrance"
     ],
     "scale": [
       {
@@ -558,6 +569,12 @@
   },
   {
     "id": "camp",
+    "sizes": {
+      "small": "camp",
+      "medium": "war-camp",
+      "big": "war-camp",
+      "huge": "war-camp"
+    },
     "name": "Camp",
     "paint": "A camp at the isometric angle: tents and lean-tos of canvas and hide where the plan has them, campfires with rings of stones, packed earth trampled around them, crates and sacks of supplies. Small camp life may be added (bedrolls, racks, cooking pots, firewood).",
     "root": "camp",
@@ -676,6 +693,12 @@
   },
   {
     "id": "harbour",
+    "sizes": {
+      "small": "harbour",
+      "medium": "port",
+      "big": "port",
+      "huge": "port"
+    },
     "name": "Harbour",
     "paint": "A harbour at the isometric angle: water with depth and ripples, quays and piers of stone and timber along the plan's edges, warehouses and harbour buildings, boats moored where the plan has water by the quays. Small harbour life may be added (crates, barrels, nets, ropes, bollards).",
     "root": "harbour",
@@ -715,7 +738,9 @@
       "lake",
       "meadow",
       "clutter",
-      "nature-scatter"
+      "nature-scatter",
+      "residential-ward",
+      "market-ward"
     ],
     "scale": [
       {
@@ -793,6 +818,12 @@
   },
   {
     "id": "castle",
+    "sizes": {
+      "small": "castle",
+      "medium": "fortress",
+      "big": "fortress",
+      "huge": "fortress"
+    },
     "name": "Castle",
     "paint": "A castle at the isometric angle: thick curtain walls and towers of dressed stone where the plan has them, battlements along their tops, gatehouses, keep and halls inside, courtyards of flagstones or packed earth. Small life may be added (carts, barrels, weapon racks, banners).",
     "root": "castle",
@@ -1079,7 +1110,9 @@
       "coast",
       "river",
       "lake",
-      "road"
+      "road",
+      "open-country",
+      "border-woods"
     ],
     "scale": [
       {
@@ -1133,6 +1166,22 @@
         "climate": "climate",
         "landform": "landform"
       },
+      "places": {
+        "types": [
+          "settlement",
+          "harbour",
+          "castle",
+          "camp",
+          "farmland"
+        ],
+        "sizes": [
+          "small",
+          "medium",
+          "big",
+          "huge"
+        ],
+        "description": "the world's settled places, each a section of its own: its name, its type and its size (its type's sizes: a small settlement is a village, a big one a town)"
+      },
       "features": [
         "river",
         "lake",
@@ -1170,7 +1219,12 @@
       "fields": {
         "woods": "none"
       },
-      "fieldsDescription": "each section's own root set so: no woods of its own (the world's forests are sections of their own)"
+      "fieldsDescription": "each section's own root set so: no woods of its own (the world's forests are sections of their own)",
+      "base": [
+        "open-country",
+        "border-woods"
+      ],
+      "baseDescription": "zones painted with the world's own land, not planned as sections (the padding between places)"
     },
     "look": {
       "reference": "open-world RPG maps (Baldur's Gate's areas, Divinity: Original Sin's overworld)",

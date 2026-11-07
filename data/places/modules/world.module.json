@@ -75,12 +75,32 @@
         "some",
         "dense"
       ],
-      "default": "some",
+      "default": "none",
       "ask": true,
       "description": "how wooded the wild land is"
     },
     "notes": {
       "type": "description"
+    },
+    "spacing": {
+      "type": "number",
+      "default": 3,
+      "min": 1,
+      "max": 10,
+      "ask": true,
+      "description": "how far apart its settlements are, 1 to 10: the empty land between two, in small settlements' widths (1: close neighbours; 3: a few villages' width of open country between them; 9: far apart, long roads), whatever their own size; from the request's words (\"close together\", \"far apart\", \"remote\")"
+    },
+    "settlementSize": {
+      "type": "enum",
+      "values": [
+        "small",
+        "medium",
+        "big",
+        "huge"
+      ],
+      "default": "small",
+      "ask": true,
+      "description": "how big its settlements are, unless a place says otherwise (its build type's sizes: a village, a large village, a town, a city)"
     }
   },
   "slots": {},
@@ -149,6 +169,16 @@
       "min": 1,
       "weight": 1.0,
       "max": 1
+    },
+    "open-country": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 24
+    },
+    "border-woods": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 8
     }
   },
   "compile": {
@@ -164,6 +194,31 @@
       "description": "one road network for the whole world, joining its settled places (their build type's reachedByRoad): each to the main road or to the nearest one on it, and to its nearest neighbour, each road running into the place to its middle",
       "neighbours": 1,
       "into": true
-    }
+    },
+    "shares": {
+      "sea": 0.12,
+      "ocean": 0.2,
+      "mountains": 0.1,
+      "hills": 0.05,
+      "coast": 0.04,
+      "forest": 0.025,
+      "marsh": 0.02,
+      "lake": 0.004,
+      "border-woods": 0.02
+    },
+    "sharesDescription": "each part's least share of the world, whatever the plan says: the sea, the mountains and the forests big enough to read",
+    "exits": [
+      "n",
+      "s",
+      "w"
+    ],
+    "exitsDescription": "roads leading out over the world's border from these edges (n, s, w, e) to its main road",
+    "roadsAfterLand": true,
+    "roadsAfterLandDescription": "the main road is laid once the land is (round the sea and the lakes, ending at the shore where a way in is in the sea); the land is laid before the places, which take spread points of the open land left",
+    "borders": {
+      "border-woods": 4,
+      "mountains": 1
+    },
+    "bordersDescription": "what decorates the world's edges (each module: how many, growing in from the border: at-edge), unless the Brief turns that module off; border woods are painted with the world's land, the range is mountains like any other"
   }
 }

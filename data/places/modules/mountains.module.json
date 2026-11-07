@@ -81,9 +81,9 @@
         "density": {
           "field": "peaks",
           "values": {
-            "rocky": 0.02,
-            "snowy": 0.0,
-            "volcanic": 0.0
+            "rocky": 0.18,
+            "snowy": 0.12,
+            "volcanic": 0.03
           }
         }
       }

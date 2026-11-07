@@ -287,6 +287,7 @@ json LandOnly(const json& solved) {
             auto at = [&](int xx) {
                 std::string t = row[xx];
                 if (t == "road") return std::string("dirt"); // a world's road: a road, as a road looks
+                if (t == "forest-floor") return std::string("grass"); // under the trees: plain ground (the trees are the wood)
                 if ((t == "dirt" || t == "plaza" || t == "cobble" || t == "paved" || t == "gravel") && !(xx < W && main[static_cast<size_t>(y) * W + xx])) return std::string("grass");
                 return t;
             };

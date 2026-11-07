@@ -70,7 +70,7 @@ interface Choice {
   path: string
   label: string
   values?: string[]
-  type?: 'count' | 'bool'
+  type?: 'count' | 'bool' | 'slider'
   min?: number
   max?: number
   hint?: string
@@ -99,6 +99,13 @@ interface BuildWindow {
   settings?: Choice[] // the root's own settings (7.10: a dungeon's levels, a building's floors)
   features: { value: string[]; options: string[] }
   style: Record<string, { value: unknown; options?: string[] }>
+  // An open world's places (docs/places/tiling.md): each a section of its own, its type and size chosen here.
+  places?: {
+    value: { id: string; name: string; type: string; typeName?: string; size: string; class?: string; buildings?: [number, number] }[]
+    types: { id: string; name: string }[]
+    sizes: string[]
+    description?: string
+  }
   components: Component[]
   marks: Record<string, Mark>
   assumptions?: string[]
@@ -1358,6 +1365,15 @@ function setCount(c: Component, text: string): void {
 function toggleFeature(f: string): void {
   const now = win.value?.features.value ?? []
   edit('features', now.includes(f) ? now.filter((x) => x !== f) : [...now, f])
+}
+// An open world's new place: the next free key (p1, p2, ...), a settlement of the size most of the others have.
+function addPlace(): void {
+  const rows = win.value?.places?.value ?? []
+  let n = rows.length + 1
+  while (rows.some((p) => p.id === `p${n}`)) n++
+  const sizes = rows.map((p) => p.size)
+  const size = sizes.sort((a, b) => sizes.filter((x) => x === b).length - sizes.filter((x) => x === a).length)[0] ?? 'small'
+  edit(`places.p${n}`, { name: '', type: 'settlement', size })
 }
 function setParam(c: Component, p: Control, value: unknown): void {
   edit(`components.${c.id}.params.${p.name}`, value)
@@ -2908,6 +2924,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
                        @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
                 <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
+                <span v-else-if="f.type === 'slider'" class="slider">
+                  <input type="range" :min="f.min" :max="f.max" step="1" :value="countOf(f.value) || f.min"
+                         @change="edit(f.path, Number(($event.target as HTMLInputElement).value))" />
+                  <span class="num-out">{{ countOf(f.value) || '—' }}</span>
+                </span>
               </div>
             </div>
           </template>
@@ -2944,6 +2965,33 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </div>
 
         </div>
+
+        <template v-if="win.places">
+          <h4 class="section-title">Places <span class="dim">· {{ win.places.description || 'the world\'s settled places, each a section of its own' }}</span></h4>
+          <table class="components places">
+            <thead>
+              <tr><th>Name</th><th>Kind</th><th>Size</th><th>What it makes</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in win.places.value" :key="p.id" :class="markClass('places.' + p.id)">
+                <td><input :value="p.name" placeholder="its name" @change="edit(`places.${p.id}.name`, ($event.target as HTMLInputElement).value)" /></td>
+                <td>
+                  <select :value="p.type" @change="edit(`places.${p.id}.type`, ($event.target as HTMLSelectElement).value)">
+                    <option v-for="t in win.places.types" :key="t.id" :value="t.id">{{ t.name }}</option>
+                  </select>
+                </td>
+                <td>
+                  <select :value="p.size" @change="edit(`places.${p.id}.size`, ($event.target as HTMLSelectElement).value)">
+                    <option v-for="s in win.places.sizes" :key="s" :value="s">{{ s }}</option>
+                  </select>
+                </td>
+                <td class="dim">{{ p.class ? p.class.replace(/-/g, ' ') : '—' }}<template v-if="p.buildings"> · {{ p.buildings[0] }}–{{ p.buildings[1] }} buildings</template></td>
+                <td><button class="link" title="Leave this place out of the world" @click="edit(`places.${p.id}`, null)">Remove</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button class="link" @click="addPlace()">Add a place</button>
+        </template>
 
         <h4 class="section-title">Components <span class="dim">· the place's parts: on or off, how many, and what each holds</span></h4>
         <table class="components unified">

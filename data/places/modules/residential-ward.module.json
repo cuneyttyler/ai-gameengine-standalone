@@ -5,7 +5,8 @@
   "level": "zone",
   "description": "Houses with their yards and gardens; denser near the centre.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "harbour"
   ],
   "classes": [
     "Ward"

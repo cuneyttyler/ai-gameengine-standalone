@@ -57,6 +57,8 @@ BRIEF_SHAPE = """The Brief (schema aige.brief/1), as JSON:
     "walled": "<none|palisade|stone>",
     "root": {"relief": "<flat|gentle|hilly: the lie of the wild land>", "woods": "<none|few|some|dense: woods round the place>"},
     "features": [{"module": "<e.g. river>"}],
+    "places": {"<p1, p2, ...>": {"name": "<its name>", "type": "<one of the world's place types>",
+                                 "size": "<small|medium|big|huge>"}} (an open world only: its settled places),
     "components": {
       "<component module id>": {"enabled": true, "count": [low, high] or n, "density": "<none|rare|some|common|abundant>",
                                 "assets": {"source": "auto", "variants": <1-4: how many different looks its things get, when the
@@ -82,7 +84,14 @@ Only components listed for the build type. A disabled component is {"enabled": f
 Every question you'd ask is a decision with the answer you assumed for it (the user sees both, side by side, and
 changes the answer if they want another); don't repeat a decision's assumption in "assumptions".
 "params" only uses the component's fields, with values of their type. Give confidence below 0.6 for anything
-you guessed."""
+you guessed.
+"places" (an open world's build type has briefFields.places): every settled place the world holds, one entry each,
+keyed p1, p2, ...: its name (the request's, else one that fits), its type (one of briefFields.places.types: a
+village is a settlement, a port a harbour, a fort a castle) and its size (one of briefFields.places.sizes: small
+unless the request asks for bigger ones, e.g. "big towns" is big, "a great city" huge; root.settlementSize holds the
+size most of them have). As many as the request asks for ("five villages and a castle": six); if it gives no
+number, a handful (four to seven) of the kinds that fit the world. Forests, mountains, the sea and the land between
+are components, not places."""
 
 
 @dataclass

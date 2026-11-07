@@ -49,15 +49,38 @@ struct Planned {
 // The AI service (its port), when the plan is the AI's: the Build panel's root and zone steps.
 int gAiPort = 0;
 
+// The AI's answers kept (AIGE_AI_CACHE: a folder) by what was asked, so a rerun plans the same and asks nothing.
+std::string AiCacheFile(const std::string& path, const json& body) {
+    const char* dir = std::getenv("AIGE_AI_CACHE");
+    if (dir == nullptr || *dir == 0) return "";
+    const std::string text = path + body.dump();
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char ch : text) h = (h ^ ch) * 1099511628211ull;
+    char name[32];
+    std::snprintf(name, sizeof name, "%016llx.json", static_cast<unsigned long long>(h));
+    std::filesystem::create_directories(dir);
+    return (std::filesystem::path(dir) / name).string();
+}
+
 json AskAi(const std::string& path, const json& body) {
     if (gAiPort <= 0) return json();
+    const std::string cached = AiCacheFile(path, body);
+    if (!cached.empty() && std::filesystem::exists(cached)) {
+        std::ifstream in(cached);
+        try {
+            return json::parse(in);
+        } catch (const std::exception&) {
+        }
+    }
     httplib::Client client("127.0.0.1", gAiPort);
     client.set_read_timeout(600);
     const auto r = client.Post(path, body.dump(), "application/json");
     if (!r || r->status != 200) return json();
     try {
         const json answer = json::parse(r->body);
-        return answer.value("ok", true) && answer.contains("answer") ? answer["answer"] : json();
+        json out = answer.value("ok", true) && answer.contains("answer") ? answer["answer"] : json();
+        if (!cached.empty() && !out.is_null()) std::ofstream(cached) << out.dump();
+        return out;
     } catch (const std::exception&) {
         return json();
     }
@@ -327,7 +350,9 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     // The test's own sites (a world's: each its build type, scale class and name), in place of the planner's.
     const json sites = brief.value("test", json::object()).value("sites", json::array());
     // The AI plans the sections when the test asks ("ai": "sections"), on the service's port.
-    const bool aiSections = brief.value("test", json::object()).value("ai", "") == "sections";
+    const std::string aiWhat = brief.value("test", json::object()).value("ai", "");
+    const bool aiSections = aiWhat == "sections" || aiWhat == "all";
+    const bool aiWorld = aiWhat == "all"; // the world plan's root and zones by the AI too
     const bool reuse = brief.value("test", json::object()).value("reuse", false); // the sections planned last time
     const json testBrief = brief.value("test", json::object());
     gAiPort = aiSections ? brief.value("test", json::object()).value("port", 8765) : 0;
@@ -335,42 +360,36 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     CompileOptions worldOptions;
     worldOptions.side = brief.value("test", json::object()).value("side", 0);
     worldOptions.fixedSide = worldOptions.side > 0;
+    // Its own seed (as the editor's build id gives one): each world its own coast, sea and ridges; test.seed tries another.
+    worldOptions.seed = brief.value("test", json::object()).value("seed", static_cast<uint64_t>(std::hash<std::string>{}(brief.value("name", "world")) % 1000003));
     brief.erase("test");
     // Each site in a settled zone of its own (a heartland each), so the world spreads them over its land, apart, with
     // its forests, hills, mountains and water between them.
+    // The test's sites are the world Brief's places (as the Confirm page sets them: name, type, size), keyed 1, 2, ...
+    // so each is "heartland-<n>"; the engine puts them in the world plan (PlacesIntoWorld). The test's spacing and
+    // sizes go where the Confirm page puts them: the Brief's root settings and each place's size.
+    if (testBrief.contains("spacing")) brief["root"]["spacing"] = brief["quality"]["spacing"] = testBrief["spacing"];
+    if (testBrief.contains("settlementSize")) brief["root"]["settlementSize"] = brief["quality"]["settlementSize"] = testBrief["settlementSize"];
+    if (!sites.empty() && !brief.contains("places")) {
+        json places = json::object();
+        int n = 0;
+        const json placeSizes = testBrief.value("placeSizes", json::object());
+        for (const auto& s : sites) {
+            const std::string key = std::to_string(++n);
+            json p = {{"name", s.value("name", "")}, {"type", s.value("build-type", "settlement")}};
+            if (placeSizes.contains(key)) p["size"] = placeSizes[key];
+            else if (s.contains("size")) p["size"] = s["size"];
+            else if (testBrief.contains("settlementSize")) p["size"] = testBrief["settlementSize"];
+            else if (s.contains("scale-class") && !brief.value("quality", json::object()).contains("settlementSize")) p["class"] = s["scale-class"];
+            places[key] = p;
+        }
+        brief["places"] = places;
+    }
     const Planned world = PlanPlace(ontology, brief, "test-place", worldOptions, [&](json& spec) {
+        if (testBrief.contains("spacing")) spec["root"]["quality"]["spacing"] = testBrief["spacing"]; // (the AI's root step may leave it out)
         if (sites.empty()) return;
         json& children = spec["root"]["children"];
-        json kept = json::array();
-        json heart;
-        for (const auto& c : children) {
-            if (c.value("module", "") == "heartland") {
-                if (heart.is_null()) heart = c;
-                continue;
-            }
-            kept.push_back(c);
-        }
-        if (heart.is_null()) heart = {{"module", "heartland"}, {"quality", json::object()}, {"quantity", json::object()}};
-        int k = 0;
-        for (const auto& s : sites) {
-            ++k;
-            json h = heart;
-            h["id"] = "heartland-" + std::to_string(k);
-            const std::string kind = s.value("build-type", "settlement"), cls = s.value("scale-class", "village");
-            int side = 60;
-            if (const BuildType* bt = ontology.Build(kind)) {
-                const ScaleClass* sc = bt->Scale(cls);
-                if (sc == nullptr && !bt->scale.empty()) sc = &bt->scale[bt->scale.size() / 2];
-                if (sc) side = (sc->side.first + sc->side.second) / 2;
-            }
-            // Room round it: its fields, its approach, a little wild land of its own.
-            const int around = static_cast<int>(side * 1.35 * 1.2) + 2 * 12;
-            h["quantity"] = {{"sites", {{"count", 1}}}, {"area", {{"area", around * around}}}};
-            h["children"] = json::array({json{{"id", h["id"].get<std::string>() + "/site"}, {"module", "site"},
-                                              {"quality", {{"build-type", kind}, {"scale-class", cls}, {"name", s.value("name", "")}}},
-                                              {"quantity", json::object()}, {"children", json::array()}}});
-            kept.push_back(h);
-        }
+        json kept = children;
         // The test's forests: that many forest zones in the world plan, each to become a section of its own.
         const int forests = testBrief.value("forests", 0);
         if (forests > 0) {
@@ -390,7 +409,7 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             for (const auto& [k, v] : q.items()) c["quality"][k] = v;
         }
         children = kept;
-    });
+    }, aiWorld);
     for (const auto& p : world.problems) problems << "world " << p << "\n";
     std::ofstream(out / "brief.json") << world.brief.dump(2);
     std::ofstream(out / "spec.json") << world.spec.dump(2);
@@ -399,6 +418,18 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
     const json b = world.solved["grid"]["bounds"];
     std::cout << world.brief.value("buildType", "") << ": " << b.dump() << ", " << world.problems.size() << " problems\n";
 
+    // The world plan alone (the test's worldOnly): its layout, to check before the sections are planned.
+    if (testBrief.value("worldOnly", false)) {
+        std::map<std::string, std::string> names;
+        for (const auto& r : world.solved.value("regions", json::array())) {
+            const std::string rid = r.value("id", "");
+            if (rid.rfind("heartland-", 0) != 0 || rid.find('/') != std::string::npos) continue;
+            const int index = std::atoi(rid.substr(10).c_str()) - 1;
+            if (index >= 0 && index < static_cast<int>(sites.size())) names[rid] = sites[index].value("name", rid);
+        }
+        DrawLayout(ontology, world.spec, world.solved, world.brief.value("name", "The world") + ": the world plan", out / "world-layout.png", 2400, names);
+        return 0;
+    }
     // Each place a section of its own shape: its land in the world plan (the organic zone it was given), planned as a
     // place of its kind on that land's square (what isn't its land left unplanned, its ways in on its land's edge),
     // given the world's ground round it, then put into the world.
@@ -437,6 +468,13 @@ int FromBrief(const fs::path& briefFile, const fs::path& out) {
             const int index = std::atoi(landId.substr(10).c_str()) - 1;
             if (index < 0 || index >= static_cast<int>(sites.size())) continue;
             site = sites[index];
+            // Its class as the world plan has it (its size, chosen in the Brief).
+            for (const auto& c : world.spec["root"].value("children", json::array())) {
+                if (c.value("id", "") != landId) continue;
+                for (const auto& s : c.value("children", json::array())) {
+                    if (const std::string cls = s.value("quality", json::object()).value("scale-class", ""); !cls.empty()) site["scale-class"] = cls;
+                }
+            }
             // No forests in it: the world's forests are sections of their own.
             json components = site.value("components", json::object());
             for (const auto& part : withoutParts) components[part.get<std::string>()] = {{"enabled", false}};
@@ -671,6 +709,30 @@ int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx, bool la
         }
         solved["objects"] = kept;
         solved["lines"] = json::array();
+        // Its ground clean: only the main roads (and the square) stay roads; the lanes, yards and plots, and the
+        // world's site boxes round it, are grass.
+        const int W = b[2], H = b[3];
+        std::vector<std::string> ground = TerrainCells(solved, W, H);
+        std::vector<uint8_t> main(static_cast<size_t>(W) * H, 0);
+        for (const auto& p : solved.value("paths", json::array())) {
+            if (p.value("class", "") != "main") continue;
+            const int r = std::max(1, p.value("width", 2)) / 2 + 1;
+            for (const auto& c : p.value("cells", json::array())) {
+                for (int dy = -r; dy <= r; ++dy) {
+                    for (int dx = -r; dx <= r; ++dx) {
+                        const int x = c[0].get<int>() + dx, y = c[1].get<int>() + dy;
+                        if (x >= 0 && y >= 0 && x < W && y < H) main[static_cast<size_t>(y) * W + x] = 1;
+                    }
+                }
+            }
+        }
+        for (int c = 0; c < W * H; ++c) {
+            std::string& g = ground[c];
+            if (g == "road") g = "dirt"; // the world's roads round it: roads (as a road looks)
+            else if (g == "forest-floor") g = "grass"; // under the trees: plain ground
+            else if ((g == "dirt" || g == "tilled" || g == "plaza") && !main[c]) g = "grass";
+        }
+        SetTerrain(solved, ground, W, H);
     }
     const json painting = PrepareBlockout(solved, &ontology, out, width);
     std::cout << "block-out " << painting["size"].dump() << " at " << cellPx << " px a cell\n";

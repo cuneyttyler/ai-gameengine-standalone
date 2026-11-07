@@ -286,6 +286,34 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
         else if (f.is_string()) features.push_back(f);
     }
     window["features"] = {{"value", features}, {"options", fields.value("features", json::array())}};
+    // An open world's places (its briefFields.places): each a section of its own, its name, type and size; the size
+    // shown as what it makes (its type's scale class for it and that class's buildings).
+    if (const json pf = fields.value("places", json()); pf.is_object()) {
+        json rows = json::array();
+        const json places = BriefValue(brief, "places");
+        if (places.is_object()) {
+            for (const auto& [key, p] : places.items()) {
+                if (!p.is_object()) continue;
+                json row = {{"id", key}, {"name", p.value("name", "")}, {"type", p.value("type", "settlement")},
+                            {"size", p.value("size", "small")}};
+                if (const BuildType* t = ontology.Build(row["type"].get<std::string>())) {
+                    if (auto it = t->sizes.find(row["size"].get<std::string>()); it != t->sizes.end()) {
+                        row["class"] = it->second;
+                        if (const ScaleClass* sc = t->Scale(it->second)) row["buildings"] = {sc->buildings.first, sc->buildings.second};
+                    }
+                    row["typeName"] = t->name;
+                }
+                rows.push_back(row);
+            }
+        }
+        json types = json::array();
+        for (const auto& id : pf.value("types", json::array())) {
+            const BuildType* t = id.is_string() ? ontology.Build(id.get<std::string>()) : nullptr;
+            types.push_back({{"id", id}, {"name", t ? t->name : id.get<std::string>()}});
+        }
+        window["places"] = {{"value", rows}, {"types", types}, {"sizes", pf.value("sizes", json::array())},
+                            {"description", pf.value("description", "")}};
+    }
     json style = json::object();
     const auto styleFields = fields.value("style", json::object());
     for (const auto& [key, spec] : styleFields.items()) {
@@ -479,6 +507,11 @@ json FieldChoice(const Ontology& ontology, const FieldDef& f, const std::string&
         c["max"] = f.max.value_or(100);
     } else if (f.type == "bool") {
         c["type"] = "bool";
+    } else if (f.type == "number" && f.min && f.max) {
+        // A number in a range (a world's spacing, 1 to 10): a slider.
+        c["type"] = "slider";
+        c["min"] = *f.min;
+        c["max"] = *f.max;
     } else {
         return json();
     }

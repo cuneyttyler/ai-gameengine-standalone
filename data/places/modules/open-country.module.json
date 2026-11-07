@@ -1,0 +1,53 @@
+{
+  "schema": "aige.module/1",
+  "id": "open-country",
+  "name": "Open country",
+  "level": "zone",
+  "description": "The empty land between a world's places, keeping them apart: meadows, scattered copses, hedgerows and the long roads through; no settlement. Put it between villages to keep them far from each other.",
+  "buildTypes": [
+    "world",
+    "region"
+  ],
+  "classes": [
+    "NatureArea",
+    "Padding"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        20000,
+        200000
+      ],
+      "min": 2000,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": false,
+      "primary": true
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "fill": "grass",
+    "background": [
+      {
+        "slot": "tree",
+        "density": 0.015
+      },
+      {
+        "slot": "bush",
+        "density": 0.01
+      }
+    ]
+  },
+  "prefersSite": {}
+}

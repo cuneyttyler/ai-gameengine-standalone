@@ -252,6 +252,10 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 build.scope = b.value("scope", "place") == "world" ? "world" : "place";
                 build.sections = b.value("sections", json());
                 build.reachedByRoad = b.value("reachedByRoad", false);
+                const json sizes = b.value("sizes", json::object()); // named: items() of a temporary dangles
+                for (const auto& [size, cls] : sizes.items()) {
+                    if (cls.is_string()) build.sizes[size] = cls.get<std::string>();
+                }
                 build.words = Strings(b.value("words", json::array()));
                 build.isDefault = b.value("default", false);
                 build.rank = b.value("rank", 0);

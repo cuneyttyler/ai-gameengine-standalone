@@ -5,7 +5,8 @@
   "level": "zone",
   "description": "The centre: the market square, shops, inns and a well.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "harbour"
   ],
   "classes": [
     "Ward"

@@ -290,6 +290,8 @@ private:
     // The land's height per cell (in storeys; 0: level) and its snow, from the relief statements.
     std::vector<float> height_;
     std::vector<uint8_t> snow_;
+    std::vector<uint8_t> openWater_; // the sea, a lake (zones filled with water): no road crosses it (a river has bridges)
+    std::vector<uint8_t> shore_;     // within a few cells of the open water or a beach: a road keeps back from it
     void Relief(const json& s);
     // The relief in the document: {rows: [[count, height in tenths]...] per row, snow: the same of 0/1}; null: level.
     json ReliefJson() const {
@@ -770,6 +772,7 @@ void Solver::MarkRoad(const std::vector<int>& cells, int width, uint8_t rank, in
                 const int n = Cell(nx, ny);
                 if (container >= 0 && owner_[n] != container && !road_[n]) continue;
                 if (occ_[kBuilding][n]) continue;
+                if (!openWater_.empty() && openWater_[n] && !road_[n]) continue; // its width never spills onto the sea or a beach
                 road_[n] = std::max(road_[n], rank);
             }
         }
@@ -799,9 +802,11 @@ void Solver::Path(const json& s) {
     const double wiggle = river ? 3.0 : s.value("wiggle", 0.3);
     auto cost = [&](int c) -> double {
         if (occ_[kBuilding][c]) return std::numeric_limits<double>::infinity();
+        if (!river && !openWater_.empty() && openWater_[c]) return std::numeric_limits<double>::infinity(); // the sea: no road
         if (river) return 1.0 + wiggle * noise[c];
-        if (water_[c]) return 6.0; // a bridge
+        if (water_[c]) return 25.0; // a bridge: a crossing, never a way along the river
         if (road_[c]) return reuse;
+        if (!shore_.empty() && shore_[c]) return 15.0; // back from the waterline
         return 1.0 + wiggle * noise[c];
     };
     PathResult result;
@@ -824,7 +829,24 @@ void Solver::Path(const json& s) {
             Problem("E-REF", s, "can't find " + (a.empty() ? stops[i] : stops[i + 1]));
             return;
         }
-        auto leg = AStar(a[a.size() / 2], b[b.size() / 2], cost);
+        // An end in the open water (a world's way in on its sea edge): the road ends on the nearest shore.
+        auto ashore = [&](int c) {
+            if (river || openWater_.empty() || (!openWater_[c] && (shore_.empty() || !shore_[c]))) return c;
+            std::vector<uint8_t> seen(W * H, 0);
+            std::deque<int> todo = {c};
+            seen[c] = 1;
+            while (!todo.empty()) {
+                const int at = todo.front();
+                todo.pop_front();
+                if (!openWater_[at] && !water_[at] && (shore_.empty() || !shore_[at]) && !occ_[kBuilding][at]) return at; // inland: past the shore, not a river
+                for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = at % W + ddx, ny = at / W + ddy;
+                    if (In(nx, ny) && !seen[Cell(nx, ny)]) seen[Cell(nx, ny)] = 1, todo.push_back(Cell(nx, ny));
+                }
+            }
+            return c;
+        };
+        auto leg = AStar(ashore(a[a.size() / 2]), ashore(b[b.size() / 2]), cost);
         if (leg.empty()) {
             Problem("S-UNSAT", s, "no way from " + stops[i] + " to " + stops[i + 1]);
             return;
@@ -1221,6 +1243,7 @@ void Solver::Partition(const json& s, int region) {
         double core = 0.4;    // ...outside a round middle this big (of its quota's radius): room for what's in it
         bool claim = false;   // that middle is its before anything grows (a village's land: its site must fit)
         double claimRadius = 0; // how far round its seed (the compiler's, from its sites' size)
+        double apart = 0;       // how far from the other places, middle to middle (the root's spacing; 0: as far as it can)
         int seed = -1;
         std::vector<int> cells;
         std::array<int, 4> box{-1, -1, -1, -1}; // drawn by the user (x0, y0, x1, y1): it takes that land, exactly
@@ -1242,6 +1265,7 @@ void Solver::Partition(const json& s, int region) {
             zone.core = edge.value("core", zone.core);
             zone.claim = edge.value("claim", false);
             zone.claimRadius = edge.value("claimRadius", 0.0);
+            zone.apart = edge.value("apart", 0.0);
         }
         zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
         zone.prefers = z.value("prefers", json::object());
@@ -1518,6 +1542,13 @@ void Solver::Partition(const json& s, int region) {
                 score += std::max(0.1, r.value("weight", 1.0)) * 3.0 * std::clamp(v * 1.5, -1.0, 1.0);
                 continue;
             }
+            // At the land's edge (a world's border woods): the nearer its border the better, within a band of it.
+            if (type == "at-edge") {
+                const double band = std::max(8.0, 0.12 * std::min(parent.x1 - parent.x0, parent.y1 - parent.y0));
+                const double edge = std::min({x - parent.x0, y - parent.y0, parent.x1 - x, parent.y1 - y});
+                score += std::max(0.1, r.value("weight", 1.0)) * 3.0 * (1.0 - 2.0 * std::min(1.0, edge / band));
+                continue;
+            }
             double tx = 0, ty = 0, distance = 0;
             bool known = false, path = false;
             const double weight = std::max(0.1, r.value("weight", 1.0));
@@ -1604,8 +1635,9 @@ void Solver::Partition(const json& s, int region) {
     // Apart by the land the zones take (no more than all of it): a place in a much bigger land (a world's section)
     // keeps its zones together, not spread over all of it.
     double taking = 0;
-    for (const auto& z : zones) taking += z.flexible ? 0.0 : z.quota;
-    const double minApart = std::sqrt((taking > 0 ? std::min<double>(room, taking * 1.3) : room) / zones.size()) * 0.8;
+    bool claims = false; // a world's places: apart across all its land (long roads between them)
+    for (const auto& z : zones) taking += z.flexible ? 0.0 : z.quota, claims = claims || z.claim;
+    const double minApart = std::sqrt((taking > 0 && !claims ? std::min<double>(room, taking * 1.3) : room) / zones.size()) * (claims ? 1.1 : 0.8);
     // The land drawn, painted or kept for zones is theirs before any seed is placed; a seed goes
     // on the free land that's left, in a stretch of it big enough for its zone (not a pocket shut
     // in by kept zones, the river and a road).
@@ -1658,15 +1690,19 @@ void Solver::Partition(const json& s, int region) {
                       openSum[static_cast<size_t>(y1) * (W + 1) + x0] + openSum[static_cast<size_t>(y0) * (W + 1) + x0];
         return n == (x1 - x0) * (y1 - y0);
     };
+    // A world's land comes first (landFirst): its sea, coast, mountains and forests are seeded and grown, then its places
+    // take spread points of the open land that's left, then the padding between them grows.
+    const bool landFirst = claims;
+    std::vector<int> taken(W * H, -1);
     auto seedable = [&](const Zone& z, int c) {
-        if (claimed[c] || stretch[c] < 0) return false;
+        if (claimed[c] || stretch[c] < 0 || taken[c] >= 0) return false;
         // A zone claiming room for a site (a village's land) starts where the site's whole square is open: no river or
         // road through it.
         if (z.claim && z.claimRadius > 0 && !squareOpen(c, static_cast<int>((z.claimRadius - 3) / 1.4142 + 0.5) + 1)) return false;
         return stretchSize[stretch[c]] >= std::min(0.7 * z.quota, 0.9 * widest);
     };
-    for (size_t k : order) {
-        if (zones[k].box[0] >= 0) continue; // drawn or painted: its seed is its land's
+    auto seedOne = [&](size_t k) {
+        if (zones[k].box[0] >= 0) return; // drawn or painted: its seed is its land's
         // Where it was last time, if that's still open land (a revision keeps the zones it isn't about).
         if (zones[k].keep >= 0) {
             int best = -1;
@@ -1678,7 +1714,7 @@ void Solver::Partition(const json& s, int region) {
                 if (d == 0) break;
             }
             zones[k].seed = best;
-            continue;
+            return;
         }
         // Sketched: from the middle of its sketch (the open cell of it nearest its centre).
         if (!zones[k].sketched.empty()) {
@@ -1697,7 +1733,7 @@ void Solver::Partition(const json& s, int region) {
             }
             if (best >= 0) {
                 zones[k].seed = best;
-                continue;
+                return;
             }
         }
         double best = -1e18;
@@ -1717,9 +1753,14 @@ void Solver::Partition(const json& s, int region) {
                 zones[k].seed = c;
             }
         }
+    };
+    // The land first (a world's): its places and the padding between them wait for the open land that's left.
+    auto padding = [&](const Zone& z) { return !z.module.empty() && ontology_.IsA(z.module, "Padding"); };
+    auto waits = [&](const Zone& z) { return landFirst && (z.claim || padding(z)); };
+    for (size_t k : order) {
+        if (!waits(zones[k])) seedOne(k);
     }
     // Growth: each zone takes the best cell on its frontier, the one furthest from its quota first.
-    std::vector<int> taken(W * H, -1);
     using Item = std::pair<double, int>;
     std::vector<std::priority_queue<Item>> frontier(zones.size());
     std::vector<uint8_t> usable(W * H, 0);
@@ -1759,25 +1800,29 @@ void Solver::Partition(const json& s, int region) {
     // Each seed is its zone's from the start: a zone growing towards another (a coast near the sea) doesn't take the
     // other's seed before it has grown at all.
     std::vector<int> seedOf(W * H, -1);
-    for (size_t k = 0; k < zones.size(); ++k) {
+    auto start = [&](size_t k) {
         if (zones[k].seed >= 0 && zones[k].box[0] < 0) {
             frontier[k].push({0, zones[k].seed});
             seedOf[zones[k].seed] = static_cast<int>(k);
         }
-    }
+    };
     // A zone that claims its middle (a village's land) has it first: the free cells round its seed, out to its core.
-    for (size_t k = 0; k < zones.size(); ++k) {
+    auto claimMiddle = [&](size_t k) {
         Zone& z = zones[k];
-        if (!z.claim || z.seed < 0 || z.box[0] >= 0) continue;
+        if (!z.claim || z.seed < 0 || z.box[0] >= 0) return;
         // Just what its biggest site needs: the site's square round its seed (the compiler's claimRadius is its
         // corner-to-corner reach), so its own edge wanders from there; else a round core.
-        const bool square = z.claimRadius > 0;
-        const double radius = square ? (z.claimRadius - 3) / 1.4142 + 2 : z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159);
-        const int sx = z.seed % W, sy = z.seed / W, r = static_cast<int>(std::ceil(radius));
+        // A round, wobbling middle (never a square: it would show as one on the map), wide enough that the site's whole
+        // square fits in it even where its edge wobbles in (its lot is laid there; the site is made round after).
+        const bool sited = z.claimRadius > 0;
+        const double radius = sited ? ((z.claimRadius - 3) / 1.4142 + 2) * 1.62 : z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159);
+        const int sx = z.seed % W, sy = z.seed / W, r = static_cast<int>(std::ceil(radius * 1.15));
+        const double wobble = std::max(6.0, radius * 0.5);
         for (int y = std::max(0, sy - r); y <= std::min(H - 1, sy + r); ++y) {
             for (int x = std::max(0, sx - r); x <= std::min(W - 1, sx + r); ++x) {
                 const int c = Cell(x, y);
-                if (!usable[c] || taken[c] >= 0 || (!square && std::hypot(x - sx, y - sy) > radius)) continue;
+                const double reach = radius * (1.0 + 0.12 * OrganicNoise(x, y, wobble, static_cast<uint32_t>(k * 7919 + 29 + seed_ * 2654435761u)));
+                if (!usable[c] || taken[c] >= 0 || std::hypot(x - sx, y - sy) > reach) continue;
                 if (seedOf[c] >= 0 && seedOf[c] != static_cast<int>(k)) continue;
                 taken[c] = static_cast<int>(k);
                 z.cells.push_back(c);
@@ -1790,7 +1835,10 @@ void Solver::Partition(const json& s, int region) {
                 if (In(x + dx, y + dy) && taken[Cell(x + dx, y + dy)] < 0) frontier[k].push({-std::hypot(x + dx - sx, y + dy - sy), Cell(x + dx, y + dy)});
             }
         }
-    }
+    };
+    for (size_t k = 0; k < zones.size(); ++k) start(k);
+    for (size_t k = 0; k < zones.size(); ++k) claimMiddle(k);
+    auto grow = [&] {
     while (true) {
         int pick = -1;
         double lowest = 1e18;
@@ -1832,11 +1880,168 @@ void Solver::Partition(const json& s, int region) {
             if (z.organic) {
                 const double scale = std::max(10.0, std::sqrt(std::max(1.0, z.quota)) * 0.45);
                 const double core = z.claimRadius > 0 ? (z.claimRadius - 3) / 1.4142 : z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159);
-                if (distance > core) distance = core + (distance - core) * (1.0 + 0.6 * OrganicNoise(nx, ny, scale, static_cast<uint32_t>(pick * 7919 + 13)));
+                if (distance > core) distance = core + (distance - core) * (1.0 + 0.6 * OrganicNoise(nx, ny, scale, static_cast<uint32_t>(pick * 7919 + 13 + seed_ * 2654435761u)));
             }
             const bool related = !z.rel.empty() || !z.sketched.empty();
             queue.push({-(related ? 0.45 : 1.0) * distance + (related ? 1.5 : 0.5) * interest(z, n), n});
         }
+    }
+    };
+    grow();
+    if (landFirst) {
+        // The places, on the open land the land left: each one's whole square on it (no sea, coast, mountain or forest under
+        // it), off the world's edge, as far as it can be from the places already set (farthest first: they spread over the
+        // whole land, long roads between); one to be near a piece of the land (a harbour by the sea) within reach of it.
+        std::vector<uint8_t> openLand(W * H, 0);
+        for (int c : available) openLand[c] = taken[c] < 0 && !claimed[c];
+        // A place's square all free land: no water, no road through it (its site is laid there whole).
+        std::vector<int> landSum(static_cast<size_t>(W + 1) * (H + 1), 0);
+        // (Summed again after each place takes its land: the next one's square must miss it.)
+        auto sumLand = [&] {
+            for (int y = 0; y < H; ++y) {
+                for (int x = 0; x < W; ++x) {
+                    const int c = Cell(x, y);
+                    landSum[static_cast<size_t>(y + 1) * (W + 1) + x + 1] = (openLand[c] && !road_[c] && taken[c] < 0 ? 1 : 0) +
+                                                                            landSum[static_cast<size_t>(y) * (W + 1) + x + 1] +
+                                                                            landSum[static_cast<size_t>(y + 1) * (W + 1) + x] - landSum[static_cast<size_t>(y) * (W + 1) + x];
+                }
+            }
+        };
+        sumLand();
+        // The main body of the open land (the largest piece of it): a place on a scrap shut in by the sea or the mountains
+        // would have no road.
+        std::vector<int> body(W * H, -1);
+        int mainBody = -1;
+        {
+            int label = 0;
+            size_t largest = 0;
+            for (int c0 = 0; c0 < W * H; ++c0) {
+                if (body[c0] >= 0 || !(openLand[c0] || (road_[c0] && !water_[c0]))) continue;
+                std::vector<int> stack = {c0};
+                body[c0] = label;
+                size_t n = 0;
+                while (!stack.empty()) {
+                    const int c = stack.back();
+                    stack.pop_back();
+                    ++n;
+                    for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        const int nx = c % W + ddx, ny = c / W + ddy;
+                        if (!In(nx, ny)) continue;
+                        const int m = Cell(nx, ny);
+                        // A river doesn't cut the land (it's bridged).
+                        if (body[m] >= 0 || !(openLand[m] || (road_[m] && !water_[m]) || (water_[m] && taken[m] < 0 && usable[m] == 0 && !occ_[kBuilding][m]))) continue;
+                        body[m] = label;
+                        stack.push_back(m);
+                    }
+                }
+                if (n > largest) largest = n, mainBody = label;
+                ++label;
+            }
+        }
+        auto squareLand = [&](int x, int y, int h) {
+            const int x0 = x - h, y0 = y - h, x1 = x + h + 1, y1 = y + h + 1;
+            if (x0 < 0 || y0 < 0 || x1 > W || y1 > H) return false;
+            const int n = landSum[static_cast<size_t>(y1) * (W + 1) + x1] - landSum[static_cast<size_t>(y0) * (W + 1) + x1] -
+                          landSum[static_cast<size_t>(y1) * (W + 1) + x0] + landSum[static_cast<size_t>(y0) * (W + 1) + x0];
+            return n >= (x1 - x0) * (y1 - y0);
+        };
+        // The distance to a grown zone of the land (by its id), over every cell.
+        std::map<std::string, std::vector<int>> nearField;
+        auto fieldOf = [&](const std::string& id) -> const std::vector<int>* {
+            const auto it = zoneIndex.find(id);
+            if (it == zoneIndex.end() || zones[it->second].claim || zones[it->second].cells.empty()) return nullptr;
+            if (auto f = nearField.find(id); f != nearField.end()) return &f->second;
+            std::vector<int> field(W * H, 1 << 20);
+            std::deque<int> todo;
+            for (int c : zones[it->second].cells) field[c] = 0, todo.push_back(c);
+            while (!todo.empty()) {
+                const int c = todo.front();
+                todo.pop_front();
+                for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = c % W + ddx, ny = c / W + ddy;
+                    if (!In(nx, ny) || field[Cell(nx, ny)] <= field[c] + 1) continue;
+                    field[Cell(nx, ny)] = field[c] + 1;
+                    todo.push_back(Cell(nx, ny));
+                }
+            }
+            return &(nearField[id] = std::move(field));
+        };
+        auto nearTargets = [&](const Zone& z) {
+            std::vector<const std::vector<int>*> out;
+            for (const auto& r : z.rel) {
+                const std::string type = r.value("type", "near");
+                if (type != "near" && type != "adjacent" && type != "beside" && type != "along") continue;
+                if (const auto* f = fieldOf(r.value("to", ""))) out.push_back(f);
+            }
+            return out;
+        };
+        std::vector<size_t> places;
+        for (size_t k : order) {
+            if (zones[k].claim && zones[k].box[0] < 0) places.push_back(k);
+        }
+        // Those bound to the land (a harbour) first: the others spread round them.
+        std::stable_sort(places.begin(), places.end(), [&](size_t a, size_t b) { return nearTargets(zones[a]).size() > nearTargets(zones[b]).size(); });
+        const double sideMin = std::max(1, std::min(parent.x1 - parent.x0, parent.y1 - parent.y0));
+        const int step = std::max(1, static_cast<int>(sideMin / 160));
+        for (size_t k : places) {
+            Zone& z = zones[k];
+            const int halfSq = z.claimRadius > 0 ? static_cast<int>((z.claimRadius - 3) / 1.4142 + 0.5) + 2
+                                                 : static_cast<int>(std::ceil(z.core * std::sqrt(std::max(1.0, z.quota) / 3.14159)));
+            const auto targets = nearTargets(z);
+            // Relaxed only if nothing fits: first the reach to what it's near (then just pulled towards it), then the edge.
+            for (int relax = 0; relax < 3 && z.seed < 0; ++relax) {
+                const double margin = relax >= 2 ? halfSq + 2.0 : std::max({8.0, halfSq * 2.0 + 4, 0.12 * sideMin});
+                double best = -1e18;
+                for (int y = parent.y0 + step / 2; y < parent.y1; y += step) {
+                    for (int x = parent.x0 + step / 2; x < parent.x1; x += step) {
+                        const int c = Cell(x, y);
+                        if ((!openLand[c] && !road_[c]) || body[c] != mainBody) continue;
+                        const double edge = std::min({x - parent.x0, y - parent.y0, parent.x1 - 1 - x, parent.y1 - 1 - y}) + 0.0;
+                        if (edge < margin) continue;
+                        double reachCost = 0;
+                        bool reached = true;
+                        for (const auto* f : targets) {
+                            reachCost += (*f)[c];
+                            reached = reached && (*f)[c] <= halfSq + 6;
+                        }
+                        if (relax == 0 && !reached) continue;
+                        if (!squareLand(x, y, halfSq)) continue;
+                        double far = 1e9;
+                        for (const auto& o : zones) {
+                            if (o.claim && o.seed >= 0) far = std::min(far, std::hypot(x - o.seed % W, y - o.seed / W));
+                        }
+                        // The first: towards the middle of the land (the others then spread round it).
+                        if (far > 1e8) far = sideMin - std::hypot(x - cx, y - cy);
+                        // As far apart as the spacing asks, no further: past it, nearer the middle of the land (places asked
+                        // to be close stay together; asked to be far apart, they spread over all of it).
+                        double middle = 0;
+                        if (z.apart > 0 && far < 1e8) far = std::min(far, z.apart), middle = std::hypot(x - cx, y - cy) / std::max(1.0, half);
+                        // Only what was asked of it (its relations: in the north, near the sea) bends the spread; a
+                        // heartland's general likings (water, the road) would bunch the places.
+                        const double v = 6.0 * far / std::max(1.0, half) - 0.5 * middle + (z.rel.empty() ? 0.0 : 0.3 * interest(z, c)) -(targets.empty() ? 0.0 : (relax == 0 ? 2.0 : 40.0) * reachCost / std::max(1.0, half))  /* out of reach: as near as it fits */ +
+                                         0.01 * rng.Unit();
+                        if (v > best) best = v, z.seed = c;
+                    }
+                }
+                if (std::getenv("AIGE_PLACE_DEBUG")) std::fprintf(stderr, "  relax %d -> %d\n", relax, z.seed);
+            }
+            if (std::getenv("AIGE_PLACE_DEBUG")) {
+                std::fprintf(stderr, "place %s targets %zu half %d seed %d,%d rel %s\n", z.id.c_str(), targets.size(), halfSq, z.seed % W, z.seed / W, z.rel.dump().c_str());            }
+            if (z.seed >= 0) {
+                start(k);
+                claimMiddle(k);
+                for (int c : z.cells) openLand[c] = 0;
+                sumLand();
+            }
+        }
+        // Then the padding (the open country between the places), on what's left.
+        for (size_t k : order) {
+            if (!zones[k].claim && padding(zones[k])) {
+                seedOne(k);
+                start(k);
+            }
+        }
+        grow();
     }
     for (const auto& z : zones) {
         if (z.cells.empty()) {
@@ -4016,11 +4221,12 @@ void Solver::Connect(const json& s, int container) {
         left.erase(best);
         const int target = RegionIndex(best);
         auto cost = [&](int c) -> double {
-            if (occ_[kBuilding][c] || solid_[c]) return std::numeric_limits<double>::infinity();
+            if (occ_[kBuilding][c] || solid_[c] || (!openWater_.empty() && openWater_[c])) return std::numeric_limits<double>::infinity();
             const int o = owner_[c];
             if (o >= 0 && o != target && regions_[o].parent >= 0 && std::find(members.begin(), members.end(), regions_[o].id) != members.end()) return 12.0;
-            if (water_[c]) return 8.0;
+            if (water_[c]) return 25.0; // a bridge: across a river, never along it
             if (road_[c]) return 0.2;
+            if (!shore_.empty() && shore_[c]) return 15.0; // back from the waterline
             return 1.0 + 0.6 * noise[c];
         };
         // To the member's nearest border cell; or, going `into` it (a world's road into each place), its middle.
@@ -4095,7 +4301,7 @@ void Solver::Connect(const json& s, int container) {
                 if (from < 0 || goal < 0) continue;
                 const int mi = RegionIndex(m), oi = RegionIndex(o);
                 auto cost = [&](int c) -> double {
-                    if (occ_[kBuilding][c] || solid_[c]) return std::numeric_limits<double>::infinity();
+                    if (occ_[kBuilding][c] || solid_[c] || (!openWater_.empty() && openWater_[c])) return std::numeric_limits<double>::infinity();
                     const int w = owner_[c];
                     if (w >= 0 && w != mi && w != oi && regions_[w].parent >= 0 && std::find(members.begin(), members.end(), regions_[w].id) != members.end()) return 12.0;
                     if (water_[c]) return 8.0;
@@ -4155,7 +4361,7 @@ void Solver::Relief(const json& s) {
     }
     const double peak = s.value("peak", 3.0), rugged = s.value("rugged", 0.4);
     const double reach = std::max(3.0, s.value("rise", 0.25) * std::sqrt(static_cast<double>(g.cells.size())));
-    const uint32_t seed = static_cast<uint32_t>(std::hash<std::string>{}(g.id));
+    const uint32_t seed = static_cast<uint32_t>(std::hash<std::string>{}(g.id) + seed_ * 2654435761u); // each world its own ridges
     for (int c : g.cells) {
         if (road_[c]) continue; // a road through it is its pass
         const double in = std::min(1.0, dist[c] / reach);
@@ -4821,6 +5027,61 @@ SolvedLayout Solver::Run() {
         }
     }
     for (int r : roots) SolveRegion(r);
+    // A place built later on its own (a world's site: its module's compile is nested) is laid out as a lot, a
+    // rectangle; its land is made round and wobbling inside it, never a square on the map, and the corners go back to
+    // the land round it (its heartland). Its section is planned on that organic land.
+    for (int r = 0; r < static_cast<int>(regions_.size()); ++r) {
+        Region& site = regions_[r];
+        const ModuleDef* m = site.module.empty() ? nullptr : ontology_.Module(site.module);
+        if (m == nullptr || !m->compile.is_object() || !m->compile.value("nested", false) || site.parent < 0) continue;
+        const double cx = (site.x0 + site.x1) / 2.0, cy = (site.y0 + site.y1) / 2.0;
+        const double half = std::min(site.x1 - site.x0, site.y1 - site.y0) / 2.0;
+        if (half < 4) continue;
+        const double wobble = std::max(6.0, half * 0.6);
+        std::vector<int> kept;
+        for (int c : site.cells) {
+            const int x = c % W, y = c / W;
+            const double reach = half * (0.97 + 0.1 * OrganicNoise(x, y, wobble, static_cast<uint32_t>(r * 4099 + 7 + seed_ * 2654435761u)));
+            if (std::hypot(x + 0.5 - cx, y + 0.5 - cy) <= reach) kept.push_back(c);
+            else if (owner_[c] == r) owner_[c] = site.parent;
+        }
+        if (kept.size() * 2 > site.cells.size()) site.cells = std::move(kept);
+    }
+    // The open water (zones filled with water: the sea, lakes), known before what waited is laid: no road crosses it.
+    // Nor a beach (a zone filled with sand: a coast): roads run behind it, never along it.
+    openWater_.assign(static_cast<size_t>(W) * H, 0);
+    for (const auto& s : ir_.value("statements", json::array())) {
+        const std::string terrain = s.value("terrain", "");
+        if (s.value("op", "") != "fill" || (terrain != "water" && terrain != "sand")) continue;
+        const auto it = regionById_.find(s.value("in", ""));
+        if (it == regionById_.end()) continue;
+        for (int c : regions_[it->second].cells) {
+            if (owner_[c] != it->second) continue;
+            openWater_[c] = 1;
+            if (terrain == "water") water_[c] = 1;
+        }
+    }
+    // The shore: the land within 4 cells of the open water (a road runs back from it, never along the waterline).
+    shore_.assign(static_cast<size_t>(W) * H, 0);
+    {
+        std::deque<std::pair<int, int>> todo;
+        for (int c = 0; c < W * H; ++c) {
+            if (openWater_[c]) todo.push_back({c, 0});
+        }
+        std::vector<uint8_t> seen(openWater_);
+        while (!todo.empty()) {
+            const auto [c, d] = todo.front();
+            todo.pop_front();
+            if (d >= 4) continue;
+            for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = c % W + ddx, ny = c / W + ddy;
+                if (!In(nx, ny) || seen[Cell(nx, ny)]) continue;
+                seen[Cell(nx, ny)] = 1;
+                shore_[Cell(nx, ny)] = 1;
+                todo.push_back({Cell(nx, ny), d + 1});
+            }
+        }
+    }
     // What waited for the whole tree (a world's links), each in its region.
     lateRunning_ = true;
     for (const auto& [s, index] : late_) {
