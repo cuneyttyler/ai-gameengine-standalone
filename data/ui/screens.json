@@ -65,11 +65,31 @@
     },
     {
       "id": "shop",
-      "document": "screens/window.rml",
+      "document": "screens/shop.rml",
       "layer": "window"
     },
     {
       "id": "journal",
+      "document": "screens/journal.rml",
+      "layer": "window"
+    },
+    {
+      "id": "map",
+      "document": "screens/map.rml",
+      "layer": "window"
+    },
+    {
+      "id": "character",
+      "document": "screens/character.rml",
+      "layer": "window"
+    },
+    {
+      "id": "controls",
+      "document": "screens/controls.rml",
+      "layer": "window"
+    },
+    {
+      "id": "spellbook",
       "document": "screens/window.rml",
       "layer": "window"
     }

@@ -35,7 +35,7 @@ export interface UiNode {
   bold?: boolean
   font?: string // a .ttf or .otf of the project's (empty: the engine's)
   wrap?: boolean // over a head: long text wraps at w (else one line)
-  kinds?: Record<string, string> // numbers: a colour for each kind (damage, heal, item)
+  kinds?: Record<string, string> // numbers: a colour for each kind (damage, heal, item); labels: for each label type (place, sign, ...)
   padding?: number
   actions?: UiAction[]
   show?: unknown[]

@@ -66,17 +66,43 @@ bool Holds(const std::string& condition, places::Scope& scope) {
 }
 
 // The Brief's settings for a module, into a node's fields (the Brief wins).
+// A node's real size (its module's realSize for its extent: small, normal, big, huge) as its plan size in cells: a
+// zone's area, a feature's w and h. Whatever size the AI gave, its extent wins, so "a big graveyard" is a real big one.
+void ApplyRealSize(const ModuleDef& m, json& node) {
+    if (!m.realSize.is_object() || !node.contains("quantity") || !node["quantity"].is_object()) return;
+    const json extent = node["quantity"].value("extent", json());
+    if (!extent.is_string() || !m.realSize.contains(extent.get<std::string>())) return;
+    const json size = m.realSize[extent.get<std::string>()];
+    if (!size.is_object()) return;
+    json& quantity = node["quantity"];
+    if (size.contains("area") && m.Field("area")) {
+        quantity["area"] = {{"area", static_cast<int>(std::lround(size["area"].get<double>() / (kCellMetres * kCellMetres)))}};
+    }
+    if (size.contains("w") && size.contains("h") && m.Field("size")) {
+        const int w = static_cast<int>(std::lround(size["w"].get<double>() / kCellMetres));
+        const int h = static_cast<int>(std::lround(size["h"].get<double>() / kCellMetres));
+        quantity["size"] = {{"w", {w, w}}, {"h", {h, h}}};
+    }
+}
+
 void ApplyBriefSettings(const Ontology& ontology, const json& brief, json& node) {
     const ModuleDef* m = ontology.Module(node.value("module", ""));
     if (m == nullptr) return;
     const json settings = BriefValue(brief, "components." + m->id);
-    if (!settings.is_object()) return;
+    if (!settings.is_object()) {
+        ApplyRealSize(*m, node); // the AI's own extent for it
+        return;
+    }
     const json params = settings.value("params", json::object());
     for (const auto& [name, value] : params.items()) {
         const FieldDef* f = m->Field(name);
         if (f == nullptr) continue;
+        if (!node.contains(f->quantity ? "quantity" : "quality") || !node[f->quantity ? "quantity" : "quality"].is_object()) {
+            node[f->quantity ? "quantity" : "quality"] = json::object();
+        }
         node[f->quantity ? "quantity" : "quality"][name] = value;
     }
+    ApplyRealSize(*m, node);
     // How many of each kind of building the user set (a market ward's 4 inns): the zone holds
     // at least that many in all.
     if (m->level == PlaceLevel::Zone) {
@@ -1202,14 +1228,21 @@ void PlacesIntoWorld(const Ontology& ontology, const json& brief, json& spec) {
         const std::string kind = p.value("type", "settlement");
         const BuildType* bt = ontology.Build(kind);
         if (bt == nullptr) continue;
-        // A harbour by the sea (the world's first open water).
-        if (kind == "harbour" && !before.contains(id)) {
+        // Where it is (its `where`: by the sea, in the forest, near another place), as a relation to that part of the
+        // world (the first zone of that module) or that place; a harbour by the sea unless it says otherwise.
+        json where = p.value("where", json());
+        if (!where.is_object() && kind == "harbour") where = {{"type", "by"}, {"to", "sea"}};
+        h.erase("rel");
+        if (where.is_object() && !where.value("to", "").empty()) {
+            const std::string to = where.value("to", "");
+            std::string target;
+            if (places.contains(to)) target = "heartland-" + to; // another place
             for (const auto& c : kept) {
-                if (c.value("module", "") == "sea" || c.value("module", "") == "ocean") {
-                    h["rel"] = json::array({json{{"type", "near"}, {"to", c.value("id", "")}, {"weight", 4.0}}});
-                    break;
-                }
+                if (!target.empty()) break;
+                const std::string module = c.value("module", "");
+                if (c.value("id", "") == to || module == to || (to == "sea" && module == "ocean")) target = c.value("id", "");
             }
+            if (!target.empty()) h["rel"] = json::array({json{{"type", "near"}, {"to", target}, {"weight", 4.0}}});
         }
         const std::string size = p.value("size", worldSize.empty() ? std::string("small") : worldSize);
         std::string cls = p.value("class", "");
@@ -1292,10 +1325,64 @@ static void GatherLooseParcels(const Ontology& ontology, const json& brief, json
     children = kept;
 }
 
+// The Brief's gateways (a way into another place: a dungeon, a crypt, a mine, an interior; the Planner's or the
+// request's): each a thing of a gateway role in the plan, placed by the solver where it suits (by the mountains, in
+// the forest, near its place) once the land and the roads are there; linked to that place when it's built.
+static void GatewaysIntoSpec(const Ontology& ontology, const json& brief, json& spec) {
+    const json gateways = brief.value("gateways", json());
+    if (!gateways.is_array() || gateways.empty() || !spec.contains("root")) {
+        spec.erase("gateways");
+        return;
+    }
+    static const std::map<std::string, std::string> kRoles = {
+        {"cave-mouth", "gateway-cave"}, {"cave", "gateway-cave"}, {"dungeon-stairs", "gateway-stairs"}, {"stairs", "gateway-stairs"},
+        {"crypt-door", "gateway-crypt"}, {"crypt", "gateway-crypt"}, {"mine-shaft", "gateway-mine"}, {"mine", "gateway-mine"},
+        {"tower-door", "gateway-tower"}, {"tower", "gateway-tower"}, {"cellar-hatch", "gateway-hatch"}, {"hatch", "gateway-hatch"}};
+    // Where, from its words: the land it stands by.
+    static const std::vector<std::pair<const char*, const char*>> kLand = {
+        {"mountain", "mountains"}, {"peak", "mountains"}, {"hill", "hills"}, {"forest", "forest"}, {"wood", "forest"},
+        {"coast", "coast"}, {"cliff", "coast"}, {"shore", "coast"}, {"beach", "coast"}, {"sea", "coast"}, {"lake", "lake"},
+        {"river", "river"}, {"marsh", "marsh"}, {"swamp", "marsh"}, {"graveyard", "graveyard"}, {"churchyard", "graveyard"},
+        {"cemetery", "graveyard"}};
+    json out = json::array();
+    std::set<std::string> ids;
+    for (const auto& g : gateways) {
+        if (!g.is_object()) continue;
+        std::string kind = g.value("kind", "");
+        if (kind == "building-door" || kind == "door") continue; // an interior: through its building's door, not a gateway
+        // Its role: a gateway role of the ontology (any whose broader role is "gateway": a cave mouth, a tent, a portal...),
+        // by its id, its short name ("tent": gateway-tent) or an older name ("cave-mouth").
+        std::string role = kRoles.contains(kind) ? kRoles.at(kind) : kind;
+        auto isGateway = [&](const std::string& id) { const Role* r = ontology.FindRole(id); return r && (r->broader == "gateway" || id == "gateway"); };
+        if (!isGateway(role) && isGateway("gateway-" + kind)) role = "gateway-" + kind;
+        if (!isGateway(role)) role = "gateway-stairs";
+        const std::string to = g.value("to", "");
+        std::string id = "gateway-" + (to.empty() ? std::to_string(out.size() + 1) : to.substr(to.rfind('/') + 1));
+        while (ids.contains(id)) id += "-2";
+        ids.insert(id);
+        std::string at = g.value("at", "");
+        std::transform(at.begin(), at.end(), at.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        json suits = json::array();
+        for (const auto& [word, land] : kLand) {
+            if (at.find(word) != std::string::npos && std::find(suits.begin(), suits.end(), land) == suits.end()) suits.push_back(land);
+        }
+        const Role* r = ontology.FindRole(role);
+        const json look = r ? r->look.value("gateway", json::object()) : json::object();
+        if (suits.empty()) suits = look.value("suits", json::array());
+        const json fp = look.value("footprint", json::array({3, 3}));
+        json one = {{"id", id}, {"role", role}, {"to", to}, {"at", g.value("at", "")}, {"suits", suits},
+                    {"footprint", fp}, {"outside", look.value("outside", true)}};
+        if (const std::string from = g.value("from", ""); !from.empty()) one["near"] = "heartland-" + from;
+        out.push_back(one);
+    }
+    spec["gateways"] = out;
+}
+
 void ExpandSpec(const Ontology& ontology, const json& brief, json& spec) {
     PlacesIntoWorld(ontology, brief, spec);
     BordersIntoWorld(ontology, brief, spec);
     GatherLooseParcels(ontology, brief, spec);
+    GatewaysIntoSpec(ontology, brief, spec);
     std::set<std::string> used;
     CollectIds(spec["root"], used);
     // depthBelowParcel: 0 at a parcel; expansion stops two levels below it.

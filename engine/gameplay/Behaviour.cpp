@@ -1160,7 +1160,7 @@ struct Run {
             Hide(false);
             if (auto* sprite = R().try_get<Sprite>(actor)) sprite->a = std::min(sprite->a, 0.35f); // lying low
             auto player = FindPlayer(R());
-            if (player && AreHostile(R(), actor, *player)) {
+            if (player && WouldAttack(R(), actor, *player)) {
                 const auto& pw = R().get<WorldTransform2D>(*player);
                 if (std::hypot(pw.x - At().x, pw.y - At().y) <= Num(node, "radius", 3.0f)) {
                     if (auto* sprite = R().try_get<Sprite>(actor)) sprite->a = state.savedAlpha > 0.0f ? state.savedAlpha : 1.0f;
@@ -1336,11 +1336,29 @@ bool PackageHolds(const nlohmann::json& package, const AiContext& context, Entit
     if (context.story) {
         std::vector<StoryCondition> conditions;
         for (const auto& c : package.value("conditions", nlohmann::json::array())) {
+            // A quest at one of these stages (the cast timeline's: a package that runs while its quest holds them).
+            if (c.contains("quest") && c.contains("stages") && c["stages"].is_array()) {
+                bool at = false;
+                for (const auto& s : c["stages"]) {
+                    if (!s.is_number_integer()) continue;
+                    StoryCondition one;
+                    one.quest = c.value("quest", std::string());
+                    one.questState = c.value("questState", std::string("active"));
+                    one.stage = s.get<int>();
+                    if (context.story->Holds({one})) {
+                        at = true;
+                        break;
+                    }
+                }
+                if (!at) return false;
+                continue;
+            }
             StoryCondition condition;
             condition.flag = c.value("flag", std::string());
             condition.flagValue = c.value("flagValue", true);
             condition.quest = c.value("quest", std::string());
             condition.questState = c.value("questState", std::string("active"));
+            if (c.contains("stage") && c["stage"].is_number_integer()) condition.stage = c["stage"].get<int>(); // at that stage
             if (!condition.flag.empty() || !condition.quest.empty()) conditions.push_back(condition);
             else for (auto& other : StoryConditionsFromJson(nlohmann::json::array({c}))) conditions.push_back(other); // the rest dialogue has: items, time, factions...
         }
@@ -1407,7 +1425,7 @@ void UpdateBehaviours(AiContext& ctx, float dt) {
     Registry& registry = ctx.registry;
     const auto player = FindPlayer(registry);
     std::vector<Entity> actors;
-    for (auto entity : registry.view<Behaviour, WorldTransform2D>(entt::exclude<Dead, Dormant>)) actors.push_back(entity);
+    for (auto entity : registry.view<Behaviour, WorldTransform2D>(entt::exclude<Dead, Dormant, SceneHeld>)) actors.push_back(entity);
     for (Entity actor : actors) {
         if (!registry.valid(actor)) continue;
         auto& behaviour = registry.get<Behaviour>(actor);
@@ -1416,7 +1434,7 @@ void UpdateBehaviours(AiContext& ctx, float dt) {
         state.barkCooldown = std::max(0.0f, state.barkCooldown - dt);
 
         // --- Perception (14.5): sight and hearing of the player, when it's an enemy ---
-        const bool hostileToPlayer = player && !registry.all_of<Dead>(*player) && AreHostile(registry, actor, *player);
+        const bool hostileToPlayer = player && !registry.all_of<Dead>(*player) && WouldAttack(registry, actor, *player);
         if (hostileToPlayer && state.mode == BehaviourState::Mode::Package) {
             const auto* p = registry.try_get<Perception>(actor);
             bool noticed = false;

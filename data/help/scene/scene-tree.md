@@ -59,6 +59,18 @@ Giving him a LuaScript instead would list him as a scripted NPC; a Faction of En
 Questions: why are tiles hidden in the scene tree? what are the groups in the scene tree? why is my NPC listed under
 props? where are my ground tiles?
 
+## Finding a thing in the scene
+
+The box at the top of the open scene's entities filters them as you type: only things whose name, kind (NPC, Prop,
+Tile…) or prefab has every word you typed stay listed. Groups with a match stay shown and open while you search (their
+own folded state comes back when you clear the box); the box shows how many match out of all. **Esc** clears it.
+
+For text anywhere in the project (other scenes, prefabs, packages, story, scripts), use **Edit ▸ Search in Project…**
+(Ctrl+Shift+F); a match in a scene names the thing it's in, and clicking it opens that scene with the thing selected.
+Right-click a thing ▸ **Show uses of its prefab** lists everything else that uses its prefab.
+
+Questions: how do I find an entity in the scene tree? how do I search the scene? how do I filter the scene tree?
+
 ## Selecting things
 
 - **Click** an entity in the Scene Tree, or click it in the viewport with the **Select** tool (**V**). The Inspector

@@ -27,3 +27,22 @@ body.menu { background-color: transparent; }
 .window .columns { display: flex; flex-direction: row; }
 .window .items { width: 300dp; overflow-y: auto; max-height: 380dp; }
 .window .body { flex: 1; margin: 12dp 0 0 16dp; }
+
+/* Rows with an icon and a second column (an item's count, a price, a key), under headings (32.7). */
+.window .heading { color: var(--accent); font-size: 13dp; margin: 8dp 0 2dp 0; padding-left: 8dp; }
+.window .row { display: flex; flex-direction: row; align-items: center; text-align: left; }
+.window .row .icon { width: 24dp; height: 24dp; margin-right: 8dp; }
+.window .row .label { flex: 1; }
+.window .row .detail { color: var(--text-dim); margin-left: 12dp; text-align: right; }
+.window .row.lit .detail { color: var(--highlight); }
+.window .items.wide { width: auto; max-height: 420dp; }
+.window.shop .purse { color: var(--accent); margin: 4dp 0 8dp 0; }
+.window.journal .panel { width: 760dp; margin-left: -380dp; }
+.window.journal .page { font-size: 16dp; color: var(--text); }
+.window.map .panel { width: 860dp; margin-left: -430dp; top: 8%; }
+.window.map .picture { position: relative; width: 520dp; height: 400dp; margin-right: 16dp; }
+.window.map .picture img { width: 520dp; height: 400dp; }
+.window.map .items { width: 280dp; }
+.window.sheet .panel { width: 520dp; margin-left: -260dp; }
+/* You are here: a dot on the map (its middle on the player). */
+.window.map .you { position: absolute; width: 12dp; height: 12dp; margin: -6dp 0 0 -6dp; background-color: var(--highlight); border: 2dp var(--panel); border-radius: 6dp; }

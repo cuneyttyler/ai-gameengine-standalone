@@ -121,8 +121,13 @@ json InterpretContext(const Ontology& ontology, const std::string& only) {
             vocab[scheme] = list;
         }
     }
+    // The kinds of gateway (ways into another place drawn as a scene of its own: a cave mouth, a tent, a portal...).
+    json gatewayKinds = json::array();
+    for (const auto& [id, role] : ontology.Roles()) {
+        if (role.broader == "gateway") gatewayKinds.push_back({{"id", id}, {"name", role.label}});
+    }
     return {{"buildTypes", types}, {"vocabularies", vocab},
-            {"densityWords", {"none", "rare", "some", "common", "abundant"}}};
+            {"densityWords", {"none", "rare", "some", "common", "abundant"}}, {"gatewayKinds", gatewayKinds}};
 }
 
 bool LooksLikeBuildRequest(const Ontology& ontology, const std::string& text) {

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -65,6 +66,8 @@ nlohmann::json Summary(Registry& registry, Entity entity) {
     if (const auto* name = registry.try_get<Name>(entity)) row["name"] = name->value;
     if (const auto* link = registry.try_get<PrefabInstance>(entity)) row["prefab"] = link->path;
     if (const auto* at = registry.try_get<WorldTransform2D>(entity)) row["at"] = {std::round(at->x * 10) / 10, std::round(at->y * 10) / 10};
+    // Who it is in the story: its Actor key (quests, dialogue and scripts name it by this).
+    if (const auto* actor = registry.try_get<Actor>(entity); actor && !actor->key.empty()) row["actor"] = actor->key;
     return row;
 }
 
@@ -93,7 +96,7 @@ bool Readable(const std::string& path) {
 const std::vector<std::string>& AiToolNames() {
     static const std::vector<std::string> names = {"find_entities", "read_entity", "find_assets", "find_prefabs", "read_file",
                                                    "list_scenes", "read_settings", "read_input", "search_world", "what_is_at",
-                                                   "buildings", "check", "look", "playtest"};
+                                                   "buildings", "check", "look", "playtest", "requirements", "placements"};
     return names;
 }
 
@@ -123,7 +126,33 @@ nlohmann::json RunAiTool(const std::string& tool, const nlohmann::json& args, Ai
                 ++total;
                 if (static_cast<int>(rows.size()) < Limit(args, 30)) rows.push_back(Summary(c.registry, e));
             }
-            return {{"entities", rows}, {"total", total}};
+            nlohmann::json out = {{"entities", rows}, {"total", total}};
+            if (total == 0) {
+                // Nothing by that: it isn't in this scene (another spelling won't find it either).
+                out["note"] = "nothing in the open scene matches; it isn't here. Don't search other spellings: make it, or use what is here";
+            }
+            // The same story character more than once in the scene (an Actor key): the game keeps one, the others are
+            // leftovers. Keep the one with a script (else the most components), delete the rest.
+            std::map<std::string, std::vector<Entity>> byKey;
+            for (auto [e, actor] : c.registry.view<Actor>().each()) {
+                if (!actor.key.empty()) byKey[actor.key].push_back(e);
+            }
+            nlohmann::json copies = nlohmann::json::object();
+            for (auto& [key, list] : byKey) {
+                if (list.size() < 2) continue;
+                Entity keep = list.front();
+                auto weight = [&](Entity e) { return (c.registry.all_of<LuaScript>(e) ? 1000 : 0) + static_cast<int>(Components(c.reflection, c.registry, e).size()); };
+                for (Entity e : list) {
+                    if (weight(e) > weight(keep)) keep = e;
+                }
+                nlohmann::json others = nlohmann::json::array();
+                for (Entity e : list) {
+                    if (e != keep) others.push_back(static_cast<uint32_t>(e));
+                }
+                copies[key] = {{"keep", static_cast<uint32_t>(keep)}, {"extra", others}};
+            }
+            if (!copies.empty()) out["duplicateActors"] = copies;
+            return out;
         }
         if (tool == "read_entity") {
             const Entity e = static_cast<Entity>(args.value("id", 0u));
@@ -173,6 +202,77 @@ nlohmann::json RunAiTool(const std::string& tool, const nlohmann::json& args, Ai
             const bool cut = text.size() > kMaxText;
             if (cut) text.resize(kMaxText);
             return {{"path", path}, {"text", text}, {"cut", cut}};
+        }
+        if (tool == "requirements") {
+            // The AI Planner's requirements (planner/requirements.json, development_plan.md 34): what the story says must be true
+            // in the game, how each is built (its items) and how it's checked; filtered by id, scene, status, kind, words.
+            std::ifstream in(c.project.root / "planner" / "requirements.json", std::ios::binary);
+            const nlohmann::json reqs = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+            if (!reqs.is_object()) return {{"error", "this project has no requirements (AI Planner ▸ Build ▸ Requirements)"}};
+            const std::string id = args.value("id", ""), scene = args.value("scene", ""), status = args.value("status", ""),
+                              kind = args.value("kind", ""), text = args.value("text", "");
+            const int limit = std::clamp(args.value("limit", 30), 1, 120);
+            const nlohmann::json items = reqs.value("items", nlohmann::json::array()), impl = reqs.value("implementations", nlohmann::json::array());
+            nlohmann::json rows = nlohmann::json::array();
+            int total = 0;
+            for (const auto& r : items) {
+                if (!id.empty() && r.value("id", "") != id) continue;
+                if (!scene.empty() && r.value("scene", "") != scene) continue;
+                if (!status.empty() && r.value("status", "") != status) continue;
+                if (!kind.empty() && r.value("kind", "") != kind) continue;
+                if (!text.empty() && !Matches(r.value("text", ""), text)) continue;
+                if (++total > limit) continue;
+                nlohmann::json row = {{"id", r.value("id", "")}, {"scene", r.value("scene", "")}, {"kind", r.value("kind", "")}, {"text", r.value("text", "")},
+                                      {"status", r.value("status", "todo")}, {"when", r.value("when", nlohmann::json::object())},
+                                      {"where", r.value("where", nlohmann::json::object())}, {"who", r.value("who", nlohmann::json::array())},
+                                      {"accept", r.value("accept", nlohmann::json::array())}};
+                if (r.contains("why")) row["why"] = r["why"];
+                if (r.contains("checks")) row["checks"] = r["checks"];
+                if (r.contains("asset")) row["asset"] = r["asset"];
+                if (r.contains("animation")) row["animation"] = r["animation"];
+                nlohmann::json its = nlohmann::json::array();
+                for (const auto& i : impl) {
+                    if (i.value("req", "") != r.value("id", "")) continue;
+                    nlohmann::json one = {{"id", i.value("id", "")}, {"how", i.value("how", "")}, {"does", i.value("does", "")}, {"by", i.value("by", "")},
+                                          {"status", i.value("status", "")}};
+                    if (i.contains("error")) one["error"] = i["error"];
+                    its.push_back(one);
+                }
+                row["items"] = its;
+                rows.push_back(row);
+            }
+            return {{"requirements", rows}, {"total", total}, {"summary", reqs.value("summary", nlohmann::json::object())}};
+        }
+        if (tool == "placements") {
+            // The AI Planner's placements (planner/placements.json, development_plan.md 34.11): every building of the built
+            // places (its kind, door, drawn interior, whose home or work it is), and where each character and story prop
+            // stands and is over time (its whereabouts, each a requirement); filtered by id, scene, words.
+            std::ifstream in(c.project.root / "planner" / "placements.json", std::ios::binary);
+            const nlohmann::json p = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+            if (!p.is_object()) return {{"error", "this project has no placements (AI Planner ▸ Build ▸ Placements ▸ Replace Characters)"}};
+            const std::string id = args.value("id", ""), scene = args.value("scene", ""), text = args.value("text", "");
+            const int limit = std::clamp(args.value("limit", 40), 1, 120);
+            auto wanted = [&](const nlohmann::json& e) {
+                if (!id.empty() && e.value("id", "") != id) return false;
+                if (!scene.empty() && e.value("scene", "") != scene && e.value("spot", nlohmann::json::object()).value("scene", "") != scene) {
+                    bool there = false;
+                    for (const auto& w : e.value("whereabouts", nlohmann::json::array())) there = there || w.value("scene", "") == scene;
+                    if (!there) return false;
+                }
+                return text.empty() || Matches(e.value("id", "") + " " + e.value("name", "") + " " + e.value("why", ""), text);
+            };
+            nlohmann::json out = {{"updated", p.value("updated", 0)}, {"decided", p.value("decided", "")}};
+            for (const char* list : {"characters", "props", "buildings"}) {
+                nlohmann::json rows = nlohmann::json::array();
+                int total = 0;
+                for (const auto& e : p.value(list, nlohmann::json::array())) {
+                    if (!wanted(e) || ++total > limit) continue;
+                    rows.push_back(e);
+                }
+                out[list] = rows;
+                out[std::string(list) + "Total"] = total;
+            }
+            return out;
         }
         if (tool == "list_scenes") {
             nlohmann::json rows = nlohmann::json::array();

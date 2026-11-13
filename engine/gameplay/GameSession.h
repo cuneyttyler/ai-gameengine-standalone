@@ -29,6 +29,7 @@
 #include <memory>
 #include <random>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -165,6 +166,13 @@ public:
     // prefab library). Without one, spawn returns nil.
     using SpawnFn = std::function<std::optional<Entity>(const std::string& prefab, float x, float y)>;
     void SetSpawner(SpawnFn spawner) { spawner_ = std::move(spawner); }
+    // The story moving a persistent character (development_plan.md 32.5): move_actor, hide_actor, show_actor,
+    // set_hostile, set_friendly, with its Actor key and the effect's args. The host's roster remembers it, so it
+    // holds in scenes not loaded now and after travel.
+    using ActorHook = std::function<void(const std::string& op, const std::string& key, const nlohmann::json& args)>;
+    void SetActorHook(ActorHook hook) { actorHook_ = std::move(hook); }
+    // The roster's word on a character as a scene starts (hidden, hostile): applied as the effects would be.
+    void ApplyActorState(Entity entity, bool hidden, const std::string& team);
     // `target` replaced in its place by `prefab` (an Interactable's becomes, Lua's become): turned and mirrored as it
     // was, what's left in its Container kept. The new thing, or none without a spawner.
     std::optional<Entity> BecomePrefab(Entity target, const std::string& prefab);
@@ -245,12 +253,15 @@ public:
                                           double seconds)>;
     void SetNoticeSink(NoticeSink sink) { noticeSink_ = std::move(sink); }
     // Lua's open_screen / close_screen / is_open (17): the host shows the project's documents.
-    using ScreenHook = std::function<bool(const std::string& id, int open /* 1 open, 0 close, -1 ask */)>;
+    using ScreenHook = std::function<bool(const std::string& id, int open /* 1 open, 0 close, -1 ask, -2 close every one open */)>;
     void SetScreenHook(ScreenHook hook) { screenHook_ = std::move(hook); }
     // The HUD and dialogue as documents (17): BuildUi then draws only cutscenes and
     // debug overlays; the host shows MakeHud() and CurrentDialogueView().
     void SetDocumentHud(bool on) { documentHud_ = on; }
     HudData MakeHud(float viewportWidth, float viewportHeight);
+    // The HUD's widgets the game shows (game.json's hud: health, mana, stamina, xp, gold, quickslots,
+    // quest-tracker, clock, interaction-prompt...); empty: all of them.
+    void SetHudWidgets(std::vector<std::string> widgets) { hudWidgets_ = std::move(widgets); }
     std::optional<DialogueView> CurrentDialogueView() const;
     // Picks a dialogue choice by its place among the visible ones (a click on the document).
     void ChooseDialogue(int index);
@@ -285,6 +296,10 @@ public:
     bool InCutscene() const { return cutscene_.Active(); }
     void SkipCutscene();
     const CutscenePlayer& CutscenePlaying() const { return cutscene_; }
+    // What the last cutscenes' keys couldn't do (no such actor, marker or conversation), for a test's log.
+    const std::vector<std::string>& CutsceneProblems() const { return cutsceneProblems_; }
+    // A cutscene holds the world (its "world" isn't "runs").
+    bool CutsceneHoldsWorld() const { return cutscene_.Active() && !cutscene_.Current().worldRuns; }
     // What the camera should follow now: a cutscene's camera, else the player.
     std::optional<Entity> CameraTarget();
     // A cutscene's zoom, while it sets one.
@@ -355,6 +370,13 @@ public:
     // Objective markers (15.4): where the shown objective's target is (world
     // units), when the scene has it: a marker, a character, an item lying about.
     std::optional<std::pair<float, float>> ObjectiveLocation();
+    // Every open objective of the shown quest's stage that has a place here (six "talk to" objectives: six people), with
+    // who or what it is; ObjectiveLocation is the nearest of them to the player.
+    struct ObjectivePlace {
+        float x = 0.0f, y = 0.0f;
+        std::string name;
+    };
+    std::vector<ObjectivePlace> ObjectiveLocations();
     // The quest a story-aware window (the journal) reads from.
     const StoryLibrary* StoryLibraryInUse() const { return storyLibrary_; }
 
@@ -372,6 +394,7 @@ public:
     };
     void Emit(ScriptEvent event) {
         FloatFrom(event);
+        if (cutscene_.Active()) cutsceneHeard_.insert(event.name); // a cutscene's wait_until {event}
         pendingEvents_.push_back(std::move(event));
     }
 
@@ -515,14 +538,23 @@ private:
     std::function<void(const std::string&, float, float)> playSoundAt_;
     std::string musicOverride_;
     SpawnFn spawner_;
+    std::vector<std::string> hudWidgets_;
+    HudData BuildHud(float viewportWidth, float viewportHeight);
+    ActorHook actorHook_;
+    bool CharacterEffect(const StoryEffect& e); // move_actor... give_to; false: not one of those
     std::optional<std::pair<float, float>> requestedAttack_;
     std::optional<std::pair<float, float>> requestedUse_; // a double click's scene point, for doors
     std::string doorPrompt_; // the door the player stands at: what its shortcut does ("Open the door", "Locked: needs …")
 
     const StoryLibrary* storyLibrary_ = nullptr;
+    bool startQuestsPending_ = false; // a new run: its quests that start with the game start on its first step
     StoryState story_;
     DialogueRunner conversation_;
     Entity talkingTo_ = entt::null;
+    // The conversation over: "talk_ended" sent (its character's key its text), no one talked to.
+    void TalkEnded();
+    // A Responses rule's "about" ("self", a name, a character's key, or a list): whether the event is about it.
+    bool EventIsAbout(const ScriptEvent& event, Entity self, const nlohmann::json& about) const;
     std::function<std::string(const std::string&)> nameOf_;
     std::string notice_;        // "New quest: ...", shown for a moment
     const ScheduleLibrary* schedules_ = nullptr;
@@ -562,8 +594,21 @@ private:
     struct CutsceneMove {
         Entity entity = entt::null;
         float x = 0.0f, y = 0.0f, speed = 2.0f;
+        std::vector<std::pair<float, float>> path; // cell centres on the way (path: true), then x, y
     };
     CutscenePlayer cutscene_;
+    // A small scene playing round the player (an ambient cutscene): its own timeline, its walkers, whom it holds.
+    CutscenePlayer ambient_;
+    std::vector<CutsceneMove> ambientMoves_;
+    std::vector<Entity> ambientHeld_;
+    void StepAmbient(float dt);
+    void FireAmbientKey(const CutscenePlayer::Due& due);
+    double cutsceneWaited_ = 0.0;              // how long a wait_until has held
+    std::set<std::string> cutsceneHeard_;      // events since the cutscene began (wait_until {event})
+    std::vector<std::string> cutsceneProblems_; // keys that found no one or nowhere (the Test tab reads them)
+    // A camera pan of set length: from, to, how far along.
+    std::pair<float, float> cameraFrom_{0.0f, 0.0f};
+    float cameraPanSeconds_ = 0.0f, cameraPanTime_ = 0.0f;
     std::string cutsceneQuest_;
     std::vector<CutsceneMove> cutsceneMoves_;
     std::string subtitle_;

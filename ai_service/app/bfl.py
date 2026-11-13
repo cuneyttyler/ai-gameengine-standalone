@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import json
+import random
 import time
 
 import httpx
@@ -92,13 +93,25 @@ class BflPainter:
     def _run(self, body: dict) -> bytes:
         headers = {"x-key": self.api_key, "accept": "application/json"}
         with httpx.Client(timeout=120) as client:
-            r = client.post(f"{BASE}/{self.model}", json=body, headers=headers)
-            # Busy (429: too many tasks at once, or low credit capping them at one): wait and ask again, up to ~10 min.
-            waited = 0
-            while r.status_code == 429 and waited < 600:
-                time.sleep(15)
-                waited += 15
-                r = client.post(f"{BASE}/{self.model}", json=body, headers=headers)
+            # Busy, asked again after a wait, up to ~10 min: 429 (too many tasks at once, or low credit capping them at one),
+            # 503 (the model over capacity, "shedding requests: retry shortly"), 502/504 and a dropped connection (its
+            # gateway). The waits grow (5, 10, 20, 30 s...) with a little jitter, so tiles waiting together don't all ask
+            # again at the same moment.
+            waited, attempt = 0.0, 0
+            while True:
+                try:
+                    r = client.post(f"{BASE}/{self.model}", json=body, headers=headers)
+                    busy = r.status_code in (429, 502, 503, 504)
+                except httpx.TransportError:
+                    r, busy = None, True
+                if not busy or waited >= 600:
+                    break
+                pause = min(30.0, 5.0 * (2 ** attempt)) + random.uniform(0, 3)
+                time.sleep(pause)
+                waited += pause
+                attempt += 1
+            if r is None:
+                raise ProviderError(f"BFL {self.model}: no connection after {int(waited)} s")
             if r.status_code != 200:
                 raise ProviderError(f"BFL {self.model}: {r.status_code} {r.text[:300]}")
             task = r.json()
@@ -255,6 +268,7 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
         text += f" THIS KIND OF PLACE: {guide.strip()}"
     if written.strip():
         text += f" THIS PLACE: {written.strip()[:900]}"
+    text += zones_sentence(place.get("zones") or [], False)
     things = (legend or {}).get("things", []) if objects else []
     if things:
         text += " COLOUR KEY: " + "; ".join(f"{t.get('colour')} {t.get('shape')} = {t.get('what')}" for t in things)[:2600] + "."
@@ -430,19 +444,37 @@ def free_grid(width: int, height: int) -> list[tuple[int, int, int, int]]:
     return [(x, y, min(width, x + tw), min(height, y + th)) for y in starts(height, th) for x in starts(width, tw)]
 
 
+def zones_sentence(zones: list, free: bool) -> str:
+    """The plan's parts for the painter: each zone, where it is in the picture, and its buildings by kind and count."""
+    parts = []
+    for z in zones or []:
+        if not isinstance(z, dict) or not z.get("name"):
+            continue
+        built = ", ".join(f"{int(b.get('count') or 0)} {str(b.get('kind'))}{'s' if int(b.get('count') or 0) != 1 else ''}"
+                          for b in z.get("buildings") or [] if isinstance(b, dict) and b.get("kind") and b.get("count"))
+        where = f" ({z['where']} of the image)" if z.get("where") else ""
+        parts.append(f"{str(z['name']).lower()}{where}: {built or 'no buildings'}")
+    if not parts:
+        return ""
+    if free:
+        return ("Lay the place out in these parts, each where it is said to be in the image, with exactly these buildings in "
+                "it: " + "; ".join(parts) + ". ")
+    return " THE PLACE'S PARTS (where each is in the image, and the buildings its coloured shapes stand for): " + "; ".join(parts) + "."
+
+
 def free_prompt(place: dict, scale: str, contents: list, design: str, request: str, guide: str, notes: str = "") -> str:
     """The composing call's prompt: the land kept, the place built on it (its kind, size, buildings by kind and count, its
     design), decorated as the painter likes, fields empty, black empty."""
     kind = str(place.get("type") or "place")
     name = place.get("name") or "the place"
     size = f" a {scale.replace('-', ' ')}" if scale else ""
-    def name(kind: str) -> str:  # the plan's kind as a building ("house plot" is a house)
+    def building(kind: str) -> str:  # the plan's kind as a building ("house plot" is a house)
         for tail in (" plot", " yard", " lot", " site"):
             if kind.endswith(tail):
                 return kind[: -len(tail)]
         return kind
 
-    built = ", ".join(f"{c.get('count')} {name(str(c.get('kind')))}{'s' if int(c.get('count') or 0) != 1 else ''}" for c in contents
+    built = ", ".join(f"{c.get('count')} {building(str(c.get('kind')))}{'s' if int(c.get('count') or 0) != 1 else ''}" for c in contents
                       if c.get("kind") and c.get("count"))
     total = sum(int(c.get("count") or 0) for c in contents)
     text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a block-out "
@@ -452,6 +484,7 @@ def free_prompt(place: dict, scale: str, contents: list, design: str, request: s
             "where they are. Don't move, add or remove a road or any water; build the place around them. ")
     text += f"Build {name},{size} {kind}, on it"
     text += f": about {total} buildings: {built}. " if built else ". "
+    text += zones_sentence(place.get("zones") or [], True)
     text += ("Place them as a real place of its kind grows: along and around the roads, densest at its heart, thinning at its "
              "edges, with its own streets, lanes, yards, gardens and squares between them. ")
     if request.strip():
@@ -462,6 +495,47 @@ def free_prompt(place: dict, scale: str, contents: list, design: str, request: s
         text += guide.strip()[:600] + " "
     text += ("Decorate it as you like: carts, barrels, crates, wells, fences, hedges, flowers, signs, wash lines, paths. "
              + FIELDS_EMPTY + " " + EMPTY_RULE + " " + NO_FIGURES + " No text.")
+    if notes.strip():
+        text += f" Also: {notes.strip()[:300]}"
+    return text
+
+
+def zoned_prompt(place: dict, scale: str, design: str, request: str, guide: str, notes: str = "") -> str:
+    """The composing call's prompt for Paint (Free) (painted-places.md §2b): the land block-out with each zone's ground in
+    a flat colour, and what each colour is: the zone, what it holds (its kind of place, its buildings by kind and count),
+    built freely inside its colour and nowhere else. No colour may remain."""
+    kind = str(place.get("type") or "place")
+    name = place.get("name") or "the place"
+    size = f" a {scale.replace('-', ' ')}" if scale else ""
+    zones = [z for z in place.get("zones") or [] if isinstance(z, dict) and z.get("colour")]
+    names = sorted({str(z["colour"]).lower() for z in zones})
+    colours = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " or " + names[-1]
+    text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a "
+            f"colour-coded plan of {name},{size} {kind}. THE COLOURS ARE AREAS, NOT MATERIALS: none of the flat "
+            f"{colours} may remain in the painting. ")
+    for z in zones:
+        built = ", ".join(f"{int(b.get('count') or 0)} {str(b.get('kind'))}{'s' if int(b.get('count') or 0) != 1 else ''}"
+                          for b in z.get("buildings") or [] if isinstance(b, dict) and b.get("kind") and b.get("count"))
+        # What it is: its module's description, its first sentence (the rest may be advice for planning it).
+        what = str(z.get("description") or "").strip().split(". ")[0].strip().rstrip(".")
+        text += f"{str(z['colour']).upper()} area = the {str(z.get('name') or 'zone').lower()}"
+        text += f" ({what})" if what else ""
+        if built:
+            text += f": fill all of it with about {built}, with their lanes, yards, gardens and fences. "
+        else:
+            text += ": fill all of it as such a place is; no houses in it unless it has them. "
+    text += ("Brown strips are dirt roads, blue is water, dark red-brown strips across water are wooden bridges, grey is a "
+             "paved square: keep every road, river, lake and coast exactly where it is, the same course, width and shape. "
+             "Green is grass and dark green dots are trees: keep the woods and the meadow outside the coloured areas where "
+             "they are, as natural woodland and meadow. Every part stays exactly where its colour is: don't build outside "
+             "the coloured areas. ")
+    if request.strip():
+        text += f"What it is: {request.strip()[:400]}. "
+    if design.strip():
+        text += f"Its design: {design.strip()[:300]}; every building, material and detail fits it. "
+    if guide.strip():
+        text += guide.strip()[:600] + " "
+    text += FIELDS_EMPTY + " " + EMPTY_RULE + " " + NO_FIGURES + " No text."
     if notes.strip():
         text += f" Also: {notes.strip()[:300]}"
     return text
@@ -495,8 +569,11 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
     Image.MAX_IMAGE_PIXELS = None
     src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
     W, H = src.size
-    painter = BflPainter(key, model if model in ("flux-3-image", "flux-2-klein-4b", "flux-2-pro", "flux-2-max") else "flux-3-image")
-    compose_prompt = free_prompt(place, scale, contents, design, request, guide, notes)
+    painter = BflPainter(key, model if model in PAINT_MODELS else "flux-3-image")
+    # Paint (Free): its zones coloured in the block-out, each colour said; else (a land block-out alone) composed by counts.
+    zoned = any(isinstance(z, dict) and z.get("colour") for z in place.get("zones") or [])
+    compose_prompt = (zoned_prompt(place, scale, design, request, guide, notes) if zoned
+                      else free_prompt(place, scale, contents, design, request, guide, notes))
     saved = Path(tiles_dir) if tiles_dir else None
     boxes = free_grid(W, H)
     black = src.getpixel((2, 2))
@@ -557,8 +634,8 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
 
 
 # Who paints a place whole (Project Settings ▸ AI ▸ paint), as shown.
-PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro", "flux-2-max": "FLUX-2-Max", "flux-3-image": "FLUX-3-Image",
-                "flux-3-to-pro": "FLUX-3-Image-to-Pro", "flux-3-to-klein": "FLUX-3-Image-to-Klein"}
+# (FLUX.2 pro and max, and FLUX-3-Image-to-Pro/-Klein, are no longer offered: they drift from the layout.)
+PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-3-image": "FLUX-3-Image"}
 
 
 # Tiles (docs/places/tiling.md §6): a model image holds about TILE_SPAN cells across its diamond at the block-out's
@@ -646,11 +723,7 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     pixels line up with the block-out's id map) and the prompt(s). A place more than TILE_SPAN cells across its diamond
     (its legend's scale) is painted in tiles (tile_count) and joined; `report(done, total, text)` hears each tile.
     - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
-    - flux-2-klein-4b: klein copies a flat input it's told about: the block-out as a rough draft, scaled up, a short key.
-    - flux-2-pro / flux-2-max: the block-out with the colour key and the counts, as FLUX.3 Image (prompt upsampling off);
-      they look good but can drift from the layout (Phase 25's tests).
-    - flux-3-to-klein / flux-3-to-pro: FLUX.3 Image paints the plan, then klein or FLUX.2 pro repaints its look, the
-      block-out beside it (pro) saying what each building is."""
+    - flux-2-klein-4b: klein copies a flat input it's told about: the block-out as a rough draft, scaled up, a short key."""
     import io
     from concurrent.futures import ThreadPoolExecutor
     from PIL import Image
@@ -681,28 +754,13 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
         part.save(buf, format="PNG")
         part_png = buf.getvalue()
         size = _four_mp(part.width, part.height)
-        if model in ("flux-2-pro", "flux-2-max"):
-            png, prompt = BflPainter(key, model).repaint(part_png, keyed, references=refs, seed=seed, **size), keyed
-        elif model == "flux-2-klein-4b":
+        if model == "flux-2-klein-4b":
             big = part.resize((4096, round(4096 * part.height / part.width)), Image.LANCZOS)
             buf = io.BytesIO()
             big.save(buf, format="PNG")
             png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, references=refs, seed=seed, **size), draft
         else:
             png, prompt = BflPainter(key, "flux-3-image").repaint(part_png, keyed, references=refs, seed=seed, **size), keyed
-            if model == "flux-3-to-klein":
-                png = BflPainter(key, "flux-2-klein-4b").repaint(png, draft, seed=seed, **size)
-                prompt += "\n---\n" + draft
-            elif model == "flux-3-to-pro":
-                things = "; ".join(f"{t['colour']} = {t['kind']}" for t in (legend or {}).get("things", []) if t.get("kind"))
-                refine = ("Refine this painted isometric game map into finished, hand-crafted art: richer materials, light and "
-                          "detail, one consistent palette. Keep the camera, the layout and every building, road, river, fence and "
-                          "tree exactly where it is. The second image is the place's colour-coded plan, aligned with the first: "
-                          f"each coloured box marks one building or thing ({things}). Draw each as the kind its colour says; never "
-                          "draw the second image's colours. " + counts_sentence(tiled) + " No text, no UI, no characters." +
-                          (" " + TILE_NOTE if n > 1 else ""))
-                png = BflPainter(key, "flux-2-pro").repaint(png, refine, references=[part_png], seed=seed, **size)
-                prompt += "\n---\n" + refine
         return Image.open(io.BytesIO(png)).convert("RGB"), prompt
 
     boxes = tile_boxes(src.width, src.height, n)

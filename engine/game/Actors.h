@@ -24,6 +24,11 @@ struct ActorEntry {
     std::string prefab;
     float x = NAN, y = NAN; // where it was last seen in its scene (NaN: arriving; at its package's place)
     float health = -1.0f;   // < 0: as the prefab has it
+    // What the story did to it (development_plan.md 32.5): hidden, its side ("Enemy", "Neutral"; "" as made), and
+    // the marker it arrives at when sent to another scene.
+    bool hidden = false;
+    std::string team;
+    std::string marker;
 };
 
 class ActorRoster {
@@ -39,6 +44,13 @@ public:
     void OnDeath(Registry& registry, Entity entity);
     void OnDeath(const std::string& key) {
         if (!key.empty()) entries_[key].alive = false;
+    }
+    // The story's effect on an actor (GameSession's ActorHook): move_actor {scene, marker, prefab}, hide_actor,
+    // show_actor, set_hostile, set_friendly.
+    void Apply(const std::string& op, const std::string& key, const nlohmann::json& args);
+    const ActorEntry* Find(const std::string& key) const {
+        const auto it = entries_.find(key);
+        return it == entries_.end() ? nullptr : &it->second;
     }
 
     void Clear() { entries_.clear(); }

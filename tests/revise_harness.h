@@ -101,7 +101,8 @@ inline void ReportCrashes() {
 // One build in its own project, driven like the Build panel.
 class LiveBuild {
 public:
-    LiveBuild(const fs::path& out, int port) : out_(out), port_(port) {
+    // `method`: the build method a new build takes (Paint or Assembled, as Project Settings ▸ Places ▸ Method); "" the default.
+    LiveBuild(const fs::path& out, int port, std::string method = "") : out_(out), port_(port), method_(std::move(method)) {
         ReportCrashes();
         std::error_code ec;
         fs::remove_all(out_, ec);
@@ -152,6 +153,7 @@ public:
         };
         host.projectRoot = project_;
         host.layoutStep = true; // as in the editor
+        if (!method_.empty()) host.buildMethod = [this] { return method_; };
         build_ = std::make_unique<PlaceBuild>(host);
     }
 
@@ -308,6 +310,7 @@ private:
     fs::path out_, project_;
     int port_;
     std::string error_;
+    std::string method_;
     json model_;
     std::ofstream log_;
     std::chrono::steady_clock::time_point started_;

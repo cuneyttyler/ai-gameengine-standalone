@@ -9,12 +9,14 @@ import { editorState } from './editorState'
 import { bodyRect, dragView, scheduleMeasure, setShell, TAB_HEIGHT } from './dockdrag'
 import { groupOf } from './docktree'
 import StatusBar from './components/StatusBar.vue'
+import CreditBanner from './components/CreditBanner.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
 import AiPanel from './components/AiPanel.vue'
 import MenuBar from './components/MenuBar.vue'
 import DialogHost from './components/DialogHost.vue'
 import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
+import ProjectSearchDialog from './components/ProjectSearchDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import OntologyDialog from './components/OntologyDialog.vue'
 import ReplacePrefabDialog from './components/ReplacePrefabDialog.vue'
@@ -155,8 +157,10 @@ onBeforeUnmount(() => setShell(null))
     <StatusBar />
   </div>
 
+  <CreditBanner />
   <ContextMenuHost />
   <ShortcutsDialog />
+  <ProjectSearchDialog />
   <PreferencesDialog />
   <OntologyDialog />
   <ReplacePrefabDialog />

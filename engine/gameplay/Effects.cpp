@@ -1,4 +1,5 @@
 #include "gameplay/Effects.h"
+#include "install/InstallPath.h"
 
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
@@ -18,7 +19,7 @@ namespace {
 
 fs::path FxDir() {
 #ifdef AIGE_FX_DATA_DIR
-    return fs::path(AIGE_FX_DATA_DIR);
+    return InstalledOr(fs::path(AIGE_FX_DATA_DIR), "data/fx"); // next to the program when packaged
 #else
     return fs::path("data") / "fx";
 #endif

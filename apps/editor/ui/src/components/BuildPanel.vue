@@ -4,7 +4,7 @@
 // ⑤ Result. Not modal: the viewport stays in view. The host (PlaceBuild)
 // holds the Brief; every edit here goes back to it as (path, value).
 import { BACKGROUND_MODELS } from '../backgroundModels'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUpdated, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { aiCalls, callName } from '../aiProgress'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -16,6 +16,7 @@ import MarkEditor from './MarkEditor.vue'
 import AnimatePartsView from './AnimatePartsView.vue'
 import ReviseHelp, { type ReviseInstruction } from './ReviseHelp.vue'
 import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
+import { BUILD_METHODS, isPaintMethod, normalBuildMethod, type BuildMethod } from '../buildMethods'
 
 type Rect = [number, number, number, number]
 // A kind of building a zone holds: how many the user set, or about how many the plan makes.
@@ -101,11 +102,14 @@ interface BuildWindow {
   style: Record<string, { value: unknown; options?: string[] }>
   // An open world's places (docs/places/tiling.md): each a section of its own, its type and size chosen here.
   places?: {
-    value: { id: string; name: string; type: string; typeName?: string; size: string; class?: string; buildings?: [number, number] }[]
+    value: { id: string; name: string; type: string; typeName?: string; size: string; class?: string; buildings?: [number, number]
+             components?: Component[]; where?: unknown }[]
     types: { id: string; name: string }[]
     sizes: string[]
     description?: string
   }
+  // Ways into other places (a dungeon's cave mouth, a crypt door): each its kind and where, in words.
+  gateways?: { value: { to: string; kind: string; at: string; from?: string }[]; kinds: { id: string; name: string }[] }
   components: Component[]
   marks: Record<string, Mark>
   assumptions?: string[]
@@ -146,14 +150,16 @@ interface PaintState {
 }
 interface BuildState {
   paint?: PaintState
-  method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
+  method?: 'Assembled' | 'Paint' | 'PaintPlan' // which steps it has (docs/places/painted-places.md; Paint: Paint (Free))
+  freePaint?: boolean // Paint (Free) on a place of zones: painted from ② Layout, no ③ Plan
   scope?: 'place' | 'world' // a single place, or an open world of sections (docs/places/tiling.md): its build type's
   buildType?: string // its build type (the ontology's)
   paintModel?: string // who paints it (Paint)
   // Painted freely (painted-places.md §2a): the painting's size and the calls it takes (1 to compose, then its tiles).
-  paintPlan?: { calls: number; tiles: number; width: number; height: number; cellPx: number }
+  paintPlan?: { calls: number; tiles: number; width: number; height: number; cellPx: number
+                options?: { cellPx: number; tiles: number; calls: number }[] } // each density it may be painted at
   paintFixed?: boolean // a dungeon: always FLUX-3-Image, whatever the project's paint model
-  projectMethod?: 'Assembled' | 'Paint'
+  projectMethod?: 'Assembled' | 'Paint' | 'PaintPlan'
   fromPicture?: boolean // built from a picture given as its painting: no Layout, Plan or Paint (docs/places/scene-types.md)
   reference?: string // a picture the painting is made after
   reviewing?: boolean // the approved map checked by the AI in the background
@@ -162,6 +168,7 @@ interface BuildState {
   projectModels?: { art?: string; background?: string }
   fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
+  byPlanner?: string | null // the AI Planner builds it by itself: what it's doing now (painting, marking, sourcing, building)
   busyInline?: boolean // and the page shows its steps going on: no overlay
   revisingFrom?: string
   // The place's background: its ground painted whole (or a picture picked for it), laid cell by cell.
@@ -287,6 +294,10 @@ interface BuildState {
   verify?: VerifyRow[] // asked, planned, built
   brushModules?: { id: string; name: string; level: string }[] // what the module brush paints (7.8)
   sites?: { id: string; node: string; name: string; buildType: string; scale: string; bounds: number[] }[] // a region's (7.10)
+  // An open world's sections (② World, docs/places/tiling.md §5): each planned as a place of its own, then put in.
+  sections?: { id: string; name: string; kind: string; class: string; bounds: number[]; stage: string; build: string; error?: string; buildings?: number }[]
+  sectionsPlanned?: boolean
+  sectionOf?: { name: string; kind: string; world: string } // a world's section: its world, to go back to
   locks?: string[]
   result?: BuildResult // ⑤ Result: the scene build
   origin?: [number, number]
@@ -317,11 +328,16 @@ const ALL_STEPS = [
 // A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint: Confirm, Layout, Plan, Paint,
 // Mark, Assets, Animate, Result: the doors and used things animated once their art is there).
 const buildMethod = computed(() => state.value?.method ?? newMethod.value)
+// Painted (Paint (Free) or Paint (by Plan)): ④ Paint, ⑤ Mark and ⑦ Animate.
+const painted = computed(() => isPaintMethod(buildMethod.value))
+// Paint (Free) on a place of zones (a single place): no ③ Plan, painted from ② Layout.
+const noPlanStep = computed(() => !!state.value?.freePaint && buildScope.value !== 'world')
 // An open world (docs/places/tiling.md §4) has ② World after Confirm: the world plan and the sections it's cut into.
 const buildScope = computed(() => (state.value ? state.value.scope ?? 'place' : newScope.value))
 // From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
-const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
-  (st.id !== 'world' || buildScope.value === 'world') &&
+const STEPS = computed(() => ALL_STEPS.filter((st) => (painted.value || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
+  !(st.id === 'plan' && noPlanStep.value) &&
+  (st.id !== 'world' || buildScope.value === 'world') && !(st.id === 'layout' && buildScope.value === 'world') &&
   !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦⑧⑨'[i]} ${st.label.slice(2)}`,
 })))
@@ -346,12 +362,9 @@ function modelName(id?: string): string {
   return [...ART_MODELS, ...BACKGROUND_MODELS].find((m) => m.id === id)?.label.replace(/ \(.*\)$/, '') ?? (id || 'default')
 }
 // The build methods (Project Settings ▸ Places ▸ method), in words.
-const METHODS = [
-  { id: 'Assembled', label: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.' },
-  { id: 'Paint', label: 'Paint', title: "The place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Animate, Build." },
-] as const
+const METHODS = BUILD_METHODS
 // The method a new build starts with: the open scene's type (its menu's Type, or set here: the scene changes too).
-const newMethod = ref<'Assembled' | 'Paint'>('Assembled')
+const newMethod = ref<BuildMethod>('Assembled')
 const newMethodTouched = ref(false)
 const sceneTyped = ref(false) // the open scene has a type (else the project's method)
 // A picture to start from (docs/places/scene-types.md): as the painting itself (Paint: no Layout, Plan or Paint), or as
@@ -361,7 +374,7 @@ const pictureMode = ref<'painting' | 'reference'>('painting')
 function pickPicture(): void {
   sendToHost({ type: 'build:pickPicture' })
 }
-function setNewMethod(method: 'Assembled' | 'Paint'): void {
+function setNewMethod(method: BuildMethod): void {
   newMethod.value = method
   newMethodTouched.value = true
   sendToHost({ type: 'scene:setType', sceneType: method }) // the open scene's
@@ -578,6 +591,11 @@ watch(() => editorState.sceneName, () => {
   newMethodTouched.value = false
   sendToHost({ type: 'build:choicesRequest' })
 })
+// Back on the first page (a build cancelled, failed or closed): its method from the open scene's type again (the
+// scene's menu, the Planner or another build may have set it meanwhile).
+watch(() => !state.value || ['cancelled', 'failed'].includes(state.value.stage), (atStart, before) => {
+  if (atStart && !before) sendToHost({ type: 'build:choicesRequest' })
+})
 
 onHostMessage((message) => {
   if (message.type === 'build:state') {
@@ -599,7 +617,10 @@ onHostMessage((message) => {
     }
   } else if (message.type === 'build:choices') {
     choiceTypes.value = (message.types as ChoiceType[]) ?? []
-    if (!newMethodTouched.value && (message.buildMethod === 'Paint' || message.buildMethod === 'Assembled')) newMethod.value = message.buildMethod
+    // The scene's type set just now (its menu's Type, or chosen here) always wins; else only when not chosen here.
+    const typeSet = Boolean(message.sceneTypeSet)
+    if ((typeSet || !newMethodTouched.value) && typeof message.buildMethod === 'string' && message.buildMethod) newMethod.value = normalBuildMethod(message.buildMethod)
+    if (typeSet) newMethodTouched.value = false
     sceneTyped.value = Boolean(message.sceneTyped)
   } else if (message.type === 'build:picture') {
     picture.value = (message.path as string) ?? ''
@@ -670,7 +691,9 @@ const otherAssumptions = computed(() => {
 // ① Confirm: the layout first; its tabs.
 // A step looked at again without going back to it (the plan from ③ Assets, ① Confirm from the plan): '' is the stage's own.
 const viewing = ref('')
-const planStands = computed(() => ['plan', 'planned', 'sourced', 'built'].includes(stage.value) && !!state.value?.layout?.view)
+// A plan stands (laid out, past ② Layout): ① Confirm and ② Layout are only looked at, never gone back to by a click (that
+// would discard the plan and the steps after it: a build the AI Planner drives has no layout picture, and went back).
+const planStands = computed(() => ['plan', 'planned', 'sourcing', 'sourced', 'building', 'built'].includes(stage.value))
 const atConfirm = computed(
   () => stage.value === 'layout' || (stage.value === 'revising' && state.value?.revisingFrom === 'layout') || (viewing.value === 'confirm' && planStands.value),
 )
@@ -711,21 +734,15 @@ const markEditor = ref<InstanceType<typeof MarkEditor> | null>(null)
 // A plan just approved: ④ Paint first, unless it's painted or skipped already. After the tick: a stage change clears
 // the page shown (the watcher further down), which would undo it.
 watch(stage, (s, was) => {
-  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && buildMethod.value === 'Paint' && !paint.value.file) {
+  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && painted.value && !paint.value.file) {
     void nextTick(() => (viewing.value = 'paint'))
   }
 })
-// Painted: on to ⑤ Mark (the marks pre-filled from the plan).
-watch(
-  () => paint.value.painting,
-  (now, was) => {
-    if (was && !now && paint.value.file && viewing.value === 'paint') viewing.value = 'mark'
-  },
-)
+// Painted: ④ Paint stays shown (the painting to look over, paint again or compare); ⑤ Mark → goes on when the user likes.
 function startPaint(again = false): void {
   sendToHost({ type: 'build:paint', notes: again ? paintNotes.value : '' })
 }
-function setMethod(method: 'Assembled' | 'Paint'): void {
+function setMethod(method: BuildMethod): void {
   sendToHost({ type: 'build:setMethod', method })
   if (method === 'Assembled' && atPaint.value) viewing.value = ''
 }
@@ -748,7 +765,8 @@ watch(stage, (s) => {
 })
 function confirmMarks(): void {
   markEditor.value?.save()
-  sendToHost({ type: 'build:confirmMarks' })
+  // Built already (marked again from the Result page): the place is built into the scene again with the new marks.
+  sendToHost({ type: 'build:confirmMarks', rebuild: stage.value === 'built' })
   viewing.value = ''
 }
 function leaveMark(to: string): void {
@@ -788,7 +806,7 @@ const makesArt = computed(() => sourcingSettings.value.defaultSource === 'genera
 function startArt(): void {
   sendToHost({ type: 'build:findAssets', then: makesArt.value ? 'matched' : 'find' })
   // Paint has no background (its painting is the ground): straight to the art.
-  assetsTab.value = state.value?.background || buildMethod.value === 'Paint' ? 'found' : 'background'
+  assetsTab.value = state.value?.background || painted.value ? 'found' : 'background'
 }
 // ④ Result: the built place alone (the plan is ② Plan's).
 const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets' && !atPaint.value)
@@ -815,10 +833,10 @@ const neededBySource = computed(() => {
 })
 const activeStep = computed(() => {
   if (atPaint.value) return viewing.value
-  if (viewing.value === 'animate' && buildMethod.value === 'Paint') return 'animate'
+  if (viewing.value === 'animate' && painted.value) return 'animate'
   const s = stage.value
   if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
-  if (atConfirm.value) return confirmTab.value === 'layout' ? 'layout' : 'confirm'
+  if (atConfirm.value) return confirmTab.value === 'layout' ? (buildScope.value === 'world' ? 'world' : 'layout') : 'confirm'
   if (showAssets.value) return 'assets'
   if (s === 'building') return 'result'
   if (s === 'built') return viewing.value === 'plan' ? 'plan' : 'result'
@@ -843,8 +861,30 @@ function stepDisabled(id: string): boolean {
   if (REACHED[id]) return !REACHED[id].includes(at)
   return !win.value
 }
+// An open world's ② World: Layout (where each section, forest and water is: drawn and revised as zones are) and
+// Sections (each one's own place: opened to see and change its zones and plan).
+const worldTab = ref<'layout' | 'sections'>('layout')
+const selectedSection = ref(0)
+const pickedSection = computed(() => state.value?.sections?.[selectedSection.value])
+function worldShow(tab: 'layout' | 'sections'): void {
+  worldTab.value = tab
+  if (tab === 'layout' && viewing.value === 'world') viewing.value = '' // off the Sections page, back to ② Layout's
+  step('world')
+}
+// The sections being planned (Plan the sections pressed, not all of them done or failed).
+const sectionsBusy = computed(() => {
+  const s = state.value?.sections ?? []
+  return !state.value?.sectionsPlanned && s.length > 0 && s.some((x) => !x.error && !['planned', 'built', 'failed'].includes(x.stage ?? ''))
+})
 function step(id: string): void {
   if (viewing.value === 'mark' && id !== 'mark') markEditor.value?.save()
+  if (id === 'world' && buildScope.value === 'world') {
+    if (worldTab.value === 'sections') {
+      viewing.value = 'world'
+      return
+    }
+    id = 'layout' // its Layout is ② Layout's page, the sections as its zones
+  }
   if (id === 'paint' || id === 'mark' || id === 'animate' || id === 'world') {
     viewing.value = id
     return
@@ -1323,6 +1363,7 @@ function start(): void {
 function browse(): void {
   browsing.value = true
   sendToHost({ type: 'build:list' })
+  sendToHost({ type: 'build:choicesRequest' }) // a new build's method: the open scene's type now
 }
 function resume(id: string): void {
   browsing.value = false
@@ -1365,6 +1406,52 @@ function setCount(c: Component, text: string): void {
 function toggleFeature(f: string): void {
   const now = win.value?.features.value ?? []
   edit('features', now.includes(f) ? now.filter((x) => x !== f) : [...now, f])
+}
+// A gateway's kind or where (the Brief's list, sent whole), or removed (field null).
+function setGateway(index: number, field: 'kind' | 'at' | 'to' | 'from' | null, value: string | null): void {
+  const list = (win.value?.gateways?.value ?? []).map((g) => ({ ...g }))
+  if (field === null) list.splice(index, 1)
+  else if (list[index]) {
+    let v = value ?? ''
+    // A plan's place keeps its id's "location/" (the Planner links the gateway by it); a bare name stays bare.
+    if (field === 'to' && list[index].to.startsWith('location/') && v && !v.includes('/')) v = 'location/' + v
+    const g = { ...list[index], [field]: v } as (typeof list)[number]
+    if (field === 'from' && !v) delete g.from
+    list[index] = g
+  }
+  edit('gateways', list)
+}
+// An open world's place: where the world puts it ({type: near | by, to: sea, lake, river, forest, mountains or a place}).
+function placeWhere(p: { where?: unknown }): { type: string; to: string } {
+  const w = (p.where ?? {}) as { type?: string; to?: string }
+  return { type: w.type ?? '', to: w.to ?? '' }
+}
+function setPlaceWhere(p: { id: string; where?: unknown }, field: 'type' | 'to', value: string): void {
+  const w = placeWhere(p)
+  if (field === 'type' && !value) return edit(`places.${p.id}.where`, null)
+  const next = { ...w, [field]: value }
+  if (!next.to) next.to = 'sea'
+  edit(`places.${p.id}.where`, next)
+}
+// Another kind of place: its parts are the new kind's (the old kind's components go), the rest kept.
+function setPlaceType(p: { id: string; name: string; size: string; where?: unknown }, type: string): void {
+  const place: Record<string, unknown> = { name: p.name, type, size: p.size }
+  if (p.where) place.where = p.where
+  edit(`places.${p.id}`, place)
+}
+function addGateway(): void {
+  const list = (win.value?.gateways?.value ?? []).map((g) => ({ ...g }))
+  list.push({ to: '', kind: win.value?.gateways?.kinds[0]?.id ?? 'gateway-cave', at: '' })
+  edit('gateways', list)
+}
+// An open world's places opened to configure (each its own parts, as a single place's).
+const openPlaces = ref<string[]>([])
+function toggleOpenPlace(id: string): void {
+  openPlaces.value = openPlaces.value.includes(id) ? openPlaces.value.filter((x) => x !== id) : [...openPlaces.value, id]
+}
+function setPlaceCount(place: string, c: Component, text: string): void {
+  const range = parseRange(text)
+  if (range) edit(`places.${place}.components.${c.id}.count`, range[0] === range[1] ? range[0] : range)
 }
 // An open world's new place: the next free key (p1, p2, ...), a settlement of the size most of the others have.
 function addPlace(): void {
@@ -1410,10 +1497,56 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
   now[side] = range[0] === range[1] ? range[0] : range
   setParam(c, p, now)
 }
+
+// Sections fold: a click on a section's heading folds it (or opens it again). Which are folded is kept between sessions,
+// by the heading's words (its numbers left out, so "Building the village: step 2 of 5" stays one section).
+const FOLD_KEY = 'aige.build.folded'
+const buildRoot = ref<HTMLElement | null>(null)
+const folded = new Set<string>(loadFolded())
+function loadFolded(): string[] {
+  try {
+    const raw = localStorage.getItem(FOLD_KEY)
+    const list = raw ? JSON.parse(raw) : []
+    return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+function foldKeyOf(heading: Element): string {
+  return (heading.textContent ?? '').replace(/[0-9]+/g, '#').split(':')[0]!.replace(/[?▸▾]/g, '').trim().slice(0, 80)
+}
+// The sections with a heading of their own, marked foldable and folded as kept (after every redraw: Vue may set a
+// section's classes again).
+function applyFolds(): void {
+  buildRoot.value?.querySelectorAll('section').forEach((section) => {
+    const heading = Array.from(section.children).find((c) => c.tagName === 'H4')
+    if (!heading) return
+    section.classList.add('foldable')
+    section.classList.toggle('folded', folded.has(foldKeyOf(heading)))
+  })
+}
+function onFoldClick(event: MouseEvent): void {
+  const target = event.target as HTMLElement | null
+  if (!target || target.closest('button, input, select, textarea, a, label, .help')) return
+  const heading = target.closest('h4')
+  const section = heading?.parentElement
+  if (!heading || !section || section.tagName !== 'SECTION' || !section.classList.contains('foldable')) return
+  const key = foldKeyOf(heading)
+  if (folded.has(key)) folded.delete(key)
+  else folded.add(key)
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify([...folded]))
+  } catch {
+    // kept for this session only
+  }
+  applyFolds()
+}
+onMounted(applyFolds)
+onUpdated(applyFolds)
 </script>
 
 <template>
-  <div class="build">
+  <div ref="buildRoot" class="build" @click="onFoldClick">
     <AiProgress :paths="['/places/', '/assets/']" />
     <div v-if="zoomed" class="lightbox" @click="zoomed = null">
       <img :src="urlOf(zoomed.path)" alt="" />
@@ -1450,6 +1583,21 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <button v-if="browsing" class="browse" @click="browsing = false">Back to {{ state?.name || 'the build' }}</button>
     </div>
 
+
+    <div v-if="state && !browsing && buildScope === 'world' && ((atConfirm && confirmTab === 'layout') || viewing === 'world')" class="tabs world-tabs">
+      <button :class="{ active: !(viewing === 'world') }" title="Where each section, forest and the water is: draw, move, resize, revise" @click="worldShow('layout')">Layout</button>
+      <button :class="{ active: viewing === 'world' }" :disabled="!planStands"
+              :title="planStands ? 'Each section as a place of its own: its zones and plan' : 'After ③ Plan: the world’s roads laid, its sections are planned'"
+              @click="worldShow('sections')">Sections</button>
+    </div>
+    <div v-if="state?.byPlanner && !browsing" class="note by-planner">
+      The AI Planner is building this place by itself: now {{ ({ queued: 'starting', painting: 'painting it', marking: 'waiting for you in ⑤ Mark', sketching: 'sketching it', sourcing: 'finding and making its art', building: 'building its scene' } as Record<string, string>)[state.byPlanner] ?? state.byPlanner }}.
+      You can look at any step meanwhile; it goes on without you{{ state.byPlanner === 'marking' ? ' once you Continue in ⑤ Mark' : '' }}.
+    </div>
+    <div v-if="state?.sectionOf && !browsing" class="note section-of">
+      {{ state.sectionOf.name || 'This place' }} is a section of a world: its land, ways in and the world's roads come from it.
+      <button @click="sendToHost({ type: 'build:backToWorld' })">Back to the world</button>
+    </div>
     <section v-if="state?.notices?.length && !browsing" class="note notices">
       <div v-for="n in state.notices" :key="n">{{ n }}</div>
     </section>
@@ -1566,7 +1714,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </label>
       <label class="method-row">
         Build method
-        <select :value="newMethod" :disabled="!!picture && pictureMode === 'painting'" @change="setNewMethod(($event.target as HTMLSelectElement).value as 'Assembled' | 'Paint')">
+        <select :value="newMethod" :disabled="!!picture && pictureMode === 'painting'" @change="setNewMethod(($event.target as HTMLSelectElement).value as BuildMethod)">
           <option v-for="m in METHODS" :key="m.id" :value="m.id" :title="m.title">{{ m.label }}</option>
         </select>
         <span class="help" :title="METHODS.find((m) => m.id === newMethod)?.title">?</span>
@@ -1655,6 +1803,12 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                   <option value="true">yes</option>
                   <option value="false">no</option>
                 </select>
+                <span v-else-if="f.type === 'slider'" class="slider">
+                  <input type="range" :min="f.min" :max="f.max" step="1" :value="(chosen[f.path] as number) ?? f.min"
+                         @change="setChoice(f.path, Number(($event.target as HTMLInputElement).value))" />
+                  <span class="num-out">{{ (chosen[f.path] as number) ?? 'from the words' }}</span>
+                  <button v-if="chosen[f.path] !== undefined" class="link" title="Let the words decide" @click="setChoice(f.path, '')">clear</button>
+                </span>
               </div>
             </template>
             <template v-if="choiceType.features.length">
@@ -1932,7 +2086,34 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button v-if="confirmLocked" class="primary" data-view-ok @click="backToPlan()">Back to the plan →</button>
         <template v-else>
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
+        <!-- Paint (Free): no ③ Plan; the zones as laid out are painted, each zone's ground a colour the painter fills. -->
+        <template v-if="noPlanStep">
+          <span v-if="state?.paintPlan" class="dim"
+                :title="`1 call composes the place from its coloured zones, then ${state.paintPlan.tiles} tiles at ${state.paintPlan.cellPx} px a cell`">
+            Painting: {{ state.paintPlan.tiles }} tiles · {{ state.paintPlan.calls }} calls at
+            <select v-if="state.paintPlan.options?.length" :value="state.paintPlan.cellPx" title="Fewer px a cell: fewer tiles and calls, less detail"
+                    @change="sendToHost({ type: 'build:paintDensity', cellPx: Number(($event.target as HTMLSelectElement).value) })">
+              <option v-for="o in state.paintPlan.options" :key="o.cellPx" :value="o.cellPx">{{ o.cellPx }} px a cell ({{ o.calls }} calls)</option>
+            </select>
+            <template v-else>{{ state.paintPlan.cellPx }} px a cell</template>
+          </span>
+          <button
+            class="primary"
+            :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
+            :title="
+              state.layout.stale
+                ? 'Lay the zones out again first'
+                : errors.length
+                  ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
+                  : 'Paint (Free): each zone’s ground coloured on the land, and the place painted freely in its colours (no Plan step)'
+            "
+            @click="goPaint()"
+          >
+            ③ Paint →
+          </button>
+        </template>
         <button
+          v-else
           class="primary"
           :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
           :title="
@@ -1966,7 +2147,47 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           {{ worldSections.margin ?? 2 }} cells. Each keeps the world's {{ (worldSections.carried ?? []).join(', ') }}.
         </p>
       </section>
-      <section v-if="state.sites?.length" class="plan">
+      <section v-if="state.scope === 'world' && state.sites?.length" class="plan">
+        <h4>Sections</h4>
+        <p class="dim">
+          Each place and forest of the world is planned as a place of its own (its zones, streets and buildings) on the
+          land the world gave it, with the world's roads running through it; then they're put into the world, which is
+          painted or assembled as one place.
+        </p>
+        <div v-if="pickedSection" class="section-detail">
+          <img v-if="pickedSection.build" :src="PROJECT_HOST + 'places/' + pickedSection.build + '/layout.png'"
+               alt="The section's layout" class="zones-map" />
+          <div>
+            <h4>{{ pickedSection.name || pickedSection.id }}</h4>
+            <p class="dim">{{ pickedSection.class.replace(/-/g, ' ') }} {{ pickedSection.kind }} ·
+              {{ pickedSection.bounds[2] }} × {{ pickedSection.bounds[3] }} cells ·
+              {{ pickedSection.buildings ?? '—' }} buildings</p>
+            <p class="dim">Open it to see and change its zones (draw them, move them, revise in words) and its plan, as for a
+              single place; then come back and put the sections into the world.</p>
+            <button :disabled="!pickedSection.build" @click="sendToHost({ type: 'build:openSection', index: selectedSection })">Open this section</button>
+          </div>
+        </div>
+        <table v-if="state.sections?.length">
+          <thead><tr><th>Section</th><th>Kind</th><th>Step</th><th>Buildings</th></tr></thead>
+          <tbody>
+            <tr v-for="(s, i) in state.sections" :key="s.id" :class="{ off: !!s.error, picked: i === selectedSection }" @click="selectedSection = i">
+              <td>{{ s.name || s.id }}</td>
+              <td>{{ s.class.replace(/-/g, ' ') }} {{ s.kind }}</td>
+              <td :class="{ error: !!s.error || s.stage === 'failed' }">
+                {{ s.error ? 'failed: ' + s.error : s.stage === 'failed' ? 'failed' : ['planned', 'built'].includes(s.stage) ? 'planned' : sectionsBusy ? 'planning…' : 'waiting' }}</td>
+              <td>{{ s.buildings ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="actions">
+          <button :disabled="sectionsBusy" @click="sendToHost({ type: 'build:sections' })">
+            {{ sectionsBusy ? 'Planning the sections…' : state.sectionsPlanned ? 'Plan the sections again' : 'Plan the sections' }}
+          </button>
+          <button v-if="state.sections?.length" :disabled="sectionsBusy" title="The sections as they are now (changed or not) put into the world again" @click="sendToHost({ type: 'build:putSectionsIn' })">Put the sections into the world</button>
+          <span v-if="state.sectionsPlanned" class="dim">The world with its sections in is its plan: go on to {{ isPaintMethod(state.method) ? '④ Paint' : 'the Assets' }}.</span>
+        </div>
+      </section>
+      <section v-else-if="state.sites?.length" class="plan">
         <table>
           <thead><tr><th>Section</th><th>Kind</th><th>Where</th><th></th></tr></thead>
           <tbody>
@@ -1990,7 +2211,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <h4>Painting {{ state.name || 'the place' }} from its plan</h4>
         <div class="bar indeterminate"><i /></div>
         <p>{{ paintCall?.step || (state.paintPlan ? 'Composing the place on its land, then its tiles' : 'FLUX.3 Image paints the block-out, the layout kept') }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
-        <p class="dim">About a minute. Then ⑤ Mark opens with what can be walked on and the occluders pre-filled from the plan.</p>
+        <p class="dim">About a minute. Then the painting shows here; ⑤ Mark → has what can be walked on and the occluders pre-filled.</p>
       </section>
       <section v-else-if="paint.file" class="painting">
         <div class="pictures">
@@ -2014,7 +2235,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           ⑤ Mark's occluders and blocked ground, for you to adjust. Painting takes <strong>{{ state.paintPlan.calls }} calls</strong>
           (1 to compose it, then {{ state.paintPlan.tiles }} tiles), a painting of {{ state.paintPlan.width }} × {{ state.paintPlan.height }} px.
         </p>
-        <p v-else>
+        <p v-if="state.paintPlan?.options?.length">
+          <label title="Fewer px a cell: fewer tiles and calls, less detail (48 is the default)">Density
+            <select :value="state.paintPlan.cellPx" @change="sendToHost({ type: 'build:paintDensity', cellPx: Number(($event.target as HTMLSelectElement).value) })">
+              <option v-for="o in state.paintPlan.options" :key="o.cellPx" :value="o.cellPx">{{ o.cellPx }} px a cell · {{ o.tiles }} tiles · {{ o.calls }} calls</option>
+            </select>
+          </label>
+        </p>
+        <p v-if="!state.paintPlan">
           The place is painted as one picture from its plan: every building, tree, fence and road where the plan put it, with the
           place's own look. Next you mark where one can walk and what a character goes behind (pre-filled from the plan). Only the
           things the player uses (doors, chests, items) and characters are made as art of their own.
@@ -2045,7 +2273,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           {{ paint.marks?.occluders ?? 0 }} occluders ({{ paint.marks?.edited ?? 0 }} edited) · {{ paint.marks?.blocked ?? 0 }} cells blocked
         </span>
         <button title="Pre-fill from the plan again; what you edited stays" @click="markEditor?.prefill(false)">Pre-fill again</button>
-        <button class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">⑥ Assets →</button>
+        <button v-if="stage === 'built'" class="primary" :disabled="state.busy" title="The marks are done: the place is built into the scene again with them (nothing else in the scene is touched)" @click="confirmMarks">Update the scene</button>
+        <button v-else class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">⑥ Assets →</button>
       </div>
     </div>
 
@@ -2077,15 +2306,15 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     <div v-else-if="showAssets && (win || state?.sourcing || state?.sourced)" class="body window assets-view">
       <div class="confirm-tabs">
         <button :class="{ active: assetsTab === 'how' }" @click="assetsTab = 'how'">How each is found</button>
-        <button v-if="buildMethod !== 'Paint'" :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
+        <button v-if="!painted" :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
         <button :class="{ active: assetsTab === 'found' }" :disabled="!artStarted" @click="assetsTab = 'found'">The assets</button>
-        <button v-if="buildMethod !== 'Paint'" :class="{ active: assetsTab === 'animate' }" :disabled="!artStarted" title="Doors of buildings and things that are used (chests, gates, levers), animated" @click="assetsTab = 'animate'">Animate</button>
+        <button v-if="!painted" :class="{ active: assetsTab === 'animate' }" :disabled="!artStarted" title="Doors of buildings and things that are used (chests, gates, levers), animated" @click="assetsTab = 'animate'">Animate</button>
         <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part'
           : assetsTab === 'background' ? 'the whole ground in one picture, painted first'
           : assetsTab === 'animate' ? 'the doors and the things that are used, animated' : 'what was found and made, each refinable' }}</span>
       </div>
       <template v-if="assetsTab === 'animate'">
-        <AnimatePartsView :only="buildMethod === 'Paint' ? 'thing' : undefined" />
+        <AnimatePartsView :only="painted ? 'thing' : undefined" />
         <div class="actions">
           <button @click="assetsTab = 'found'">← The assets</button>
           <span class="dim">{{ state?.status }}</span>
@@ -2132,15 +2361,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </tbody>
           </table>
         </section>
-        <section v-if="state?.assetNeeds?.length" class="plan">
-        <h4>
-          Each part's art:
-          <span class="dim">{{ state.assetNeeds.filter((n) => n.decision?.action === 'generate' && n.source === 'placeholder').length }} to make,
-            {{ state.assetNeeds.filter((n) => n.decision?.action === 'web' && n.source === 'placeholder').length }} to search for,
-            {{ state.assetNeeds.filter((n) => n.source !== 'placeholder').length }} found</span>
-        </h4>
+        <!-- How the art is found (both methods; a painting's art is only what isn't painted: doors, chests, items) -->
+        <section v-if="state" class="plan art-strategy">
         <div v-if="state.fromPlanner" class="row set-all">
-          <span class="dim">Art strategy: set in the AI Planner's Game Brief (① Concept ▸ Plan ▸ Art for the places)</span>
+          <span>How the art is found: <b>{{ ({ search: 'Search (project, library, web, then make)', generate: 'Generate (the Art tool)', library: 'Library (else made by the Art tool)', project: 'The project (else made by the Art tool)', auto: 'Auto (by each piece’s importance)' } as Record<string, string>)[sourcingSettings.defaultSource] ?? sourcingSettings.defaultSource }}</b><template v-if="sourcingSettings.defaultSource === 'generate'">, made by {{ modelName(state.models?.art || state.projectModels?.art) }}</template></span>
+          <span class="dim">set in the AI Planner's Game Brief (① Concept ▸ Plan ▸ Art for the places)</span>
         </div>
         <div v-else class="row set-all">
           <span class="dim" title="How a piece set to auto is found: Search looks in the project, your library and the web first (found art is the most reliable), and makes it only when nothing found fits">Default for this build</span>
@@ -2160,7 +2385,15 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </select>
           </template>
         </div>
-        <div v-if="buildMethod !== 'Paint'" class="row set-all">
+        </section>
+        <section v-if="state?.assetNeeds?.length" class="plan">
+        <h4>
+          Each part's art:
+          <span class="dim">{{ state.assetNeeds.filter((n) => n.decision?.action === 'generate' && n.source === 'placeholder').length }} to make,
+            {{ state.assetNeeds.filter((n) => n.decision?.action === 'web' && n.source === 'placeholder').length }} to search for,
+            {{ state.assetNeeds.filter((n) => n.source !== 'placeholder').length }} found</span>
+        </h4>
+        <div v-if="!painted" class="row set-all">
           <span class="dim" title="Who paints the place's background (its ground, painted whole); Project Settings ▸ AI ▸ background by default">Background painted by</span>
           <select :value="state.models?.background ?? ''" @change="sendToHost({ type: 'build:models', models: { background: ($event.target as HTMLSelectElement).value } })">
             <option value="">the project's ({{ modelName(state.projectModels?.background) }})</option>
@@ -2170,7 +2403,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <table class="components needs">
           <thead><tr><th></th><th>Needed</th><th>For</th><th>Gets</th><th>From</th><th>Why</th><th></th></tr></thead>
           <tbody>
-            <tr v-if="buildMethod !== 'Paint'" class="background-row" title="The place's ground in one picture, matched to the grid: each cell shows its own square of it">
+            <tr v-if="!painted" class="background-row" title="The place's ground in one picture, matched to the grid: each cell shows its own square of it">
               <td class="thumb">
                 <img v-if="state.background" :src="urlOf(state.background.path)" alt="" class="zoomable" @click="zoom(state.background.path, 'Background')" />
               </td>
@@ -2181,7 +2414,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <td class="dim">roads, paths, floors and grass painted as one picture, from the description below</td>
               <td></td>
             </tr>
-            <tr v-if="buildMethod !== 'Paint'" class="background-row">
+            <tr v-if="!painted" class="background-row">
               <td></td>
               <td colspan="6">
                 <textarea
@@ -2242,7 +2475,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <div class="actions">
           <button @click="viewing = 'plan'">← Plan</button>
           <span class="dim">{{ state?.status }}</span>
-          <span v-if="state?.matched && buildMethod !== 'Paint'" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
+          <span v-if="state?.matched" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
             {{ state.matched.state === 'making' ? 'Making the art…'
               : state.matched.state === 'made' ? 'Cutting the pieces…'
               : state.matched.state === 'failed' ? `The art failed: ${state.matched.error ?? ''}`
@@ -2456,8 +2689,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </button>
           <button v-if="stage === 'sourced' || stage === 'built'" :class="{ primary: stage === 'sourced' }"
                   title="The doors of buildings and the things that are used, animated before the build"
-                  @click="buildMethod === 'Paint' ? (viewing = 'animate') : (assetsTab = 'animate')">
-            {{ buildMethod === 'Paint' ? '⑦ Animate →' : 'To Animate →' }}
+                  @click="painted ? (viewing = 'animate') : (assetsTab = 'animate')">
+            {{ painted ? (noPlanStep ? '⑥ Animate →' : '⑦ Animate →') : 'To Animate →' }}
           </button>
           <button v-else-if="stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length" class="primary"
                   title="Puts the place into the scene, verifies it and repairs what it can"
@@ -2558,6 +2791,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </ul>
         <div class="row">
           <button class="primary" title="Save the scene with the place in it, close the build and show it in the Viewport" @click="sendToHost({ type: 'build:finish' }); setPanelVisible('viewport', true)">Finish</button>
+          <button v-if="painted && paint.file" :disabled="state.busy"
+                  title="⑤ Mark again: where one can walk and what a character goes behind; then the scene is updated with the new marks"
+                  @click="viewing = 'mark'">Mark again</button>
         </div>
       </section>
       <template v-if="!showResult">
@@ -2757,11 +2993,18 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div v-if="!showResult" class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
-        <span v-if="stage === 'plan' && buildMethod === 'Paint' && state?.paintPlan" class="dim"
+        <span v-if="stage === 'plan' && painted && state?.paintPlan" class="dim"
               :title="`1 call composes the place on its land, then ${state.paintPlan.tiles} tiles at ${state.paintPlan.cellPx} px a cell`">
-          Painting: {{ state.paintPlan.calls }} calls
+          Painting: {{ state.paintPlan.tiles }} tiles · {{ state.paintPlan.calls }} calls at
+          <select v-if="state.paintPlan.options?.length" :value="state.paintPlan.cellPx" title="Fewer px a cell: fewer tiles and calls, less detail"
+                  @change="sendToHost({ type: 'build:paintDensity', cellPx: Number(($event.target as HTMLSelectElement).value) })">
+            <option v-for="o in state.paintPlan.options" :key="o.cellPx" :value="o.cellPx">{{ o.cellPx }} px a cell ({{ o.calls }} calls)</option>
+          </select>
+          <template v-else>{{ state.paintPlan.cellPx }} px a cell</template>
         </span>
-        <button v-if="stage === 'plan' && buildMethod === 'Paint'" class="primary" title="Approve the plan and paint the place from it"
+        <button v-if="stage === 'plan' && painted" class="primary"
+                :disabled="buildScope === 'world' && !state?.sectionsPlanned"
+                :title="buildScope === 'world' && !state?.sectionsPlanned ? 'Plan the world’s sections first (② World ▸ Sections)' : 'Approve the plan and paint the place from it'"
                 @click="approveAndPaint()">
           Paint →
         </button>
@@ -2770,7 +3013,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </button>
         <template v-else-if="['planned', 'sourcing', 'sourced', 'built'].includes(stage)">
           <span class="dim">{{ stage === 'planned' ? state.status : '' }}</span>
-          <button v-if="buildMethod === 'Paint'" class="primary" title="④ Paint: the place painted whole from the plan" @click="goPaint()">④ Paint →</button>
+          <button v-if="painted" class="primary" :disabled="buildScope === 'world' && !state?.sectionsPlanned"
+                  :title="buildScope === 'world' && !state?.sectionsPlanned ? 'Plan the world’s sections first (② World ▸ Sections)' : '④ Paint: the place painted whole from the plan'"
+                  @click="goPaint()">④ Paint →</button>
           <button v-else class="primary" title="Where the art comes from, then the build" @click="viewing = 'assets'">Assets →</button>
         </template>
         <span v-else-if="stage === 'building'" class="dim">{{ state.status }}</span>
@@ -2970,13 +3215,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <h4 class="section-title">Places <span class="dim">· {{ win.places.description || 'the world\'s settled places, each a section of its own' }}</span></h4>
           <table class="components places">
             <thead>
-              <tr><th>Name</th><th>Kind</th><th>Size</th><th>What it makes</th><th></th></tr>
+              <tr><th>Name</th><th>Kind</th><th>Size</th><th>Where</th><th>What it makes</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="p in win.places.value" :key="p.id" :class="markClass('places.' + p.id)">
                 <td><input :value="p.name" placeholder="its name" @change="edit(`places.${p.id}.name`, ($event.target as HTMLInputElement).value)" /></td>
                 <td>
-                  <select :value="p.type" @change="edit(`places.${p.id}.type`, ($event.target as HTMLSelectElement).value)">
+                  <select :value="p.type" @change="setPlaceType(p, ($event.target as HTMLSelectElement).value)">
                     <option v-for="t in win.places.types" :key="t.id" :value="t.id">{{ t.name }}</option>
                   </select>
                 </td>
@@ -2985,12 +3230,92 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                     <option v-for="s in win.places.sizes" :key="s" :value="s">{{ s }}</option>
                   </select>
                 </td>
+                <td class="where" title="Where the world puts it: by (touching) or near the sea, a lake, a river, a forest, the mountains or another place">
+                  <select :value="placeWhere(p).type" @change="setPlaceWhere(p, 'type', ($event.target as HTMLSelectElement).value)">
+                    <option value="">anywhere</option>
+                    <option value="near">near</option>
+                    <option value="by">by</option>
+                  </select>
+                  <select v-if="placeWhere(p).type" :value="placeWhere(p).to" @change="setPlaceWhere(p, 'to', ($event.target as HTMLSelectElement).value)">
+                    <option v-for="t in ['sea', 'lake', 'river', 'forest', 'mountains']" :key="t" :value="t">the {{ t }}</option>
+                    <option v-for="o in win.places.value.filter((x) => x.id !== p.id)" :key="o.id" :value="o.id">{{ o.name || o.id }}</option>
+                  </select>
+                </td>
                 <td class="dim">{{ p.class ? p.class.replace(/-/g, ' ') : '—' }}<template v-if="p.buildings"> · {{ p.buildings[0] }}–{{ p.buildings[1] }} buildings</template></td>
-                <td><button class="link" title="Leave this place out of the world" @click="edit(`places.${p.id}`, null)">Remove</button></td>
+                <td>
+                  <button v-if="p.components?.length" class="link" title="Its zones and parts, as for a single place" @click="toggleOpenPlace(p.id)">{{ openPlaces.includes(p.id) ? 'Close' : 'Configure' }}</button>
+                  <button class="link" title="Leave this place out of the world" @click="edit(`places.${p.id}`, null)">Remove</button>
+                </td>
+              </tr>
+              <tr v-for="p in win.places.value.filter((x) => openPlaces.includes(x.id) && x.components)" :key="p.id + '-config'" class="place-config">
+                <td colspan="6">
+                  <div class="dim small">{{ p.name || p.id }}: its parts ({{ p.typeName }}{{ p.class ? ', ' + p.class.replace(/-/g, ' ') : '' }}), as for a single place</div>
+                  <table class="components unified">
+                    <thead><tr><th>Component</th><th class="center">On</th><th>How many</th><th>What it holds</th></tr></thead>
+                    <tbody>
+                      <tr v-for="c in (p.components ?? []).filter((x) => x.inBrief || x.level === 'zone')" :key="c.id" :class="{ off: !c.enabled }">
+                        <td :title="c.description"><strong>{{ c.name }}</strong> <span class="level">{{ c.level }}</span></td>
+                        <td class="center"><input type="checkbox" :checked="c.enabled" @change="edit(`places.${p.id}.components.${c.id}.enabled`, ($event.target as HTMLInputElement).checked)" /></td>
+                        <td>
+                          <template v-if="c.enabled && c.amount === 'count'">
+                            <input class="range" :value="show(c.count) === '—' ? '' : show(c.count)" placeholder="any"
+                                   @change="setPlaceCount(p.id, c, ($event.target as HTMLInputElement).value)" />
+                            <span class="dim"> {{ c.unit }}</span>
+                          </template>
+                          <template v-else-if="c.enabled && c.amount === 'density'">
+                            <select :value="c.density ?? ''" @change="edit(`places.${p.id}.components.${c.id}.density`, ($event.target as HTMLSelectElement).value)">
+                              <option value="">default</option>
+                              <option v-for="d in DENSITIES" :key="d" :value="d">{{ d }}</option>
+                            </select>
+                          </template>
+                          <span v-else class="dim">—</span>
+                        </td>
+                        <td class="holds">
+                          <div v-if="c.enabled && c.kinds?.length && c.level === 'zone'" class="kinds">
+                            <label v-for="k in c.kinds" :key="k.module" :title="'How many ' + k.name + ' in each (empty: the plan decides)'">
+                              <input class="num small" type="number" min="0" :value="k.count ?? ''" :placeholder="k.estimate !== undefined ? '~' + k.estimate : 'any'"
+                                     @change="edit(`places.${p.id}.components.${c.id}.kinds.${k.module}`, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
+                              <span class="dim">{{ k.name }}</span>
+                            </label>
+                          </div>
+                          <span v-else class="dim">—</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
               </tr>
             </tbody>
           </table>
           <button class="link" @click="addPlace()">Add a place</button>
+        </template>
+
+        <template v-if="win.gateways">
+          <h4 class="section-title">Gateways <span class="dim">· ways into other places (a dungeon, a crypt, a mine): placed where they suit, linked when those are built</span></h4>
+          <table class="components places">
+            <thead><tr><th>Into</th><th>From</th><th>Kind</th><th>Where</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="(g, i) in win.gateways.value" :key="i">
+                <td><input :value="g.to.replace(/^location\//, '')" placeholder="the place it leads into" @change="setGateway(i, 'to', ($event.target as HTMLInputElement).value)" /></td>
+                <td>
+                  <select v-if="win.places" :value="g.from ?? ''" title="The place it's in or near" @change="setGateway(i, 'from', ($event.target as HTMLSelectElement).value)">
+                    <option value="">anywhere</option>
+                    <option v-for="o in win.places.value" :key="o.id" :value="o.id">{{ o.name || o.id }}</option>
+                  </select>
+                  <span v-else class="dim">here</span>
+                </td>
+                <td>
+                  <select :value="g.kind" @change="setGateway(i, 'kind', ($event.target as HTMLSelectElement).value)">
+                    <option v-if="!win.gateways.kinds.some((k) => k.id === g.kind)" :value="g.kind">{{ g.kind }}</option>
+                    <option v-for="k in win.gateways.kinds" :key="k.id" :value="k.id">{{ k.name }}</option>
+                  </select>
+                </td>
+                <td><input :value="g.at" placeholder="where, in words: in the hills north of the village" @change="setGateway(i, 'at', ($event.target as HTMLInputElement).value)" /></td>
+                <td><button class="link" @click="setGateway(i, null, null)">Remove</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button class="link" title="A way into another place: a cave mouth, a crypt door, a tent, a portal..." @click="addGateway()">Add a gateway</button>
         </template>
 
         <h4 class="section-title">Components <span class="dim">· the place's parts: on or off, how many, and what each holds</span></h4>
@@ -3170,6 +3495,24 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 </template>
 
 <style scoped>
+/* Folding sections: the heading toggles them (applyFolds). */
+.build section.foldable > h4:first-of-type {
+  cursor: pointer;
+  user-select: none;
+}
+.build section.foldable > h4:first-of-type::before {
+  content: '▾';
+  display: inline-block;
+  width: 1em;
+  color: var(--muted, #8a8f98);
+}
+.build section.foldable.folded > h4:first-of-type::before {
+  content: '▸';
+}
+.build section.foldable.folded > :not(h4:first-of-type) {
+  display: none;
+}
+
 .build {
   display: flex;
   flex-direction: column;

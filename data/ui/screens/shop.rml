@@ -1,0 +1,28 @@
+<rml>
+<head>
+	<title>Shop</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+</head>
+<!-- A merchant's shop (32.7): your gold and theirs on top; what they sell and what you can sell, each with its price. -->
+<body class="menu window shop">
+<div class="screen shade" data-model="menu">
+	<div class="panel">
+		<h1>{{title}}</h1>
+		<p class="purse" data-if="body != ''">{{body}}</p>
+			<div class="items wide">
+				<div data-for="item, i : items">
+				<div class="heading" data-if="item.heading">{{item.group}}</div>
+				<div class="item row" data-class-lit="i == highlighted" data-class-off="!item.enabled"
+				     data-event-click="choose(i)" data-event-mousedown="context(i)">
+					<img class="icon" data-if="item.icon != ''" data-attr-src="item.icon"/>
+					<span class="label">{{item.label}}</span>
+					<span class="detail" data-if="item.detail != ''">{{item.detail}}</span>
+				</div>
+				</div>
+			</div>
+		<p class="footer" data-if="footer != ''">{{footer}}</p>
+	</div>
+</div>
+</body>
+</rml>

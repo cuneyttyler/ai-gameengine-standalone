@@ -26,7 +26,11 @@ KINDS = {
     # flat onto the isometric cells by the engine, so it must fill the square.
     "tile": "a seamless top-down ground texture of {description}, seen from directly above, flat, "
             "filling the whole square image edge to edge, tileable",
+    # A piece of the game's interface (a frame, a bar, a panel): flat, seen straight on, not isometric.
+    "ui": "a flat game interface piece: {description}, seen straight on, front view, flat 2D, centered, whole piece visible",
 }
+# An interface piece may be a frame itself: only its background and no lettering.
+UI_BACKDROP = "alone on a plain pure white background, no shadow, no text, no letters"
 # Tiles fill their image, so they get no cutout backdrop.
 TILE_BACKDROP = "no border, no frame, no text, no perspective, no shadows cast from outside"
 
@@ -122,7 +126,7 @@ def build_prompt(description: str, kind: str, style: str, variant: str = "") -> 
     subject = description.strip().rstrip(".")
     if variant:
         subject = f"{subject}, {variant.strip()}"
-    backdrop = TILE_BACKDROP if kind == "tile" else BACKDROP
+    backdrop = TILE_BACKDROP if kind == "tile" else UI_BACKDROP if kind == "ui" else BACKDROP
     from .style import art_style_words
     return f"{KINDS[kind].format(description=subject)}, {art_style_words() or STYLE.get(style, STYLE['pixel'])}, {backdrop}"
 
@@ -150,8 +154,10 @@ def generate_sprites(
         raise ValueError(f"kind must be one of {', '.join(sorted(KINDS))}")
     if not description.strip():
         raise ValueError("describe what to draw")
-    if not 8 <= height <= 512:
-        raise ValueError("height must be 8-512 pixels")
+    # An interface piece (a title screen's background) may be large; sprites and tiles stay small.
+    most = 1024 if kind == "ui" else 512
+    if not 8 <= height <= most:
+        raise ValueError(f"height must be 8-{most} pixels")
     folder = root / "assets" / "textures" / "generated"
     folder.mkdir(parents=True, exist_ok=True)
     results = []
@@ -164,9 +170,9 @@ def generate_sprites(
             # A generator made for game art (PixelLab): its view, size and background, and the
             # project's palette (its style references) so the piece keeps to its colours.
             from .style import project_palette, reference_paths
-            options = {"kind": kind, "height": height, "isometric": kind != "tile", "palette": project_palette(root)}
+            options = {"kind": kind, "height": height, "isometric": kind not in ("tile", "ui"), "palette": project_palette(root)}
             # Drawn to match the project's own pieces of the same kind, when it has some.
-            refs = [str(p) for p in reference_paths(root, layer)] if kind != "tile" else []
+            refs = [str(p) for p in reference_paths(root, layer)] if kind not in ("tile", "ui") else []
             # What it's designed against (a door's wall) first: the look it must meet.
             refs = list(with_images or []) + [r for r in refs if r not in (with_images or [])]
             if refs:

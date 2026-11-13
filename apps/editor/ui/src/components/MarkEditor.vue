@@ -22,6 +22,7 @@ interface Occluder {
   prefilled?: boolean
   edited?: boolean
   hidden?: boolean
+  baseSet?: boolean // its base line placed by the user (Base line tool); else the build finds it at the foot of what's painted
 }
 interface Marks { walk?: { x0: number; y0: number; w: number; h: number; rows: string[] }; occluders?: Occluder[]; savedAt?: string; paintedAt?: string }
 
@@ -46,7 +47,7 @@ function cellOf(px: number, py: number): [number, number] {
 // --- State ---
 const loaded = ref(false)
 const layer = ref<'walk' | 'occluders'>('occluders')
-const tool = ref<'select' | 'sam' | 'brush' | 'erase' | 'base' | 'block' | 'rect' | 'fill'>('select')
+const tool = ref<'select' | 'sam' | 'brush' | 'erase' | 'base' | 'block' | 'unblock' | 'rect' | 'fill'>('select')
 // Click-to-select: waiting for the AI service's mask (the click, and whether it takes away).
 const segmenting = ref<{ subtract: boolean } | null>(null)
 const segmentError = ref('')
@@ -109,7 +110,7 @@ function load(marks: Marks): void {
     }
     img.src = `${PROJECT_HOST}places/${props.place}/${o.mask}?v=${stamp}`
   }
-  if (!occluders.value.some((o) => o.id === selectedId.value)) selectedId.value = occluders.value[0]?.id ?? ''
+  if (!occluders.value.some((o) => o.id === selectedId.value)) selectedId.value = '' // none chosen: the Brush adds only to one you pick (or + New)
   loaded.value = true
   draw()
 }
@@ -305,7 +306,7 @@ function restore(step: Step): Step {
     occluders.value = step.list
     masks.clear()
     step.masks.forEach((v, k) => masks.set(k, v))
-    if (!occluders.value.some((o) => o.id === selectedId.value)) selectedId.value = occluders.value[0]?.id ?? ''
+    if (!occluders.value.some((o) => o.id === selectedId.value)) selectedId.value = '' // none chosen: the Brush adds only to one you pick (or + New)
     return now
   }
   const o = occluders.value.find((x) => x.id === step.id)
@@ -399,7 +400,7 @@ function removeOccluder(id: string): void {
   masks.delete(id)
   dirty.delete(id)
   removed.add(id)
-  if (selectedId.value === id) selectedId.value = occluders.value[0]?.id ?? ''
+  if (selectedId.value === id) selectedId.value = ''
   draw()
 }
 
@@ -447,6 +448,8 @@ function onDown(e: PointerEvent): void {
   }
   const alt = e.altKey || e.button === 2
   if (layer.value === 'walk') {
+    // The eraser paints walkable (as Alt or the right button does with the brush, rectangle and fill).
+    const walkable = alt !== (tool.value === 'unblock')
     const [cx, cy] = cellOf(p[0], p[1])
     remember(snapshot('walk'))
     if (tool.value === 'fill') {
@@ -459,8 +462,8 @@ function onDown(e: PointerEvent): void {
       rectCells.value = [cx, cy, cx, cy]
       return
     }
-    setCells(cx, cy, alt ? '.' : '#')
-    drag = { mode: 'paint', last: p, screen: [e.clientX, e.clientY], erase: alt }
+    setCells(cx, cy, walkable ? '.' : '#')
+    drag = { mode: 'paint', last: p, screen: [e.clientX, e.clientY], erase: walkable }
     draw()
     return
   }
@@ -486,12 +489,14 @@ function onDown(e: PointerEvent): void {
         remember(snapshot('mask', o.id))
         o.base.splice(i, 1)
         o.edited = true
+        o.baseSet = true
       }
       draw()
       return
     }
     remember(snapshot('mask', o.id))
     o.edited = true
+    o.baseSet = true
     if (i >= 0) {
       drag = { mode: 'handle', last: p, screen: [e.clientX, e.clientY], handle: i }
     } else {
@@ -586,7 +591,7 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key === 'v') tool.value = 'select'
   else if (e.key === 's') tool.value = 'sam'
   else if (e.key === 'b') tool.value = layer.value === 'walk' ? 'block' : 'brush'
-  else if (e.key === 'e') tool.value = 'erase'
+  else if (e.key === 'e') tool.value = layer.value === 'walk' ? 'unblock' : 'erase'
   else if (e.key === 'l') tool.value = 'base'
   else if (e.key === 'f') fit()
   else return
@@ -620,11 +625,16 @@ function prefill(replaceEdited: boolean): void {
 defineExpose({ save, prefill })
 
 watch(layer, (l) => {
-  if (l === 'walk' && !['block', 'rect', 'fill'].includes(tool.value)) tool.value = 'block'
-  if (l === 'occluders' && ['block', 'rect', 'fill'].includes(tool.value)) tool.value = 'select'
+  if (l === 'walk' && !['block', 'unblock', 'rect', 'fill'].includes(tool.value)) tool.value = 'block'
+  if (l === 'occluders' && ['block', 'unblock', 'rect', 'fill'].includes(tool.value)) tool.value = 'select'
   draw()
 })
 watch([selectedId, () => opacity.walk, () => opacity.occluders], draw)
+// The selected occluder in sight in the list (a new one is added at its end, below the prefilled ones).
+const listEl = ref<HTMLElement | null>(null)
+watch(selectedId, () => {
+  void nextTick(() => listEl.value?.querySelector('li.active')?.scrollIntoView({ block: 'nearest' }))
+})
 watch(
   () => props.paint.file,
   (file) => {
@@ -675,7 +685,8 @@ const counts = computed(() => {
         <button title="A new occluder, drawn by hand" @click="newOccluder">+ New</button>
       </div>
       <div v-else class="group">
-        <button :class="{ active: tool === 'block' }" title="Paint cells blocked (Alt or right button: walkable)" @click="tool = 'block'">Brush</button>
+        <button :class="{ active: tool === 'block' }" title="Paint cells blocked (B; Alt or right button: walkable)" @click="tool = 'block'">Brush</button>
+        <button :class="{ active: tool === 'unblock' }" title="Paint cells walkable again: erase what's blocked (E; Alt or right button: blocked)" @click="tool = 'unblock'">Eraser</button>
         <button :class="{ active: tool === 'rect' }" title="A rectangle of cells" @click="tool = 'rect'">Rectangle</button>
         <button :class="{ active: tool === 'fill' }" title="Fill an area of the same kind" @click="tool = 'fill'">Fill</button>
         <label class="size">cells
@@ -708,7 +719,7 @@ const counts = computed(() => {
         <p v-if="segmenting" class="status">Finding its outline…</p>
         <p v-else-if="segmentError" class="status error">{{ segmentError }}</p>
       </div>
-      <aside v-if="layer === 'occluders'" class="list">
+      <aside v-if="layer === 'occluders'" ref="listEl" class="list">
         <h5>{{ counts.occluders }} occluders <span class="dim">· {{ counts.edited }} edited</span></h5>
         <ul>
           <li v-for="o in occluders" :key="o.id" :class="{ active: o.id === selectedId, hidden: o.hidden }" @click="selectedId = o.id">
@@ -801,6 +812,8 @@ const counts = computed(() => {
 }
 .list {
   width: 200px;
+  min-height: 0;
+  max-height: 100%;
   overflow: auto;
   border: 1px solid #333;
   padding: 4px;

@@ -1,4 +1,5 @@
 #include "gameplay/GameSession.h"
+#include "gameplay/Pathfinding.h"
 #include "gameplay/Profiler.h"
 #include "gameplay/Streaming.h"
 
@@ -1235,11 +1236,15 @@ void GameSession::SetStory(const StoryLibrary* library) {
     storyLibrary_ = library;
     musicOverride_.clear(); // a new run plays the scenes' own music
     story_ = {};
+    startQuestsPending_ = library != nullptr;
     WireStory();
     conversation_.End();
     talkingTo_ = entt::null;
     notice_.clear();
     cutscene_ = {};
+    ambient_ = {};
+    ambientMoves_.clear();
+    ambientHeld_.clear();
     cutsceneMoves_.clear();
     subtitle_.clear();
     titleCard_.clear();
@@ -1325,6 +1330,7 @@ nlohmann::json GameSession::MakeSave() const {
 void GameSession::ApplySave(const nlohmann::json& save) {
     if (!save.is_object()) return;
     story_ = StoryState::FromJson(save.value("story", nlohmann::json::object()));
+    startQuestsPending_ = false; // a saved game: its quests are as they were saved
     WireStory();
     // What was being made goes on; a Reaction under way (its things are the scene's) ends with the save.
     pendingCrafts_.clear();
@@ -1337,6 +1343,9 @@ void GameSession::ApplySave(const nlohmann::json& save) {
     }
     difficultyDirty_ = true;
     cutscene_ = {};
+    ambient_ = {};
+    ambientMoves_.clear();
+    ambientHeld_.clear();
     cutsceneMoves_.clear();
     fade_ = fadeTarget_ = letterbox_ = 0.0f;
     if (save.contains("clock") && save["clock"].is_number()) clockMinutes_ = save["clock"].get<double>();
@@ -1452,9 +1461,7 @@ void GameSession::HandleStoryInput(const KeyQueryFn& isKeyDown) {
         if ((number > 0 || confirm) && conversation_.LastCheck()) {
             Toast(*conversation_.LastCheck() ? "Success" : "Failure"); // a skill check (15.3)
         }
-        if (!conversation_.Active()) {
-            talkingTo_ = entt::null;
-        }
+        if (!conversation_.Active()) TalkEnded();
         return;
     }
     if (interact) {
@@ -1488,10 +1495,11 @@ void GameSession::OnStoryEvents(size_t firstEvent) {
     for (size_t i = firstEvent; i < events_.size(); ++i) {
         const GameEvent& event = events_[i];
         if (event.type == GameEvent::Type::Death) {
-            story_.OnDefeated(event.prefab, event.team == Team::Enemy ? "Enemy" : "", *storyLibrary_);
             // An escort or defend objective's charge died: the quest fails (15.1).
             std::vector<std::string> names = NamesOf(event.entity);
             if (!event.actor.empty()) names.push_back(event.actor);
+            // A named enemy (a plan's boss) counts by its name and key too.
+            story_.OnDefeated(event.prefab, event.team == Team::Enemy ? "Enemy" : "", *storyLibrary_, names);
             for (const auto& name : names) story_.OnLost(name, *storyLibrary_);
         } else if (event.type == GameEvent::Type::Pickup) {
             story_.OnCollected(event.prefab, *storyLibrary_);
@@ -1564,10 +1572,35 @@ void GameSession::ChooseDialogue(int index) {
     if (!conversation_.Active() || storyLibrary_ == nullptr || index < 0) return;
     conversation_.Choose(static_cast<size_t>(index), story_, *storyLibrary_);
     if (conversation_.LastCheck()) Toast(*conversation_.LastCheck() ? "Success" : "Failure");
-    if (!conversation_.Active()) talkingTo_ = entt::null;
+    if (!conversation_.Active()) TalkEnded();
+}
+
+void GameSession::TalkEnded() {
+    // "talk_ended" on the one talked to (its character's key the text): a cutscene can follow a conversation.
+    if (registry_.valid(talkingTo_)) {
+        const auto* talk = registry_.try_get<Talk>(talkingTo_);
+        Emit({"talk_ended", talkingTo_, FindPlayer(registry_).value_or(Entity{entt::null}), 0.0, talk ? talk->character : std::string()});
+    }
+    talkingTo_ = entt::null;
 }
 
 HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
+    HudData hud = BuildHud(viewportWidth, viewportHeight);
+    if (hudWidgets_.empty()) return hud;
+    // Only the widgets the game chose (development_plan.md 32.7): the others empty, so the HUD hides them.
+    auto shows = [&](const char* widget) { return std::find(hudWidgets_.begin(), hudWidgets_.end(), widget) != hudWidgets_.end(); };
+    if (!shows("mana")) hud.manaMax = 0;
+    if (!shows("stamina")) hud.staminaMax = 0;
+    if (!shows("xp")) hud.xpNext = 0;
+    if (!shows("quest-tracker")) hud.quest.clear(), hud.objective.clear(), hud.marker.clear();
+    if (!shows("clock")) hud.clock.clear();
+    if (!shows("quickslots")) hud.abilities.clear();
+    if (!shows("gold")) hud.gold = 0;
+    if (!shows("interaction-prompt")) hud.promptKey.clear(), hud.promptText.clear();
+    return hud;
+}
+
+HudData GameSession::BuildHud(float viewportWidth, float viewportHeight) {
     HudData hud;
     hud.visible = !cutscene_.Active();
     if (const auto player = FindPlayer(registry_)) {
@@ -1625,7 +1658,10 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
             for (auto [entity, label, world] : registry_.view<Label, WorldTransform2D>().each()) {
                 if (label.text.empty()) continue;
                 if (label.within > 0.0f && (!me || std::hypot(world.x - me->x, world.y - me->y) > label.within)) continue;
-                if (const auto head = HeadOf(entity)) hud.labels.push_back({label.text, "", "label", head->first, head->second - label.height, 1.0f});
+                // Its kind is its type (name, place, sign, ...): the HUD styles each its own way.
+                if (const auto head = HeadOf(entity)) {
+                    hud.labels.push_back({label.text, "", label.type.empty() ? "name" : label.type, head->first, head->second - label.height, 1.0f});
+                }
             }
         }
         for (const Floating& f : floating_) {
@@ -1641,21 +1677,35 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
         if (auto shown = story_.CurrentObjective(*storyLibrary_)) {
             hud.quest = shown->quest;
             hud.objective = shown->text;
-            // The marker (15.4): which way the objective lies, when it's more than a few steps off.
+            // The markers (15.4): each of the stage's open objectives (six people to talk to: six) marked on the ground
+            // under whoever or whatever it is, in scene pixels (the host puts them on screen with its camera, held at the
+            // screen's edge when they're off it). "marker" is the nearest one's direction, for the HUD drawn without
+            // documents.
             const auto player = FindPlayer(registry_);
-            const auto target = ObjectiveLocation();
-            if (player && target && !conversation_.Active() && ActiveSettings().story.objectiveMarkers) {
+            if (player && !conversation_.Active() && ActiveSettings().story.objectiveMarkers) {
                 const auto& at = registry_.get<WorldTransform2D>(*player);
-                const float dx = target->first - at.x, dy = target->second - at.y;
-                const float distance = std::sqrt(dx * dx + dy * dy);
-                if (distance > 3.0f) {
-                    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
-                    const float sx = topDown ? dx : dx - dy, sy = topDown ? dy : (dx + dy) * 0.5f;
-                    const float length = std::max(0.0001f, std::sqrt(sx * sx + sy * sy));
-                    const float radius = std::min(viewportWidth, viewportHeight) * 0.36f;
-                    hud.marker = std::to_string(static_cast<int>(distance + 0.5f)) + " m";
-                    hud.markerX = viewportWidth * 0.5f + sx / length * radius;
-                    hud.markerY = viewportHeight * 0.5f + sy / length * radius;
+                float nearest = 1e9f;
+                for (const auto& target : ObjectiveLocations()) {
+                    const float dx = target.x - at.x, dy = target.y - at.y;
+                    const float distance = std::sqrt(dx * dx + dy * dy);
+                    const ScreenPose ground = ProjectIso(target.x, target.y, iso_);
+                    HudOverhead m;
+                    m.text = std::to_string(static_cast<int>(distance + 0.5f)) + " m";
+                    m.name = target.name;
+                    m.kind = "marker";
+                    m.x = ground.x;
+                    m.y = ground.y;
+                    hud.markers.push_back(m);
+                    if (distance > 3.0f && distance < nearest) {
+                        nearest = distance;
+                        const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+                        const float sx = topDown ? dx : dx - dy, sy = topDown ? dy : (dx + dy) * 0.5f;
+                        const float length = std::max(0.0001f, std::sqrt(sx * sx + sy * sy));
+                        const float radius = std::min(viewportWidth, viewportHeight) * 0.36f;
+                        hud.marker = m.text;
+                        hud.markerX = viewportWidth * 0.5f + sx / length * radius;
+                        hud.markerY = viewportHeight * 0.5f + sy / length * radius;
+                    }
                 }
             }
         }
@@ -1725,6 +1775,10 @@ void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float v
         AddScreenFade(out, fade_, viewportWidth, viewportHeight);
         if (cutscene_.Active()) {
             if (cutscene_.WaitingForInput()) AddPrompt(out, "Space", "Continue", viewportWidth, viewportHeight);
+            // A conversation the cutscene started (talk): its box, the player choosing.
+            if (conversation_.Active() && !documentHud_) {
+                if (auto view = CurrentDialogueView()) AddDialogueBox(out, *view, viewportWidth, viewportHeight);
+            }
             return;
         }
     }
@@ -1843,6 +1897,7 @@ void GameSession::ApplyWorldEffects() {
             if (screenHook_) screenHook_(e.name, 0);
             continue;
         }
+        if (CharacterEffect(e)) continue;
         if (e.op == "push_package" || e.op == "pop_package" || e.op == "say" || e.op == "send_event") {
             // On the one named, else the one it runs on.
             Entity who = effectSelf_;
@@ -1913,6 +1968,13 @@ std::optional<std::pair<float, float>> GameSession::MarkerPosition(const std::st
 }
 
 void GameSession::StepStory(float dt) {
+    // A new run's first step (its scene loaded): the quests that start with the game (Project ▸ Story ▸ Quests).
+    if (startQuestsPending_ && storyLibrary_ != nullptr) {
+        startQuestsPending_ = false;
+        for (const auto& quest : storyLibrary_->Quests()) {
+            if (quest.atStart) story_.StartQuest(quest.id, *storyLibrary_);
+        }
+    }
     if (storyLibrary_ == nullptr || !story_.AnyQuestActive()) return;
     story_.OnTime(dt, *storyLibrary_);
     const auto player = FindPlayer(registry_);
@@ -1935,6 +1997,7 @@ void GameSession::StepTriggers() {
     const auto& at = registry_.get<WorldTransform2D>(*player);
     for (auto [entity, trigger, world] : registry_.view<CutsceneTrigger, WorldTransform2D>().each()) {
         if (trigger.cutscene.empty() || std::hypot(world.x - at.x, world.y - at.y) > trigger.radius) continue;
+        if (!ConditionsHold(trigger.conditions)) continue;
         const std::string flag = "cutscene:" + trigger.cutscene;
         if (story_.Flag(flag)) continue;
         story_.SetFlag(flag, true); // a repeating one: until the player leaves (cleared below)
@@ -1956,6 +2019,28 @@ bool GameSession::PlayCutscene(const std::string& id, const std::string& quest) 
         if (scriptErrors_.size() < 64) scriptErrors_.push_back({entt::null, "cutscenes/" + id + ".json", error});
         return false;
     }
+    if (cutscene->ambient) {
+        // A small scene: one at a time (another waits for its turn: it's asked again next time its trigger fires), round
+        // the player, who keeps control; its cast held from their packages while it plays.
+        if (ambient_.Active()) return false;
+        ambientMoves_.clear();
+        ambientHeld_.clear();
+        for (const auto& track : cutscene->tracks) {
+            std::string who = track.actor;
+            if (who.empty()) {
+                for (const auto& k : track.keys) {
+                    if (who.empty()) who = k.data.value("speaker", std::string());
+                }
+            }
+            if (const auto e = who.empty() ? std::nullopt : FindNamed(who); e && !registry_.all_of<SceneHeld>(*e)) {
+                registry_.emplace<SceneHeld>(*e);
+                ambientHeld_.push_back(*e);
+            }
+        }
+        ambient_.Start(std::move(*cutscene));
+        Emit({"small_scene_started", entt::null, entt::null, 0.0, id});
+        return true;
+    }
     if (cutscene_.Active()) SkipCutscene(); // one at a time: the old one jumps to its end
     conversation_.End();
     talkingTo_ = entt::null;
@@ -1964,6 +2049,9 @@ bool GameSession::PlayCutscene(const std::string& id, const std::string& quest) 
     cameraFollow_ = entt::null;
     cameraGoal_.reset();
     cameraZoom_.reset();
+    cameraPanSeconds_ = cameraPanTime_ = 0.0f;
+    cutsceneHeard_.clear();
+    cutsceneWaited_ = 0.0;
     cutscene_.Start(std::move(*cutscene));
     Emit({"cutscene_started", entt::null, entt::null, 0.0, id});
     return true;
@@ -2001,19 +2089,55 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
         }
         return std::nullopt;
     };
+    // What a key couldn't do, for the log a test reads.
+    auto problem = [&](const std::string& what) {
+        if (cutsceneProblems_.size() < 64) {
+            cutsceneProblems_.push_back(cutscene_.Current().id + " at " + std::to_string(static_cast<int>(key.at)) + "s (" + track.type + " " +
+                                        key.op + "): " + what);
+        }
+    };
     if (track.type == "actor") {
         const auto entity = FindNamed(resolve(track.actor));
-        if (!entity) return;
+        if (!entity) {
+            problem("no one called " + track.actor + " here");
+            return;
+        }
         auto& world = registry_.get<WorldTransform2D>(*entity);
         if (key.op == "move" || key.op == "place") {
             const auto to = placeOf(d);
-            if (!to) return;
+            if (!to) {
+                problem("nowhere called " + d.value("marker", std::string("(x, y)")));
+                return;
+            }
             std::erase_if(cutsceneMoves_, [&](const CutsceneMove& m) { return m.entity == *entity; });
             if (key.op == "place" || due.skipping) {
                 world.x = to->first;
                 world.y = to->second;
             } else {
-                cutsceneMoves_.push_back({*entity, to->first, to->second, d.value("speed", 2.0f)});
+                CutsceneMove move{*entity, to->first, to->second, d.value("speed", 2.0f), {}};
+                // Round what's in the way (path: true): the cells between, by the grid as it stands.
+                if (d.value("path", false)) {
+                    const auto cells = FindPath([this](int gx, int gy) { return grid_.IsSolid(gx, gy); },
+                                                {static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))},
+                                                {static_cast<int>(std::floor(to->first)), static_cast<int>(std::floor(to->second))});
+                    if (cells && cells->size() > 2) {
+                        for (size_t i = 1; i + 1 < cells->size(); ++i) move.path.push_back({(*cells)[i].first + 0.5f, (*cells)[i].second + 0.5f});
+                    } else if (!cells) {
+                        problem("no way from where " + track.actor + " stands to " + d.value("marker", std::string("there")));
+                    }
+                }
+                // It takes as long as it says (seconds): the speed that walks the way in that time.
+                if (key.seconds > 0.0f) {
+                    float length = 0.0f, px = world.x, py = world.y;
+                    for (const auto& [x, y] : move.path) {
+                        length += std::hypot(x - px, y - py);
+                        px = x;
+                        py = y;
+                    }
+                    length += std::hypot(to->first - px, to->second - py);
+                    move.speed = std::max(0.1f, length / key.seconds);
+                }
+                cutsceneMoves_.push_back(std::move(move));
             }
         } else if (key.op == "face") {
             if (const auto to = placeOf(d)) {
@@ -2030,6 +2154,20 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
         } else if (key.op == "animate") {
             TriggerAnimation(registry_, *entity, d.value("trigger", "using"));
         }
+    } else if (track.type == "dialogue" && key.op == "talk") {
+        // Their conversation (the player choosing): the timeline waits for it to end (CutscenePlayer).
+        if (due.skipping) return;
+        const std::string with = resolve(d.value("with", ""));
+        const auto speaker = FindNamed(with);
+        const auto* talk = speaker ? registry_.try_get<Talk>(*speaker) : nullptr;
+        const std::string path = d.value("dialogue", talk ? talk->dialogue : std::string());
+        const Dialogue* dialogue = storyLibrary_ && !path.empty() ? storyLibrary_->FindDialogue(path) : nullptr;
+        if (!dialogue || conversation_.Active() || !conversation_.Start(*dialogue, story_, *storyLibrary_)) {
+            problem(!speaker ? "no one called " + with + " here" : !dialogue ? with + " has no conversation" : "the conversation didn't start");
+            cutscene_.Continue();
+            return;
+        }
+        talkingTo_ = *speaker;
     } else if (track.type == "dialogue") {
         if (due.skipping) return;
         const std::string speaker = resolve(d.value("speaker", ""));
@@ -2045,7 +2183,18 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
             cameraGoal_.reset();
         } else if (key.op == "move") {
             cameraGoal_ = placeOf(d);
+            if (!cameraGoal_) problem("nowhere called " + d.value("marker", std::string("(x, y)")));
             cameraFollow_ = entt::null;
+            // A pan that takes its seconds, from where the camera looks now.
+            cameraPanSeconds_ = due.skipping ? 0.0f : key.seconds;
+            cameraPanTime_ = 0.0f;
+            if (registry_.valid(cameraFocus_)) {
+                const auto& f = registry_.get<WorldTransform2D>(cameraFocus_);
+                cameraFrom_ = {f.x, f.y};
+            } else if (const auto player = FindPlayer(registry_)) {
+                const auto& f = registry_.get<WorldTransform2D>(*player);
+                cameraFrom_ = {f.x, f.y};
+            }
         } else if (key.op == "zoom") {
             cameraZoom_ = d.value("value", 1.0f);
         } else if (key.op == "shake" && !due.skipping) {
@@ -2076,11 +2225,119 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
             story_.Apply(StoryEffectsFromJson(d.value("do", nlohmann::json::array())), *storyLibrary_);
         } else if (key.op == "emit") {
             Emit({d.value("event", ""), entt::null, entt::null, d.value("amount", 0.0), d.value("text", "")});
+        } else if (key.op == "wait_until") {
+            cutsceneWaited_ = 0.0;
         }
     }
 }
 
+void GameSession::StepAmbient(float dt) {
+    if (ambient_.Active()) ambient_.Update(dt, [this](const CutscenePlayer::Due& due) { FireAmbientKey(due); });
+    const bool ended = !ambient_.Active();
+    for (auto it = ambientMoves_.begin(); it != ambientMoves_.end();) {
+        auto* world = registry_.valid(it->entity) ? registry_.try_get<WorldTransform2D>(it->entity) : nullptr;
+        if (world == nullptr) {
+            it = ambientMoves_.erase(it);
+            continue;
+        }
+        const bool onTheWay = !it->path.empty() && !ended;
+        const float gx = onTheWay ? it->path.front().first : it->x, gy = onTheWay ? it->path.front().second : it->y;
+        const float dx = gx - world->x, dy = gy - world->y, distance = std::sqrt(dx * dx + dy * dy);
+        const float step = it->speed * dt;
+        if (onTheWay && distance <= step) {
+            world->x = gx, world->y = gy;
+            it->path.erase(it->path.begin());
+            continue;
+        }
+        if (ended || distance <= step || distance < 0.001f) {
+            if (!ended) world->x = it->x, world->y = it->y; // over: they stay where they got to (their routine goes on from there)
+            it = ambientMoves_.erase(it);
+            continue;
+        }
+        world->x += dx / distance * step;
+        world->y += dy / distance * step;
+        registry_.emplace_or_replace<Facing>(it->entity, dx / distance, dy / distance);
+        ++it;
+    }
+    if (ended && !ambientHeld_.empty()) {
+        // Over: everyone back to their packages.
+        for (Entity e : ambientHeld_) {
+            if (registry_.valid(e)) registry_.remove<SceneHeld>(e);
+        }
+        ambientHeld_.clear();
+        Emit({"small_scene_ended", entt::null, entt::null, 0.0, ambient_.Current().id});
+    }
+}
+
+void GameSession::FireAmbientKey(const CutscenePlayer::Due& due) {
+    // A small scene's keys: its people walk, turn, show or hide, play a clip; its lines are said over their heads; its
+    // story effects run. Camera, screen and audio keys are the player's: skipped.
+    const CutsceneTrack& track = *due.track;
+    const CutsceneKey& key = *due.key;
+    const nlohmann::json& d = key.data;
+    auto placeOf = [&](const nlohmann::json& data) -> std::optional<std::pair<float, float>> {
+        if (data.contains("marker")) return MarkerPosition(data.value("marker", ""));
+        if (data.contains("x") && data.contains("y")) return std::pair{data.value("x", 0.0f), data.value("y", 0.0f)};
+        const std::string who = data.value("actor", data.value("target", std::string()));
+        if (who == "player") {
+            if (const auto p = FindPlayer(registry_)) return std::pair{registry_.get<WorldTransform2D>(*p).x, registry_.get<WorldTransform2D>(*p).y};
+        }
+        if (const auto e = who.empty() ? std::nullopt : FindNamed(who)) {
+            const auto& w = registry_.get<WorldTransform2D>(*e);
+            return std::pair{w.x, w.y};
+        }
+        return std::nullopt;
+    };
+    if (track.type == "actor") {
+        const auto entity = FindNamed(track.actor);
+        if (!entity) return;
+        auto& world = registry_.get<WorldTransform2D>(*entity);
+        if (key.op == "move" || key.op == "place") {
+            const auto to = placeOf(d);
+            if (!to) return;
+            std::erase_if(ambientMoves_, [&](const CutsceneMove& m) { return m.entity == *entity; });
+            if (key.op == "place" || due.skipping) {
+                world.x = to->first, world.y = to->second;
+                return;
+            }
+            CutsceneMove move{*entity, to->first, to->second, d.value("speed", 1.6f), {}};
+            const auto cells = FindPath([this](int gx, int gy) { return grid_.IsSolid(gx, gy); },
+                                        {static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))},
+                                        {static_cast<int>(std::floor(to->first)), static_cast<int>(std::floor(to->second))});
+            if (cells && cells->size() > 2) {
+                for (size_t i = 1; i + 1 < cells->size(); ++i) move.path.push_back({(*cells)[i].first + 0.5f, (*cells)[i].second + 0.5f});
+            }
+            // Short of the spot itself when it's someone or something (beside them, not on them).
+            if (!d.contains("marker") && !d.contains("x")) {
+                const float dx = move.x - world.x, dy = move.y - world.y, l = std::hypot(dx, dy);
+                if (l > 1.0f) move.x -= dx / l * 0.9f, move.y -= dy / l * 0.9f;
+            }
+            ambientMoves_.push_back(std::move(move));
+        } else if (key.op == "face") {
+            if (const auto to = placeOf(d)) {
+                const float dx = to->first - world.x, dy = to->second - world.y, l = std::max(0.001f, std::hypot(dx, dy));
+                registry_.emplace_or_replace<Facing>(*entity, dx / l, dy / l);
+            }
+        } else if (key.op == "play" || key.op == "animate") {
+            const std::string clip = d.value("clip", std::string());
+            if (!clip.empty() && !due.skipping) TriggerAnimation(registry_, *entity, clip);
+        } else if (key.op == "show" || key.op == "hide") {
+            if (auto* sprite = registry_.try_get<Sprite>(*entity)) sprite->a = key.op == "show" ? 1.0f : 0.0f;
+        }
+    } else if (track.type == "dialogue") {
+        if (due.skipping) return;
+        const std::string speaker = d.value("speaker", track.actor);
+        const auto entity = speaker.empty() ? std::nullopt : FindNamed(speaker);
+        ShowBark(entity ? *entity : Entity{entt::null}, d.value("text", std::string()));
+    } else if (track.type == "logic" && key.op == "do") {
+        RunEffects(d.value("do", nlohmann::json::array()).dump(), entt::null);
+    } else if (track.type == "logic" && key.op == "emit") {
+        Emit({d.value("event", std::string()), entt::null, entt::null, 0.0, ""});
+    }
+}
+
 void GameSession::StepCutscene(float dt) {
+    StepAmbient(dt);
     if (cutscene_.Active()) {
         if (input_.Pressed("skip")) {
             if (cutscene_.WaitingForInput()) cutscene_.Continue();
@@ -2088,6 +2345,19 @@ void GameSession::StepCutscene(float dt) {
                 SkipCutscene();
                 return;
             }
+        }
+        // What a wait holds for: a conversation over (talk; wait_until {talk}), everyone at their mark ({moves}), an event
+        // heard or a flag set since; at most its max seconds (30 when it doesn't say).
+        if (const CutsceneKey* wait = cutscene_.WaitKey(); wait && wait->op != "wait_input") {
+            const nlohmann::json until = wait->op == "talk" ? nlohmann::json{{"talk", true}} : wait->data.value("until", nlohmann::json::object());
+            bool met = true;
+            if (until.value("talk", false)) met = met && !conversation_.Active();
+            if (until.value("moves", false)) met = met && cutsceneMoves_.empty();
+            if (until.contains("event")) met = met && cutsceneHeard_.contains(until.value("event", ""));
+            if (until.contains("flag")) met = met && story_.Flag(until.value("flag", ""));
+            cutsceneWaited_ += dt;
+            const double most = wait->data.value("max", wait->op == "talk" ? 600.0 : 30.0);
+            if (met || cutsceneWaited_ >= most) cutscene_.Continue();
         }
         cutscene_.Update(dt, [this](const CutscenePlayer::Due& due) { FireCutsceneKey(due); });
     }
@@ -2099,8 +2369,17 @@ void GameSession::StepCutscene(float dt) {
             it = cutsceneMoves_.erase(it);
             continue;
         }
-        const float dx = it->x - world->x, dy = it->y - world->y, distance = std::sqrt(dx * dx + dy * dy);
+        // Toward its next cell on the way, else its mark.
+        const bool onTheWay = !it->path.empty() && !ended;
+        const float gx = onTheWay ? it->path.front().first : it->x, gy = onTheWay ? it->path.front().second : it->y;
+        const float dx = gx - world->x, dy = gy - world->y, distance = std::sqrt(dx * dx + dy * dy);
         const float step = it->speed * dt;
+        if (onTheWay && distance <= step) {
+            world->x = gx;
+            world->y = gy;
+            it->path.erase(it->path.begin());
+            continue;
+        }
         if (ended || distance <= step || distance < 0.001f) {
             world->x = it->x;
             world->y = it->y;
@@ -2122,9 +2401,17 @@ void GameSession::StepCutscene(float dt) {
             registry_.emplace<ScreenTransform2D>(cameraFocus_);
         }
         auto& focus = registry_.get<WorldTransform2D>(cameraFocus_);
-        const float t = 1.0f - std::exp(-3.0f * dt);
-        focus.x += (cameraGoal_->first - focus.x) * t;
-        focus.y += (cameraGoal_->second - focus.y) * t;
+        if (cameraPanSeconds_ > 0.0f) {
+            // A pan of set length, eased in and out.
+            cameraPanTime_ = std::min(cameraPanSeconds_, cameraPanTime_ + dt);
+            const float u = cameraPanTime_ / cameraPanSeconds_, e = u * u * (3.0f - 2.0f * u);
+            focus.x = cameraFrom_.first + (cameraGoal_->first - cameraFrom_.first) * e;
+            focus.y = cameraFrom_.second + (cameraGoal_->second - cameraFrom_.second) * e;
+        } else {
+            const float t = 1.0f - std::exp(-3.0f * dt);
+            focus.x += (cameraGoal_->first - focus.x) * t;
+            focus.y += (cameraGoal_->second - focus.y) * t;
+        }
     }
     if (fade_ != fadeTarget_) {
         const float step = fadeRate_ * dt;
@@ -2160,38 +2447,54 @@ std::optional<Entity> GameSession::CameraTarget() {
     return FindPlayer(registry_);
 }
 
-std::optional<std::pair<float, float>> GameSession::ObjectiveLocation() {
-    if (storyLibrary_ == nullptr) return std::nullopt;
+std::vector<GameSession::ObjectivePlace> GameSession::ObjectiveLocations() {
+    std::vector<ObjectivePlace> out;
+    if (storyLibrary_ == nullptr) return out;
     for (const auto& id : story_.StartedOrder()) {
         const Quest* quest = storyLibrary_->FindQuest(id);
         const auto open = story_.OpenObjectives(id, *storyLibrary_);
         if (quest == nullptr || open.empty()) continue;
-        const QuestObjective* objective = open.front();
+        // The stage's open objectives that hold it back (the optional ones only when there are no others).
+        std::vector<const QuestObjective*> shown;
         for (const QuestObjective* o : open) {
-            if (!o->optional) {
-                objective = o;
-                break;
+            if (!o->optional) shown.push_back(o);
+        }
+        if (shown.empty()) shown = open;
+        for (const QuestObjective* objective : shown) {
+            if (!objective->scene.empty() && objective->scene != scene_) continue; // elsewhere
+            const std::string target = quest->Resolve(objective->target);
+            std::optional<std::pair<float, float>> at;
+            std::string name = target;
+            if (objective->type == "reach") {
+                at = MarkerPosition(target);
+            } else if (objective->type == "escort") {
+                at = MarkerPosition(quest->Resolve(objective->to)); // bring them to the marker once they're with you
+            } else if (auto entity = FindNamed(target)) {
+                const auto& w = registry_.get<WorldTransform2D>(*entity);
+                at = std::pair{w.x, w.y};
+                if (const auto* n = registry_.try_get<Name>(*entity); n && !n->value.empty()) name = n->value;
+            } else if (objective->type == "collect") {
+                for (auto [entity, pickup, w] : registry_.view<ItemPickup, WorldTransform2D>().each()) {
+                    if (!at && pickup.item == target) at = std::pair{w.x, w.y};
+                }
             }
+            if (at) out.push_back({at->first, at->second, name});
         }
-        if (!objective->scene.empty() && objective->scene != scene_) return std::nullopt; // elsewhere
-        const std::string target = quest->Resolve(objective->target);
-        if (objective->type == "reach") return MarkerPosition(target);
-        if (objective->type == "escort") {
-            // Bring them to the marker once they're with you.
-            return MarkerPosition(quest->Resolve(objective->to));
-        }
-        if (auto entity = FindNamed(target)) {
-            const auto& w = registry_.get<WorldTransform2D>(*entity);
-            return std::pair{w.x, w.y};
-        }
-        if (objective->type == "collect") {
-            for (auto [entity, pickup, w] : registry_.view<ItemPickup, WorldTransform2D>().each()) {
-                if (pickup.item == target) return std::pair{w.x, w.y};
-            }
-        }
-        return std::nullopt;
+        return out; // the first quest with something open (the one shown)
     }
-    return std::nullopt;
+    return out;
+}
+
+std::optional<std::pair<float, float>> GameSession::ObjectiveLocation() {
+    const auto all = ObjectiveLocations();
+    if (all.empty()) return std::nullopt;
+    const auto player = FindPlayer(registry_);
+    const auto* at = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+    const ObjectivePlace* best = &all.front();
+    for (const auto& p : all) {
+        if (at && std::hypot(p.x - at->x, p.y - at->y) < std::hypot(best->x - at->x, best->y - at->y)) best = &p;
+    }
+    return std::pair{best->x, best->y};
 }
 
 // --- Abilities and magic (development_plan.md 19) --------------------------------------
@@ -2277,7 +2580,7 @@ void GameSession::StepMagic(float dt, size_t firstEvent) {
                 if (e != *player && std::hypot(w.x - at.x, w.y - at.y) < 12.0f) casters.push_back(e);
             }
             for (Entity e : casters) {
-                if (AreHostile(registry_, e, *player)) magic_->ThinkFor(e, *player);
+                if (WouldAttack(registry_, e, *player)) magic_->ThinkFor(e, *player);
                 else magic_->ThinkFor(e, entt::null); // allies heal and buff themselves
             }
         }
@@ -2548,7 +2851,7 @@ void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool first
     if (player && !registry_.all_of<Dead>(*player)) {
         const auto target = registry_.get<WorldTransform2D>(*player);
         for (auto [entity, ranged, world] : registry_.view<RangedAttack, WorldTransform2D>(entt::exclude<Dead>).each()) {
-            if (entity == *player || ranged.cooldownRemaining > 0.0f || !AreHostile(registry_, entity, *player)) continue;
+            if (entity == *player || ranged.cooldownRemaining > 0.0f || !WouldAttack(registry_, entity, *player)) continue;
             const float dx = target.x - world.x, dy = target.y - world.y;
             const float distance = std::sqrt(dx * dx + dy * dy);
             if (distance > ranged.range * 0.9f || distance < 0.3f) continue;
@@ -3002,6 +3305,100 @@ bool GameSession::ConditionsHold(const std::string& conditions) const {
     return list.is_array() && story_.Holds(StoryConditionsFromJson(list));
 }
 
+void GameSession::ApplyActorState(Entity entity, bool hidden, const std::string& team) {
+    if (!registry_.valid(entity)) return;
+    if (hidden) {
+        if (auto* sprite = registry_.try_get<Sprite>(entity); sprite && !registry_.all_of<Sleeping>(entity)) {
+            registry_.emplace<Sleeping>(entity, sprite->a);
+            sprite->a = 0.0f;
+        }
+    } else if (const auto* sleeping = registry_.try_get<Sleeping>(entity)) {
+        if (auto* sprite = registry_.try_get<Sprite>(entity)) sprite->a = sleeping->alpha;
+        registry_.remove<Sleeping>(entity);
+    }
+    if (team == "Enemy") {
+        registry_.emplace_or_replace<Faction>(entity, Team::Enemy);
+        registry_.get_or_emplace<Hurtbox>(entity);
+        if (!registry_.all_of<Health>(entity)) registry_.emplace<Health>(entity, 10.0f, 10.0f);
+        if (!registry_.all_of<MeleeAttack>(entity)) registry_.emplace<MeleeAttack>(entity, 2.0f, 0.7f, 0.45f, 1.2f, 0.3f);
+        if (!registry_.all_of<Collider2D>(entity)) registry_.emplace<Collider2D>(entity, 0.3f, 0.3f);
+        if (!registry_.all_of<Follow>(entity)) registry_.emplace<Follow>(entity, Entity{entt::null}, 2.0f, 0.8f, 6.0f);
+        if (auto* b = registry_.try_get<Behaviour>(entity)) b->aggression = Aggression::Aggressive;
+        registry_.remove<Talk>(entity);
+    } else if (team == "Neutral") {
+        registry_.emplace_or_replace<Faction>(entity, Team::Neutral);
+        registry_.remove<Follow>(entity);
+        if (auto* b = registry_.try_get<Behaviour>(entity)) b->aggression = Aggression::Peaceful;
+    }
+}
+
+bool GameSession::CharacterEffect(const StoryEffect& e) {
+    static const std::set<std::string> ops = {"move_actor", "hide_actor", "show_actor", "set_hostile", "set_friendly",
+                                              "follow_player", "stop_following", "spawn", "give_to"};
+    if (!ops.contains(e.op)) return false;
+    const nlohmann::json args = e.args.is_object() ? e.args : nlohmann::json::object();
+    // Whom: by name or Actor key, else the one the effect runs on.
+    Entity who = effectSelf_;
+    if (!e.who.empty()) who = EntityNamed(e.who).value_or(Entity{entt::null});
+    std::string key = e.who;
+    if (registry_.valid(who)) {
+        if (const auto* actor = registry_.try_get<Actor>(who); actor && !actor->key.empty()) key = actor->key;
+    }
+    const bool here = registry_.valid(who);
+    if (e.op == "spawn") {
+        // {prefab, marker, count}: made around the marker (else the one it runs on).
+        const std::string prefab = args.value("prefab", std::string());
+        std::optional<std::pair<float, float>> at = MarkerPosition(args.value("marker", std::string()));
+        if (!at && here) {
+            if (const auto* w = registry_.try_get<WorldTransform2D>(who)) at = std::pair{w->x, w->y};
+        }
+        if (prefab.empty() || !at) return true;
+        const int count = std::clamp(args.value("count", 1), 1, 20);
+        for (int i = 0; i < count; ++i) Spawn(prefab, at->first + 0.6f * static_cast<float>(i % 3), at->second + 0.6f * static_cast<float>(i / 3));
+        return true;
+    }
+    if (e.op == "give_to") {
+        // {who, item, count}: into its inventory (a letter given to the captain).
+        if (here) AddItem(registry_.get_or_emplace<Inventory>(who), args.value("item", e.name), std::max(1, args.value("count", 1)));
+        return true;
+    }
+    if (e.op == "follow_player" || e.op == "stop_following") {
+        if (!here) return true;
+        if (e.op == "follow_player") {
+            const auto player = FindPlayer(registry_);
+            registry_.emplace_or_replace<Follow>(who, player ? *player : Entity{entt::null}, 2.6f, 1.2f, 0.0f);
+        } else if (const auto* f = registry_.try_get<Follow>(who); f && !(registry_.all_of<Faction>(who) && registry_.get<Faction>(who).team == Team::Enemy)) {
+            registry_.remove<Follow>(who);
+        }
+        return true;
+    }
+    if (e.op == "move_actor") {
+        // {who, scene, marker}: here, it walks... (it's placed there); elsewhere, it leaves this scene for that one.
+        const std::string scene = args.value("scene", std::string()), marker = args.value("marker", std::string());
+        if (scene.empty() || scene == scene_) {
+            if (here) {
+                if (const auto at = MarkerPosition(marker)) {
+                    auto& w = registry_.get<WorldTransform2D>(who);
+                    w.x = at->first, w.y = at->second;
+                }
+            }
+        } else if (here) {
+            registry_.destroy(who); // gone from here: the roster makes it there
+        }
+        if (actorHook_ && !key.empty()) actorHook_(e.op, key, args);
+        return true;
+    }
+    // hide_actor, show_actor, set_hostile, set_friendly.
+    const bool hide = e.op == "hide_actor";
+    const std::string team = e.op == "set_hostile" ? "Enemy" : e.op == "set_friendly" ? "Neutral" : "";
+    if (here) {
+        if (e.op == "hide_actor" || e.op == "show_actor") ApplyActorState(who, hide, "");
+        else ApplyActorState(who, registry_.all_of<Sleeping>(who), team);
+    }
+    if (actorHook_ && !key.empty()) actorHook_(e.op, key, args);
+    return true;
+}
+
 void GameSession::RunEffects(const std::string& effects, Entity self) {
     if (effects.empty()) return;
     const nlohmann::json list = nlohmann::json::parse(effects, nullptr, false);
@@ -3023,6 +3420,30 @@ std::optional<Entity> GameSession::EntityNamed(const std::string& name) const {
     return std::nullopt;
 }
 
+bool GameSession::EventIsAbout(const ScriptEvent& event, Entity self, const nlohmann::json& about) const {
+    // "self", a name, a character's key, or a list of them: the event's entity (or its text) is one.
+    std::vector<std::string> names;
+    if (about.is_string()) names.push_back(about.get<std::string>());
+    for (const auto& a : about.is_array() ? about : nlohmann::json::array()) {
+        if (a.is_string()) names.push_back(a.get<std::string>());
+    }
+    auto same = [](std::string a, std::string b) {
+        for (auto* s : {&a, &b}) {
+            for (auto& c : *s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return a == b;
+    };
+    for (const auto& name : names) {
+        if (name == "self" && event.entity == self) return true;
+        if (!event.text.empty() && same(event.text, name)) return true;
+        if (!registry_.valid(event.entity)) continue;
+        if (const auto* n = registry_.try_get<Name>(event.entity); n && same(n->value, name)) return true;
+        if (const auto* a = registry_.try_get<Actor>(event.entity); a && same(a->key, name)) return true;
+        if (const auto* t = registry_.try_get<Talk>(event.entity); t && same(t->character, name)) return true;
+    }
+    return false;
+}
+
 void GameSession::RunResponses(const ScriptEvent& event) {
     const auto player = FindPlayer(registry_);
     std::vector<Entity> people;
@@ -3035,6 +3456,7 @@ void GameSession::RunResponses(const ScriptEvent& event) {
         for (const auto& rule : rules) {
             ++index;
             if (!rule.is_object() || rule.value("event", std::string()) != event.name) continue;
+            if (rule.contains("about") && !EventIsAbout(event, entity, rule["about"])) continue;
             const auto& fired = registry_.get<Responses>(entity).fired;
             if (rule.value("once", false) && std::find(fired.begin(), fired.end(), index) != fired.end()) continue;
             if (const float range = rule.value("range", 0.0f); range > 0.0f) {
@@ -3206,6 +3628,9 @@ void GameSession::StepHeldItem() {
     const auto click = requestedHeld_;
     requestedHeld_.reset();
     if (const auto* inventory = registry_.try_get<Inventory>(*player); !held_.empty() && (!inventory || CountItem(*inventory, held_) <= 0)) held_.clear();
+    // Drawn in its hand (the attachments show it at the hand point).
+    if (held_.empty()) registry_.remove<InHand>(*player);
+    else if (const auto* hand = registry_.try_get<InHand>(*player); !hand || hand->item != held_) registry_.emplace_or_replace<InHand>(*player, held_);
     if (held_.empty()) return;
     input_.Swallow("attack"); // a click is for the item in hand
     if (input_.Pressed("put_back")) {
@@ -3397,11 +3822,17 @@ void GameSession::StepActions(float dt) {
     // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
     if (player) {
         auto somethingNear = [&](const std::string& name) { return ActionTargetDistance(name) < 1e8f; };
+        std::set<std::string> screensDone; // several actions on one key (menu, close-...): its screen toggled once
         for (const auto& a : ActiveInputMap().actions) {
             if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty() && a.screen.empty()) || !input_.Pressed(a.name)) continue;
             if (a.nearOnly && !somethingNear(a.name)) continue;
             if (!InputMap::Defaults().Find(a.name)) Emit({"action:" + a.name, *player, Entity{entt::null}, 0.0, a.name}); // the project's own: characters can respond
-            if (!a.screen.empty()) OpenPanel(a.screen);
+            if (!a.screen.empty() && screensDone.insert(a.screen).second) {
+                // Its screen open: the same key closes it. The menu's key (its screen the pause menu) closes the
+                // screen that's open first; else it opens.
+                if (screenHook_ && screenHook_(a.screen, -1)) screenHook_(a.screen, 0);
+                else if (!(a.screen == "pause" && screenHook_ && screenHook_("", -2))) OpenPanel(a.screen);
+            }
             // Its clip: unless a part with it as its input action is near (the part plays the player's clip, its own or
             // this one, as it says: once or on and on, held still or not).
             if (!a.plays.empty() && ActionTargetDistance(a.name, true) >= 1e8f) TriggerAnimation(registry_, *player, a.plays);
@@ -3435,12 +3866,14 @@ void GameSession::StepActions(float dt) {
                 due.push_back({Entity{entt::null}, entity});
                 state.age = 0.0f; // again after as long (unless once)
             }
-        } else if (action.trigger == "near") {
-            // Someone (anyone moving) within range: it happens as the first comes; its away clip once they've all gone.
+        } else if (action.trigger == "near" || action.trigger == "player-near") {
+            // Someone (anyone moving; player-near: the player alone) within range: it happens as the first comes; its away
+            // clip once they've all gone.
             bool someone = false;
             Entity who{entt::null};
             if (world) {
                 for (const Mover& m : movers) {
+                    if (action.trigger == "player-near" && !(player && m.entity == *player)) continue;
                     if (m.entity != entity && std::hypot(m.x - world->x, m.y - world->y) <= action.range) {
                         someone = true;
                         who = m.entity;
@@ -3940,7 +4373,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         clockMinutes_ = ActiveSettings().time.startHour * 60.0;
     }
     // Input actions (12.3): once per frame, in the context of what's on screen.
-    input_.SetContext(cutscene_.Active() ? "cutscene" : conversation_.Active() ? "dialogue" : "gameplay");
+    input_.SetContext(conversation_.Active() ? "dialogue" : cutscene_.Active() ? "cutscene" : "gameplay");
     input_.Update(ActiveInputMap(), isKeyDown, axisQuery_);
     ResolveActionGroups();
     StepHeldItem();
@@ -3962,7 +4395,10 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         accumulator_ = std::fmod(accumulator_, kFixedDt);
         return 0;
     }
-    if (cutscene_.Active()) {
+    if (cutscene_.Active() && !CutsceneHoldsWorld()) {
+        // A cutscene the world goes on around ("world": "runs"): its timeline, then the world's steps.
+        StepCutscene(static_cast<float>(std::min(frameSeconds, 0.25)));
+    } else if (cutscene_.Active()) {
         // A cutscene runs instead of the world (15.5); its actors still animate.
         StepFx(static_cast<float>(std::min(frameSeconds, 0.25)));
         StepCutscene(static_cast<float>(std::min(frameSeconds, 0.25)));
@@ -3998,7 +4434,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     int steps = 0;
     bool firstStep = true; // this frame's presses act once
     size_t soundsPlayed = 0;
-    while (accumulator_ >= kFixedDt && !cutscene_.Active()) { // a cutscene started mid-frame takes over
+    while (accumulator_ >= kFixedDt && !CutsceneHoldsWorld()) { // a cutscene started mid-frame takes over
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
             if (const auto* controller = registry_.try_get<CharacterController2D>(*player); controller && controller->mode == 1) {
@@ -4164,7 +4600,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
                       events_.end());
     }
     ShowNotices();
-    if (cutscene_.Active()) accumulator_ = std::fmod(accumulator_, kFixedDt);
+    if (CutsceneHoldsWorld()) accumulator_ = std::fmod(accumulator_, kFixedDt);
     return steps;
 }
 

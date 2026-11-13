@@ -11,6 +11,8 @@
 #include "records/Records.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <set>
 #include <cmath>
 
 namespace aige {
@@ -83,8 +85,10 @@ void PlayWindows::OpenJournal(Entity player, const StoryState& story, const Stor
         const auto state = story.Quest(*it).state;
         JournalQuest entry;
         entry.label = Tr("quest/" + quest->id + "/name", quest->name);
-        if (state == StoryState::QuestState::Completed) entry.label += " (" + Tr("journal.done", "done") + ")";
-        if (state == StoryState::QuestState::Failed) entry.label += " (" + Tr("journal.failed", "failed") + ")";
+        entry.group = state == StoryState::QuestState::Active ? Tr("journal.active", "Active") : Tr("journal.finished", "Finished");
+        entry.detail = state == StoryState::QuestState::Completed ? Tr("journal.done", "done")
+                       : state == StoryState::QuestState::Failed  ? Tr("journal.failed", "failed")
+                                                                  : std::string();
         std::string body;
         if (!quest->description.empty()) body = Tr("quest/" + quest->id + "/description", quest->description) + "\n";
         for (const auto& line : story.Journal()) {
@@ -115,6 +119,102 @@ void PlayWindows::OpenAchievements(Entity player, const nlohmann::json& view) {
     achievementPoints_ = std::to_string(view.value("earned", 0)) + " / " + std::to_string(view.value("points", 0));
 }
 
+// Every action the player has and its keys (32.7): the gameplay ones first, then the rest by context.
+void PlayWindows::OpenControls(Entity player, const InputMap& map) {
+    kind_ = Kind::Controls;
+    player_ = player;
+    highlighted_ = 0;
+    journal_.clear();
+    for (const char* context : {"gameplay", "any", "dialogue", "menu", "cutscene"}) {
+        for (const auto& a : map.actions) {
+            if (a.context != context || a.name.rfind("debug_", 0) == 0 || a.name.rfind("choice_", 0) == 0) continue;
+            std::string keys;
+            for (const auto& k : a.keys) {
+                const std::string name = KeyName(k.key);
+                if (name.rfind("Pad", 0) == 0) continue;
+                keys += (keys.empty() ? "" : " / ") + (name.rfind("Num", 0) == 0 && name.size() == 4 ? name.substr(3) : name);
+            }
+            if (keys.empty()) continue;
+            std::string label = a.name;
+            std::replace(label.begin(), label.end(), '_', ' ');
+            std::string group = context;
+            group[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(group[0])));
+            journal_.push_back({label, a.description, keys, Tr("controls." + std::string(context), group)});
+        }
+    }
+}
+
+// The character's numbers (32.7): level, attributes, resistances and what it wears.
+void PlayWindows::OpenCharacter(Registry& registry, Entity player) {
+    kind_ = Kind::Character;
+    player_ = player;
+    highlighted_ = 0;
+    journal_.clear();
+    const std::string attributes = Tr("character.attributes", "Attributes"), resist = Tr("character.resistances", "Resistances"),
+                      worn = Tr("character.worn", "Worn");
+    if (const auto* p = registry.try_get<Progression>(player)) {
+        journal_.push_back({Tr("inventory.level", "Level"),
+                            std::to_string(static_cast<int>(p->experience)) + " / " + std::to_string(static_cast<int>(ExperienceForLevel(p->level))) +
+                                " " + Tr("character.xp", "experience"),
+                            std::to_string(p->level), attributes});
+    }
+    for (const auto& name : AttributeNames()) {
+        const float v = EffectiveAttribute(registry, player, name);
+        const bool resistance = name.rfind("resist", 0) == 0;
+        if (v == 0.0f && resistance) continue;
+        char value[32];
+        if (resistance) std::snprintf(value, sizeof(value), "%d%%", static_cast<int>(std::round(v * 100)));
+        else std::snprintf(value, sizeof(value), "%g", std::round(v * 10.0f) / 10.0f);
+        journal_.push_back({Tr("attribute." + name, resistance ? name.substr(6) : name), "", value, resistance ? resist : attributes});
+    }
+    if (const auto* equipment = registry.try_get<Equipment>(player)) {
+        auto copy = *equipment;
+        for (const auto& slot : EquipmentSlots()) {
+            const std::string* item = EquipmentSlot(copy, slot);
+            if (item && !item->empty()) {
+                const nlohmann::json* record = Item(*item);
+                journal_.push_back({ItemName(*item), record ? record->value("description", "") : "", Tr("slot." + slot, slot), worn});
+            }
+        }
+    }
+}
+
+std::string PlayWindows::Screen() const {
+    switch (kind_) {
+        case Kind::Inventory:
+        case Kind::Crafting: return "inventory";
+        case Kind::Shop: return "shop";
+        case Kind::Journal:
+        case Kind::Achievements: return "journal";
+        case Kind::Spellbook: return "spellbook";
+        case Kind::Map: return "map";
+        case Kind::Character: return "character";
+        case Kind::Controls: return "controls";
+        case Kind::None: break;
+    }
+    return {};
+}
+
+// The map (32.7): the scene's picture, where its ways lead, and what to do now.
+void PlayWindows::OpenMap(Registry& registry, Entity player, const std::string& image, const std::string& objective) {
+    kind_ = Kind::Map;
+    player_ = player;
+    highlighted_ = 0;
+    journal_.clear();
+    mapImage_ = image;
+    mapMarker_ = {-1.0f, -1.0f};
+    if (!objective.empty()) journal_.push_back({objective, Tr("map.objective", "What to do now."), "", Tr("map.now", "Now")});
+    std::set<std::string> seen;
+    for (auto [e, gateway] : registry.view<Gateway>().each()) {
+        std::string place = std::filesystem::path(gateway.scene).stem().string();
+        if (place.empty() || !seen.insert(place).second) continue;
+        std::replace(place.begin(), place.end(), '-', ' ');
+        if (!place.empty()) place[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(place[0])));
+        journal_.push_back({place, Tr("map.wayTo", "A way leads there from here."), "", Tr("map.ways", "Ways out")});
+    }
+    if (journal_.empty()) journal_.push_back({Tr("map.nothing", "Nothing marked here"), "", "", ""});
+}
+
 void PlayWindows::OpenSpellbook(Entity player) {
     kind_ = Kind::Spellbook;
     player_ = player;
@@ -142,8 +242,10 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
         lines.push_back({"close", Tr("menu.close", "Close")});
         return lines;
     }
-    if (kind_ == Kind::Journal || kind_ == Kind::Achievements) {
-        for (size_t i = 0; i < journal_.size(); ++i) lines.push_back({"quest:" + std::to_string(i), journal_[i].label});
+    if (kind_ == Kind::Journal || kind_ == Kind::Achievements || kind_ == Kind::Controls || kind_ == Kind::Character || kind_ == Kind::Map) {
+        for (size_t i = 0; i < journal_.size(); ++i) {
+            lines.push_back({"quest:" + std::to_string(i), journal_[i].label, true, "", journal_[i].detail, journal_[i].group});
+        }
         lines.push_back({"close", Tr("menu.close", "Close")});
         return lines;
     }
@@ -191,10 +293,13 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
                                                           : "";
                 // With an item in hand: this one combined with it. Nothing to do with it itself: taken in hand.
                 const bool does = Equippable(stack.item) || Usable(stack.item);
-                if (!held.empty()) lines.push_back({"combine:" + stack.item, Counted(stack.item, stack.count)});
-                else if (!does && session_) lines.push_back({"hold:" + stack.item, Counted(stack.item, stack.count)});
-                else lines.push_back({Equippable(stack.item) ? "equip:" + stack.item : "use:" + stack.item,
-                                      Counted(stack.item, stack.count) + hint, does});
+                const nlohmann::json* record = Item(stack.item);
+                const std::string icon = record ? record->value("icon", "") : "";
+                const std::string count = stack.count > 1 ? "x" + std::to_string(stack.count) : "";
+                if (!held.empty()) lines.push_back({"combine:" + stack.item, ItemName(stack.item), true, icon, count});
+                else if (!does && session_) lines.push_back({"hold:" + stack.item, ItemName(stack.item), true, icon, count});
+                else lines.push_back({Equippable(stack.item) ? "equip:" + stack.item : "use:" + stack.item, ItemName(stack.item) + hint, does,
+                                      icon, count});
             }
         }
     } else if (kind_ == Kind::Shop && registry.valid(merchant_)) {
@@ -203,18 +308,17 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
             const int gold = inventory ? inventory->gold : 0;
             for (const auto& stack : ParseItems(shop->items)) {
                 const int price = ItemPrice(stack.item, shop->buyRate);
-                lines.push_back({"buy:" + stack.item,
-                                 Tr("shop.buy", "Buy") + "  " + Counted(stack.item, stack.count) + "  " + std::to_string(price) + " " +
-                                     Tr("shop.gold", "gold"),
-                                 gold >= price});
+                const nlohmann::json* record = Item(stack.item);
+                lines.push_back({"buy:" + stack.item, Counted(stack.item, stack.count), gold >= price, record ? record->value("icon", "") : "",
+                                 std::to_string(price) + " " + Tr("shop.gold", "gold"), Tr("shop.buy", "Buy")});
             }
             if (inventory) {
                 for (const auto& stack : ParseItems(inventory->items)) {
                     const int price = std::max(1, ItemPrice(stack.item, shop->sellRate));
-                    lines.push_back({"sell:" + stack.item,
-                                     Tr("shop.sell", "Sell") + "  " + Counted(stack.item, stack.count) + "  " +
-                                         std::to_string(price) + " " + Tr("shop.gold", "gold"),
-                                     shop->gold >= price});
+                    const nlohmann::json* record = Item(stack.item);
+                    lines.push_back({"sell:" + stack.item, Counted(stack.item, stack.count), shop->gold >= price,
+                                     record ? record->value("icon", "") : "", std::to_string(price) + " " + Tr("shop.gold", "gold"),
+                                     Tr("shop.sell", "Sell")});
                 }
             }
         }
@@ -341,10 +445,13 @@ void PlayWindows::OpenAsked(Registry& registry, GameSession& session, Entity pla
     if (session.Input().Pressed("inventory")) OpenInventory(player);
     if (session.Input().Pressed("spellbook")) OpenSpellbook(player);
     if (session.Input().Pressed("crafting")) OpenCrafting(player, "");
+    if (session.Input().Pressed("character")) OpenCharacter(registry, player);
     if (const auto panel = session.TakePanelRequest()) {
         if (*panel == "inventory") OpenInventory(player);
         else if (*panel == "spellbook") OpenSpellbook(player);
         else if (*panel == "journal" && session.StoryLibraryInUse()) OpenJournal(player, session.Story(), *session.StoryLibraryInUse());
+        else if (*panel == "character") OpenCharacter(registry, player);
+        else if (*panel == "controls") OpenControls(player, ActiveInputMap());
         else if (panel->rfind("crafting", 0) == 0) OpenCrafting(player, panel->size() > 9 ? panel->substr(9) : std::string());
     }
     (void)registry;
@@ -359,7 +466,8 @@ void PlayWindows::HandleInput(Registry& registry, const InputState& input) {
     if (input.Pressed("ui_select")) Choose(registry, highlighted_);
     else if (input.Pressed("ui_context")) OpenItemMenu(registry, highlighted_);
     else if (!itemMenu_.empty() && (input.Pressed("ui_back") || input.Pressed("menu"))) itemMenu_.clear(), highlighted_ = 0;
-    else if (input.Pressed("ui_back") || input.Pressed("menu") || input.Pressed("inventory") || input.Pressed("journal")) Close();
+    else if (input.Pressed("ui_back") || input.Pressed("menu") || input.Pressed("inventory") || input.Pressed("journal") ||
+             (kind_ == Kind::Character && input.Pressed("character")) || (kind_ == Kind::Map && input.Pressed("map"))) Close();
 }
 
 std::optional<MenuView> PlayWindows::View(Registry& registry) const {
@@ -391,6 +499,14 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
         view.body = journal_.empty() ? Tr("achievements.empty", "This game has no achievements.")
                     : highlighted_ < static_cast<int>(journal_.size()) ? journal_[highlighted_].body
                                                                        : std::string();
+    } else if (kind_ == Kind::Map) {
+        view.title = Tr("map.title", "Map");
+        view.image = mapImage_;
+        view.markerX = mapMarker_.first, view.markerY = mapMarker_.second;
+        view.body = highlighted_ < static_cast<int>(journal_.size()) ? journal_[highlighted_].body : std::string();
+    } else if (kind_ == Kind::Controls || kind_ == Kind::Character) {
+        view.title = kind_ == Kind::Controls ? Tr("controls.title", "Controls") : Tr("character.title", "Character");
+        view.body = highlighted_ < static_cast<int>(journal_.size()) ? journal_[highlighted_].body : std::string();
     } else if (kind_ == Kind::Journal) {
         view.title = Tr("journal.title", "Journal");
         view.body = journal_.empty() ? Tr("journal.empty", "No quests yet.")
@@ -426,7 +542,7 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
         view.body = Tr("shop.your_gold", "Your gold") + " " + std::to_string(gold) +
                     (shop ? "   " + Tr("shop.their_gold", "Their gold") + " " + std::to_string(shop->gold) : "");
     }
-    for (const auto& line : Lines(registry)) view.items.push_back({line.label, line.enabled});
+    for (const auto& line : Lines(registry)) view.items.push_back({line.label, line.enabled, line.icon, line.detail, line.group});
     view.highlighted = highlighted_;
     view.footer = Tr("menu.footer", "Up/Down to choose, Enter to pick, Esc to go back");
     return view;

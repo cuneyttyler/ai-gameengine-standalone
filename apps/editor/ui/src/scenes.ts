@@ -9,6 +9,7 @@ import { editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { menuExtensions } from './menus'
 import { showTab } from './paneltabs'
+import { showUses } from './projectSearch'
 
 export interface SceneEntry {
   path: string
@@ -101,6 +102,8 @@ export function sceneMenu(scene: SceneEntry, event: MouseEvent): void {
     separator,
     { label: 'Rename…', disabled: editorState.playing, action: () => renameScene(scene) },
     { label: 'Duplicate…', action: () => duplicateScene(scene) },
+    // Gateways and markers in other scenes that lead here, quests and story that name it.
+    { label: 'Show uses', action: () => showUses({ kind: 'scene', path: scene.path, label: scene.name }) },
     {
       label: `Type: ${scene.type ?? 'Assembled'}`,
       disabled: editorState.playing,

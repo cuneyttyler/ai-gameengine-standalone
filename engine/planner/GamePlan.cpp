@@ -1,11 +1,16 @@
 #include "planner/GamePlan.h"
+#include "places/Ontology.h"
 
 #include "story/StoryRules.h"
 #include "world/WorldBible.h"
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
+#include <optional>
+#include <sstream>
 #include <regex>
 #include <set>
 
@@ -18,14 +23,14 @@ namespace {
 
 const std::vector<std::string>& StageOrder() {
     static const std::vector<std::string> order = {"concept", "outline", "story", "characters", "quests",
-                                                   "places", "systems", "visuals", "validate", "done"};
+                                                   "places", "timeline", "world", "systems", "visuals", "validate", "done"};
     return order;
 }
 
 const std::map<std::string, std::string>& StageLabels() {
     static const std::map<std::string, std::string> labels = {
         {"concept", "① Concept"},  {"outline", "② Outline"}, {"story", "③ Story"},     {"characters", "④ Characters"},
-        {"quests", "⑤ Quests"},    {"places", "⑥ Places"},   {"systems", "⑦ Systems"}, {"visuals", "⑧ Visuals"},
+        {"quests", "⑤ Quests"},    {"places", "⑥ Places"},   {"timeline", "⑥b Cast timeline"}, {"world", "⑥c Props & small scenes"}, {"systems", "⑦ Systems"}, {"visuals", "⑧ Visuals"},
         {"validate", "⑨ Validate"}, {"done", "Done"}};
     return labels;
 }
@@ -138,7 +143,8 @@ json MergeGameBriefs(const std::vector<json>& drafts, json* marks) {
 GamePlan::GamePlan(Host host) : host_(std::move(host)), store_(host_.projectRoot), gso_(StoryOntology::ForProject(host_.projectRoot)) {}
 
 void GamePlan::SetBuildMethod(const std::string& method) {
-    buildMethod_ = method == "Assembled" || method == "Paint" ? method : "";
+    // Assembled, Paint (Free: "Paint", or "PaintFree") or Paint (by Plan: "PaintPlan"); "" for the project's.
+    buildMethod_ = method == "Assembled" || method == "Paint" || method == "PaintPlan" ? method : method == "PaintFree" ? "Paint" : "";
     Save();
 }
 
@@ -180,13 +186,16 @@ std::string GamePlan::Open() {
     for (auto& job : jobs_) {
         if (job.status == "running") job.status = "queued"; // its answer was lost with the session
     }
-    // Paused when the editor closed: it carries on now, from where it was.
-    if (pausedForClose_) {
-        pausedForClose_ = false;
-        paused_ = false;
-        if (status_ == "paused") status_ = "working";
+    // Opened, it waits for you: a plan that was working when the editor closed (paused for it, or the editor ended
+    // without pausing it) stays paused until you resume it, from where it was.
+    pausedForClose_ = false;
+    if (status_ == "working" || status_ == "paused") {
+        if (status_ == "working" || message_.rfind("Paused when the editor closed", 0) == 0) {
+            message_ = "Paused when the editor closed: Resume carries on from where it was.";
+        }
+        if (status_ == "working") status_ = "paused";
+        paused_ = true;
     }
-    if (status_ == "working") message_ = "Carrying on where the plan was left…";
     // What failed but has the AI's answer in the log: re-applied quietly (the engine now
     // repairs what it once refused), so the boards show it made.
     QueueReplays();
@@ -313,7 +322,8 @@ std::string GamePlan::StageOfJob(const std::string& kind) const {
     static const std::map<std::string, std::string> stages = {
         {"interpret", "concept"}, {"outline", "outline"},       {"act", "story"},       {"scene", "story"},
         {"critic", "story"},      {"character", "characters"}, {"quests", "quests"},   {"quest", "quests"},   {"place", "places"},
-        {"gameplay", "systems"},  {"system", "systems"},   {"behaviour", "systems"}, {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
+        {"gameplay", "systems"},  {"system", "systems"},   {"behaviour", "systems"}, {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"},
+        {"timeline", "timeline"}, {"input", "systems"}, {"objects", "world"}, {"smallscenes", "world"}};
     auto it = stages.find(kind);
     return it == stages.end() ? "" : it->second;
 }
@@ -472,6 +482,19 @@ void GamePlan::OnResponse(int requestId, const json& body) {
     Job* job = FindJob(jobId);
     if (!job) return;
     if (job->status != "running") return; // cancelled meanwhile (Stop fix): its answer is ignored
+    if (body.is_object() && body.value("unreachable", false)) {
+        // The AI service stopped: nothing failed. What was being written goes again, paused until it's back
+        // (Resume carries on from where it was).
+        for (auto& j : jobs_) {
+            if (j.status == "running") j.status = "queued";
+        }
+        pending_.clear();
+        paused_ = true;
+        status_ = "paused";
+        message_ = "Paused: the AI service stopped. Start it, then Resume carries on from where it was.";
+        Save();
+        return;
+    }
     if (job->replay) {
         job->replay = false;
         job->replayed = true;
@@ -615,6 +638,10 @@ std::string GamePlan::DocOfJob(const Job& job) const {
     if (job.kind == "behaviour") return "behaviours/" + PlanSlug(job.subject);
     if (job.kind == "systems") return "systems";
     if (job.kind == "visuals") return "ui";
+    if (job.kind == "timeline") return "timeline";
+    if (job.kind == "input") return "input";
+    if (job.kind == "objects") return "objects";
+    if (job.kind == "smallscenes") return "smallscenes";
     if (job.kind == "review" || job.kind == "report") return "report";
     return {};
 }
@@ -723,7 +750,7 @@ void GamePlan::PauseForClose() {
     paused_ = true;
     pausedForClose_ = true;
     status_ = "paused";
-    message_ = "Paused when the editor closed: it carries on when the project is opened again.";
+    message_ = "Paused when the editor closed: Resume carries on from where it was.";
     Save();
 }
 
@@ -819,6 +846,15 @@ void GamePlan::BeginStage(const std::string& stage) {
         for (const auto* n : graph.OfClass("Location", gso_)) {
             if (!store_.Locked("places/" + PlanSlug(n->id))) AddJob("place", n->id);
         }
+    } else if (stage == "timeline") {
+        // ⑥b Each character's state before the first stage and what each quest stage changes (where they are, their
+        // packages, how they behave, what they talk about): the story, the characters and the places read together.
+        if (!store_.Locked("timeline")) AddJob("timeline", "timeline");
+    } else if (stage == "world") {
+        // ⑥c The props & objects (what each is for, who uses it, how: its Reaction), then the small scenes that use them.
+        std::vector<std::string> after;
+        if (!store_.Locked("objects")) after.push_back(AddJob("objects", "objects"));
+        if (!store_.Locked("smallscenes")) AddJob("smallscenes", "smallscenes", after);
     } else if (stage == "systems") {
         // The features first; the data then knows what they need (each can be regenerated, or locked, alone).
         if (!store_.Locked("gameplay")) AddJob("gameplay", "gameplay"); // QueueDesigns when it's answered
@@ -1032,8 +1068,21 @@ std::string GamePlan::Edit(const std::string& doc, const std::string& pointer, c
     }
     auto content = store_.Read(doc);
     if (!content) return "no " + doc;
+    // A field keeps its kind (a list of stages isn't written over with text); what it was is kept with the decision.
+    json previous;
     try {
-        (*content)[json::json_pointer(pointer)] = value;
+        const json::json_pointer at(pointer);
+        if (content->contains(at)) {
+            previous = content->at(at);
+            const auto kind = [](const json& v) {
+                return v.is_object() ? "an object" : v.is_array() ? "a list" : v.is_string() ? "text" : v.is_boolean() ? "true or false"
+                       : v.is_number() ? "a number" : "nothing";
+            };
+            if (!previous.is_null() && !value.is_null() && std::string(kind(previous)) != kind(value)) {
+                return "won't change " + doc + pointer + " from " + kind(previous) + " to " + kind(value) + ": its structure is kept";
+            }
+        }
+        (*content)[at] = value;
     } catch (const std::exception& e) {
         return std::string("can't change ") + pointer + ": " + e.what();
     }
@@ -1048,21 +1097,227 @@ std::string GamePlan::Edit(const std::string& doc, const std::string& pointer, c
     d.subject = doc + pointer;
     d.chosen = value.dump();
     d.reason = reason;
-    store_.Touch(doc, *content, store_.Decide(d));
-    // A character's or place's structured facts follow its document.
-    if (doc.rfind("characters/", 0) == 0 || doc.rfind("places/", 0) == 0) {
-        StoryGraph g = Graph();
-        const std::string node = (doc.rfind("characters/", 0) == 0 ? "character/" : "location/") + PlanSlug(doc);
-        if (StoryNode* n = g.Find(node)) {
-            const json bio = content->value("biography", json::object());
-            if (bio.contains("need")) n->fields["need"] = bio["need"];
-            if (bio.contains("desire")) n->fields["desire"] = bio["desire"];
-            if (bio.contains("motivations")) n->fields["motivations"] = bio["motivations"];
-            if (content->contains("name")) n->fields["name"] = (*content)["name"];
-            SaveGraph(g);
+    if (!previous.is_null()) d.checks = {{"previous", previous}}; // what it was: the edit can be undone
+    const std::string decision = store_.Decide(d);
+    lastEdit_ = decision;
+    store_.Touch(doc, *content, decision);
+    // The graph follows: the outline's people, places and links; a character's or place's structured facts.
+    if (doc == "outline") SyncOutline(decision);
+    SyncDocToGraph(doc, *content);
+    Save();
+    return {};
+}
+
+void GamePlan::SyncDocToGraph(const std::string& doc, const json& content) {
+    if (doc.rfind("characters/", 0) != 0 && doc.rfind("places/", 0) != 0) return;
+    StoryGraph g = Graph();
+    const std::string node = (doc.rfind("characters/", 0) == 0 ? "character/" : "location/") + PlanSlug(doc);
+    StoryNode* n = g.Find(node);
+    if (!n) return;
+    const json bio = content.value("biography", json::object());
+    if (bio.contains("need")) n->fields["need"] = bio["need"];
+    if (bio.contains("desire")) n->fields["desire"] = bio["desire"];
+    if (bio.contains("motivations")) n->fields["motivations"] = bio["motivations"];
+    if (content.contains("name")) n->fields["name"] = content["name"];
+    SaveGraph(g);
+}
+
+// The step a document belongs to (what made it).
+static std::string StageOfDoc(const std::string& doc) {
+    if (doc == "brief") return "concept";
+    if (doc == "outline") return "outline";
+    if (doc.rfind("story/", 0) == 0) return "story";
+    if (doc.rfind("characters/", 0) == 0) return "characters";
+    if (doc.rfind("quests/", 0) == 0) return "quests";
+    if (doc.rfind("places/", 0) == 0) return "places";
+    if (doc == "gameplay" || doc == "systems" || doc.rfind("systemdesigns/", 0) == 0 || doc.rfind("behaviours/", 0) == 0) return "systems";
+    if (doc == "ui") return "visuals";
+    if (doc == "timeline") return "timeline";
+    if (doc == "report" || doc == "review") return "validate";
+    return {};
+}
+
+namespace {
+
+// `text` with `from` replaced wherever it stands as a whole id ("character/mara-venn", not "character/mara-venna").
+std::string ReplaceId(const std::string& text, const std::string& from, const std::string& to) {
+    std::string out;
+    size_t at = 0;
+    for (size_t hit; (hit = text.find(from, at)) != std::string::npos;) {
+        const size_t end = hit + from.size();
+        const bool whole = end >= text.size() || !(std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '-' || text[end] == '_');
+        out.append(text, at, hit - at);
+        out += whole ? to : from;
+        at = end;
+    }
+    out.append(text, at, std::string::npos);
+    return out;
+}
+
+// Every string (and object key) in `j` with the id replaced; whether anything changed.
+bool ReplaceIdIn(json& j, const std::string& from, const std::string& to) {
+    bool changed = false;
+    if (j.is_string()) {
+        const std::string now = ReplaceId(j.get<std::string>(), from, to);
+        if (now != j.get<std::string>()) j = now, changed = true;
+    } else if (j.is_array()) {
+        for (auto& v : j) changed = ReplaceIdIn(v, from, to) || changed;
+    } else if (j.is_object()) {
+        json out = json::object();
+        for (auto& [k, v] : j.items()) {
+            json value = v;
+            changed = ReplaceIdIn(value, from, to) || changed;
+            const std::string key = ReplaceId(k, from, to);
+            changed = changed || key != k;
+            out[key] = std::move(value);
+        }
+        j = std::move(out);
+    }
+    return changed;
+}
+
+} // namespace
+
+std::string GamePlan::RenameId(const std::string& from, const std::string& to) {
+    const size_t slash = from.find('/');
+    if (slash == std::string::npos || to.rfind(from.substr(0, slash + 1), 0) != 0) {
+        return "an id keeps its kind: " + from.substr(0, slash + 1) + "<name>";
+    }
+    const std::string slug = to.substr(slash + 1);
+    if (slug.empty() || slug.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-") != std::string::npos) {
+        return "an id is lowercase letters, digits and dashes after " + from.substr(0, slash + 1);
+    }
+    if (from == to) return {};
+    const StoryGraph before = Graph();
+    if (before.Find(to)) return to + " is taken";
+    PlanDecision d;
+    d.stage = stage_;
+    d.actor = "user";
+    d.kind = "rename";
+    d.subject = from;
+    d.chosen = to;
+    const std::string decision = store_.Decide(d);
+    // The documents: what names it, and those named after it (characters/<slug>, places/<slug>, behaviours/<slug>).
+    const std::string oldSlug = from.substr(slash + 1);
+    for (const auto& doc : store_.AllDocuments()) {
+        auto content = store_.Read(doc);
+        if (!content) continue;
+        json now = *content;
+        const bool changed = ReplaceIdIn(now, from, to);
+        const size_t cut = doc.rfind('/');
+        const std::string dir = cut == std::string::npos ? "" : doc.substr(0, cut + 1);
+        const bool named = cut != std::string::npos && doc.substr(cut + 1) == oldSlug &&
+                           ((dir == "characters/" && from.rfind("character/", 0) == 0) || (dir == "places/" && from.rfind("location/", 0) == 0) ||
+                            (dir == "behaviours/" && from.rfind("character/", 0) == 0));
+        if (named) {
+            store_.Touch(dir + slug, now, decision);
+            store_.Remove(doc);
+        } else if (changed) {
+            store_.Touch(doc, now, decision);
         }
     }
+    // The graph (its file, as JSON: every node, edge and field).
+    {
+        std::ifstream in(StoryGraph::PathIn(host_.projectRoot), std::ios::binary);
+        json g = in ? json::parse(in, nullptr, false) : json();
+        in.close();
+        if (g.is_object() && ReplaceIdIn(g, from, to)) {
+            g["revision"] = g.value("revision", 0) + 1;
+            std::ofstream(StoryGraph::PathIn(host_.projectRoot), std::ios::binary) << g.dump(2);
+        }
+    }
+    // The World Bible: its entry under the new id, and every relation to it.
+    {
+        WorldBible bible{Project{host_.projectRoot}};
+        bible.Refresh();
+        std::vector<WorldEntry> changed;
+        for (const auto& e : bible.Entries()) {
+            WorldEntry copy = e;
+            bool touched = false;
+            for (auto& r : copy.relations) {
+                if (r.target == from) r.target = to, touched = true;
+            }
+            if (e.Key() == from) copy.id = slug, touched = true;
+            if (touched) changed.push_back(copy);
+        }
+        for (const auto& e : changed) bible.Save(e);
+        if (bible.Find(from) && bible.Find(to)) bible.Remove(from);
+    }
+    // The outline's names everywhere they're copied (the Brief's player, the World Bible).
+    if (store_.Exists("outline")) SyncOutline(decision);
     Save();
+    return {};
+}
+
+std::string GamePlan::RestartFrom(const std::string& stage) {
+    const auto& order = StageOrder();
+    const auto at = std::find(order.begin(), order.end(), stage);
+    if (at == order.end() || stage == "done") return "no step " + stage;
+    if (stage == "concept") {
+        // From the start: the request read again (the plan made anew).
+        if (request_.empty()) return "the plan has no request to start from";
+        const std::string request = request_;
+        const json choices = choices_;
+        return Start(request, choices);
+    }
+    const size_t index = static_cast<size_t>(at - order.begin());
+    // The plan as the step before left it: its last snapshot.
+    const std::string before = order[index - 1];
+    int snapshot = 0;
+    for (const auto& h : store_.History()) {
+        if (h.value("label", "") == before) snapshot = h.value("n", 0);
+    }
+    if (snapshot == 0) {
+        return (StageLabels().count(before) ? StageLabels().at(before) : before) + " hasn't been finished yet: restart from an earlier step";
+    }
+    // The earlier steps' documents as they are now (the user's edits), kept over the snapshot's.
+    auto rank = [&](const std::string& s) {
+        const auto it = std::find(order.begin(), order.end(), s);
+        return it == order.end() ? order.size() : static_cast<size_t>(it - order.begin());
+    };
+    std::vector<std::pair<std::string, json>> kept;
+    for (const auto& doc : store_.AllDocuments()) {
+        const std::string of = StageOfDoc(doc);
+        if (!of.empty() && rank(of) < index) {
+            if (auto content = store_.Read(doc)) kept.push_back({doc, *content});
+        }
+    }
+    // What's running for this step or later stops: their answers are dropped.
+    std::set<std::string> dropped;
+    for (const auto& j : jobs_) {
+        if (rank(StageOfJob(j.kind)) >= index) dropped.insert(j.id);
+    }
+    jobs_.erase(std::remove_if(jobs_.begin(), jobs_.end(), [&](const Job& j) { return dropped.contains(j.id); }), jobs_.end());
+    for (auto it = pending_.begin(); it != pending_.end();) it = dropped.contains(it->second) ? pending_.erase(it) : std::next(it);
+    if (!store_.Restore(snapshot)) return "the snapshot of " + before + " can't be read";
+    PlanDecision d;
+    d.stage = stage;
+    d.actor = "user";
+    d.kind = "restart";
+    d.subject = stage;
+    d.chosen = "from history/" + std::to_string(snapshot);
+    const std::string decision = store_.Decide(d);
+    for (const auto& [doc, content] : kept) {
+        if (store_.Read(doc) != content) store_.Touch(doc, content, decision);
+    }
+    // The graph as that snapshot has it, with the kept documents' changes brought in.
+    if (rank("outline") < index) SyncOutline(decision);
+    for (const auto& [doc, content] : kept) SyncDocToGraph(doc, content);
+    findings_ = json::array();
+    json review = json::array();
+    for (const auto& r : toReview_) {
+        if (r.is_string() && rank(r.get<std::string>()) < index) review.push_back(r);
+    }
+    toReview_ = review;
+    resume_ = json();
+    autoFixed_ = false;
+    fixRounds_ = 0;
+    // Restarting is going on: a paused plan resumes (else the step would wait, queued and unseen).
+    paused_ = false;
+    pausedForClose_ = false;
+    BeginStage(stage);
+    Save();
+    Pump();
     return {};
 }
 
@@ -1101,6 +1356,10 @@ std::string GamePlan::Regenerate(const std::string& doc) {
     else if (doc.rfind("behaviours/", 0) == 0) kind = "behaviour", subject = store_.Read(doc).value_or(json::object()).value("subject", PlanSlug(doc));
     else if (doc == "systems") kind = "systems", subject = "systems";
     else if (doc == "ui") kind = "visuals", subject = "ui";
+    else if (doc == "timeline") kind = "timeline", subject = "timeline";
+    else if (doc == "input") kind = "input", subject = "input";
+    else if (doc == "objects") kind = "objects", subject = "objects";
+    else if (doc == "smallscenes") kind = "smallscenes", subject = "smallscenes";
     else if (doc == "report") kind = "review", subject = "review";
     else return "can't regenerate " + doc;
     // One job per subject at a time.
@@ -1120,6 +1379,205 @@ std::string GamePlan::Regenerate(const std::string& doc) {
     BeginExtraWork();
     Save();
     Pump();
+    return {};
+}
+
+namespace {
+// A step's documents: the folders and documents its revision may change.
+std::pair<std::vector<std::string>, std::vector<std::string>> StepDocuments(const std::string& step) {
+    if (step == "concept") return {{}, {"brief"}};
+    if (step == "outline") return {{}, {"outline"}};
+    if (step == "story") return {{"story/acts", "story/scenes"}, {}};
+    if (step == "characters") return {{"characters"}, {}};
+    if (step == "quests") return {{"quests"}, {}};
+    if (step == "places") return {{"places"}, {}};
+    if (step == "timeline") return {{}, {"timeline"}};
+    if (step == "systems") return {{"systemdesigns", "behaviours"}, {"gameplay", "systems", "input"}};
+    if (step == "objects") return {{}, {"objects"}};
+    if (step == "smallscenes") return {{}, {"smallscenes"}};
+    if (step == "cutscenes") return {{}, {"timeline"}};
+    if (step == "visuals") return {{}, {"ui"}};
+    return {{}, {}};
+}
+} // namespace
+
+std::string GamePlan::ReviseStep(const std::string& step, const std::string& text) {
+    if (text.empty()) return "say what to change";
+    const auto [folders, docs] = StepDocuments(step);
+    if (folders.empty() && docs.empty()) return "no step " + step;
+    PlanDecision d;
+    d.stage = step;
+    d.actor = "user";
+    d.kind = "revise";
+    d.subject = step;
+    d.chosen = text;
+    store_.Decide(d);
+    const std::string id = AddJob("revise", "[step:" + step + "] " + text);
+    json history = store_.Read("revisions").value_or(json::object());
+    if (!history.is_object()) history = json::object();
+    json& list = history[step];
+    if (!list.is_array()) list = json::array();
+    list.push_back({{"id", id}, {"at", static_cast<long long>(std::time(nullptr))}, {"text", text}, {"status", "working"}});
+    history.erase("revision"), history.erase("inputs"), history.erase("madeBy");
+    store_.Write("revisions", history, std::string());
+    BeginExtraWork();
+    Save();
+    Pump();
+    return {};
+}
+
+json GamePlan::Revisions() const {
+    json history = store_.Read("revisions").value_or(json::object());
+    json out = json::object();
+    if (!history.is_object()) return out;
+    for (auto& [step, list] : history.items()) {
+        if (!list.is_array()) continue;
+        json shown = json::array();
+        for (auto e : list) {
+            for (const auto& j : jobs_) {
+                if (j.id == e.value("id", "") && e.value("status", "") == "working") {
+                    if (j.status == "failed") e["status"] = "failed", e["error"] = j.error;
+                    else if (j.status == "queued" || j.status == "running") e["status"] = j.status;
+                }
+            }
+            shown.push_back(e);
+        }
+        out[step] = shown;
+    }
+    return out;
+}
+
+std::string GamePlan::RegeneratePage(const std::string& page) {
+    if (page == "concept") return RestartFrom("concept");
+    std::vector<std::string> docs;
+    auto all = [&](const char* folder) {
+        for (const auto& d : store_.List(folder)) docs.push_back(d);
+    };
+    if (page == "outline") docs = {"outline"};
+    else if (page == "story") all("story/acts");
+    else if (page == "characters") all("characters");
+    else if (page == "quests") all("quests");
+    else if (page == "places") all("places");
+    else if (page == "timeline" || page == "objects" || page == "smallscenes") docs = {page};
+    else if (page == "cutscenes") docs = {"timeline"}; // planned with the cast timeline
+    else if (page == "systems") docs = {"gameplay"}; // its designs, data, controls and behaviour plans follow it
+    else if (page == "visuals") docs = {"ui"};
+    else if (page == "validate") docs = {"report"};
+    else return "no page " + page;
+    int asked = 0, locked = 0;
+    std::string why;
+    for (const auto& doc : docs) {
+        if (store_.Locked(doc)) {
+            ++locked;
+            continue;
+        }
+        if (const std::string w = Regenerate(doc); w.empty()) ++asked;
+        else why = w;
+    }
+    if (asked == 0) return !why.empty() ? why : locked ? "every document of it is locked" : "nothing to regenerate yet";
+    message_ = "Regenerating " + std::to_string(asked) + " document(s)" + (locked ? " (" + std::to_string(locked) + " locked kept)" : std::string()) + "…";
+    Save();
+    return {};
+}
+
+std::string GamePlan::RevertRevision(const std::string& step, const std::string& id) {
+    json history = store_.Read("revisions").value_or(json::object());
+    if (!history.is_object() || !history[step].is_array()) return "no revision " + id;
+    json* entry = nullptr;
+    for (auto& e : history[step]) {
+        if (e.value("id", "") == id) entry = &e;
+    }
+    if (!entry) return "no revision " + id;
+    if (entry->value("status", "") == "reverted") return "it's reverted already";
+    // Its edits: the decisions it recorded, else (one from before they were recorded) those made for its words in the
+    // minutes after it was asked.
+    std::set<std::string> ids;
+    for (const auto& d : entry->value("decisions", json::array())) {
+        if (d.is_string()) ids.insert(d.get<std::string>());
+    }
+    const auto all = store_.Decisions();
+    std::vector<PlanDecision> mine;
+    if (!ids.empty()) {
+        for (const auto& d : all) {
+            if (ids.contains(d.id)) mine.push_back(d);
+        }
+    } else {
+        const std::string reason = "AI revision: [step:" + step + "] " + entry->value("text", std::string());
+        const long long at = entry->value("at", 0LL);
+        for (const auto& d : all) {
+            if (d.kind != "edit" || d.reason.rfind(reason, 0) != 0) continue;
+            std::tm tm{};
+            std::istringstream in(d.time);
+            in >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+            const long long when = static_cast<long long>(_mkgmtime(&tm));
+            if (when >= at && when <= at + 600) mine.push_back(d);
+        }
+    }
+    if (mine.empty()) return "it made no edit to take back";
+    std::vector<std::string> problems;
+    int undone = 0;
+    for (auto d = mine.rbegin(); d != mine.rend(); ++d) {
+        // Its document: the longest stored name the subject starts with ("quests/q-main" of "quests/q-main/stages/0/journal").
+        std::string doc;
+        for (size_t slash = d->subject.find('/'); slash != std::string::npos; slash = d->subject.find('/', slash + 1)) {
+            if (store_.Exists(d->subject.substr(0, slash))) doc = d->subject.substr(0, slash);
+        }
+        if (doc.empty() && store_.Exists(d->subject)) doc = d->subject;
+        auto content = doc.empty() ? std::nullopt : store_.Read(doc);
+        if (!content) {
+            problems.push_back(d->subject + ": no document");
+            continue;
+        }
+        const std::string pointer = d->subject.substr(doc.size());
+        const json value = json::parse(d->chosen, nullptr, false);
+        try {
+            if (pointer.size() >= 2 && pointer.compare(pointer.size() - 2, 2, "/-") == 0) {
+                // An item it added to a list: taken out (the last one equal to it).
+                json& list = content->at(json::json_pointer(pointer.substr(0, pointer.size() - 2)));
+                bool out = false;
+                for (size_t i = list.size(); i-- > 0 && !out;) {
+                    if (list[i] == value) list.erase(i), out = true;
+                }
+                if (!out) {
+                    problems.push_back(d->subject + ": what it added isn't there any more");
+                    continue;
+                }
+            } else if (d->checks.contains("previous")) {
+                (*content)[json::json_pointer(pointer)] = d->checks["previous"];
+            } else {
+                problems.push_back(d->subject + ": what it was isn't recorded");
+                continue;
+            }
+        } catch (const std::exception& e) {
+            problems.push_back(d->subject + ": " + e.what());
+            continue;
+        }
+        PlanDecision r;
+        r.stage = d->stage;
+        r.actor = "user";
+        r.kind = "revert";
+        r.subject = d->subject;
+        r.chosen = d->id;
+        r.reason = "reverted " + id + ": " + entry->value("text", std::string());
+        store_.Touch(doc, *content, store_.Decide(r));
+        SyncDocToGraph(doc, *content);
+        ++undone;
+    }
+    if (undone == 0) {
+        std::string all_;
+        for (const auto& p : problems) all_ += (all_.empty() ? "" : "; ") + p;
+        return "nothing could be taken back: " + all_;
+    }
+    (*entry)["status"] = "reverted";
+    if (!problems.empty()) {
+        std::string all_;
+        for (const auto& p : problems) all_ += (all_.empty() ? "" : "; ") + p;
+        (*entry)["error"] = "reverted, but not all: " + all_;
+    }
+    history.erase("revision"), history.erase("inputs"), history.erase("madeBy");
+    store_.Write("revisions", history, std::string());
+    message_ = std::to_string(undone) + " edit(s) of a revision taken back; " + std::to_string(Stale().size()) + " document(s) to regenerate.";
+    Save();
     return {};
 }
 
@@ -1315,6 +1773,7 @@ json GamePlan::State() const {
                                         : s.rfind("places/", 0) == 0       ? "places"
                                         : s == "systems" || s == "gameplay" || s.rfind("systemdesigns/", 0) == 0 || s.rfind("behaviours/", 0) == 0 ? "systems"
                                         : s == "ui"                        ? "visuals"
+                                        : s == "timeline"                  ? "timeline"
                                                                            : "";
             staleCount += stageOf == *it;
         }
@@ -1392,6 +1851,7 @@ json GamePlan::State() const {
                               {"player", n->cls == "PlayerCharacter"},
                               {"line", n->Text("summary")},
                               {"detailed", store_.Exists(doc)},
+                              {"routine", c.contains("routine") && c["routine"].is_object() ? c["routine"].value("summary", json("")) : json("")},
                               {"roles", c.contains("gameplay") && c["gameplay"].is_object() ? c["gameplay"].value("roles", json::array()) : json::array()},
                               {"stale", isStale(doc)},
                               {"locked", BoolOf(c, "locked")},
@@ -1423,6 +1883,12 @@ json GamePlan::State() const {
                           {"stale", isStale(doc)},
                           {"locked", BoolOf(p, "locked")},
                           {"issues", issuesOf(n->id)}, {"notes", notesOf(n->id)}});
+        // An open world's: a section (its size), or entered through a gateway (its kind).
+        if (n->Flag("section")) places.back()["section"] = true, places.back()["size"] = n->Text("size");
+        for (const auto& e : graph.edges) {
+            if (e.p != "connects" || e.o != n->id) continue;
+            if (const json gw = e.fields.value("gateway", json()); gw.is_object()) places.back()["gateway"] = gw.value("kind", "");
+        }
     }
     int queued = 0, running = 0, failed = 0, done = 0;
     // The report with each open finding's remedy (worked out now: a report made before remedies
@@ -1479,6 +1945,21 @@ json GamePlan::State() const {
             {"toDecide", concept_.value("toDecide", json::array())},
             {"assumptions", concept_.value("assumptions", json::array())},
             {"outline", Outline()},
+            // What the outline's fields may be (its editor's choices): the build types, the vocabularies' roles.
+            {"outlineChoices", {{"kinds", host_.catalog.value("buildTypes", json::array())},
+                                {"importance", json::array({"major", "supporting", "minor", "extra"})},
+                                {"sizes", json::array({"small", "medium", "big", "huge"})},
+                                {"landforms", json::array({"inland", "coastal", "island", "archipelago", "continent"})},
+                                {"connections", json::array({"road", "door", "stairs", "entrance", "portal", "path"})},
+                                {"gatewayKinds", [&] {
+                                     json out = json::array();
+                                     if (host_.places) {
+                                         for (const auto& [id, role] : host_.places().Roles()) {
+                                             if (role.broader == "gateway") out.push_back(id);
+                                         }
+                                     }
+                                     return out;
+                                 }()}}},
             {"acts", acts},
             {"characters", characters},
             {"quests", quests},
@@ -1496,6 +1977,11 @@ json GamePlan::State() const {
              }()},
             {"systems", store_.Read("systems").value_or(json())},
             {"ui", store_.Read("ui").value_or(json())},
+            {"input", store_.Read("input").value_or(json())},
+            {"objects", store_.Read("objects").value_or(json())},
+            {"smallscenes", store_.Read("smallscenes").value_or(json())},
+            {"revisions", Revisions()},
+            {"timeline", store_.Read("timeline").value_or(json())},
             {"report", reportShown},
             {"findings", findings_},
             {"stale", stale},
@@ -1543,7 +2029,8 @@ void GamePlan::WorldStub(const std::string& key, const std::string& name, const 
     if (const WorldEntry* existing = bible.Find(key)) entry = *existing;
     entry.kind = key.substr(0, slash);
     entry.id = key.substr(slash + 1);
-    if (entry.name.empty()) entry.name = name.empty() ? entry.id : name;
+    if (!name.empty()) entry.name = name; // the plan's name for it (an edited outline renames it here too)
+    else if (entry.name.empty()) entry.name = entry.id;
     if (!summary.empty()) entry.summary = summary;
     if (!body.empty()) entry.body = body;
     bible.Save(entry);

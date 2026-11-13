@@ -15,6 +15,7 @@ import { askMoveManyToFolder, askMoveToFolder, foldersOf, inFolder, moveItem, re
 import { clickItem, emptySelection, keepShown, renamed, selectAll, type Selection } from '../selection'
 import { confirmDialog, confirmWithOption, promptDialog } from '../dialogs'
 import { openPackImport } from '../packImport'
+import { revealState, showUses } from '../projectSearch'
 
 interface Asset {
   path: string
@@ -263,6 +264,7 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(prefab.path, 'prefabs') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: prefab.path }) },
     { label: 'Replace every copy in the scene…', disabled: editorState.playing, action: () => (editorState.replacePrefab = prefab.path) },
+    { label: 'Show uses', action: () => showUses({ kind: 'prefab', path: prefab.path, label: prefab.name || prefab.path }) },
     separator,
     ...prefabMenuExtensions.flatMap((extend) => extend(prefab)),
   ]
@@ -459,6 +461,25 @@ async function goToAsset(path: string): Promise<void> {
   document.querySelector(`[data-asset="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' })
 }
 
+// A prefab picked from elsewhere (Search in project, Show uses): selected on the Prefabs tab and scrolled to.
+async function goToPrefab(path: string): Promise<void> {
+  tab.value = 'prefabs'
+  if (!inFolder(path, 'prefabs', prefabFolder.value)) prefabFolder.value = ''
+  prefabKind.value = 'all'
+  filter.value = ''
+  prefabPick.value = { picked: [path], anchor: path }
+  await nextTick()
+  document.querySelector(`[data-prefab="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' })
+}
+watch(
+  () => revealState.at,
+  () => {
+    if (revealState.prefab) goToPrefab(revealState.prefab)
+    else if (revealState.asset) goToAsset(revealState.asset)
+    revealState.prefab = revealState.asset = ''
+  },
+)
+
 // A prefab's pair: the prefab drawn with its texture's pair, or that asset when no prefab draws it.
 async function goToPairedPrefab(texture: string): Promise<void> {
   const pair = pairOf(texture)
@@ -526,6 +547,8 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(asset.path, 'assets') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },
     { label: 'Keep in my library', action: () => sendToHost({ type: 'library:addFromProject', paths: [asset.path] }) },
+    // Prefabs that draw with it, animations of it, scenes that show it (projectSearch.ts).
+    { label: 'Show uses', action: () => showUses({ kind: 'art', path: asset.path, label: asset.name || asset.path }) },
     separator,
     {
       label: 'Delete…',

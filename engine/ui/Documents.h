@@ -36,7 +36,7 @@ struct HudItem {
 // placed with the camera (PlaceOverhead).
 struct HudOverhead {
     std::string text, name; // what it says; who (a speaker's name)
-    std::string kind;       // speech, label; damage, heal, item (a floating number)
+    std::string kind;       // speech; a label's type (name, place, sign, status, quest, danger); damage, heal, item (a floating number)
     float x = 0, y = 0;
     float alpha = 1;
 };
@@ -53,13 +53,19 @@ struct HudData {
     std::string subtitle;         // a bark or a cutscene line
     std::string marker;           // the objective marker's distance ("12 m"; empty: hidden)
     float markerX = 0, markerY = 0; // its position on screen
+    // Every open objective's marker (the stage's six people to talk to): text its distance, name who or what, x, y on
+    // screen; "marker" above is the nearest of them.
+    std::vector<HudOverhead> markers;
     std::vector<HudItem> items; // what the player carries
     std::string abilities; // the quick slots: "1 Firebolt   2 Heal (3s)" (19)
     std::vector<HudOverhead> bubbles, labels, numbers; // over people's heads (game-ui.md §13)
 };
 
 // Puts what's over people's heads from scene pixels into the viewport's (the camera's SceneToViewport).
-void PlaceOverhead(HudData& hud, const std::function<void(float sceneX, float sceneY, float& viewX, float& viewY)>& toViewport);
+// The objective markers too (under their targets), held inside the viewport (`width` x `height`; 0: not held) when
+// their target is off screen ("edge" their kind then).
+void PlaceOverhead(HudData& hud, const std::function<void(float sceneX, float sceneY, float& viewX, float& viewY)>& toViewport,
+                   float width = 0.0f, float height = 0.0f);
 
 // A timed message (game-ui.md §9), in a channel: toast, feed, banner, alert.
 struct Notification {
@@ -120,6 +126,8 @@ public:
     // elements call action('...') (the "ui" model), handed to `onAction`.
     void ShowScreen(const std::string& id, bool visible);
     bool IsShown(const std::string& id) const;
+    // Every screen shown by ShowScreen hidden (the menu key closing what's open); whether any was.
+    bool CloseShown();
     std::function<void(const std::string& action)> onAction;
     // A designed screen's "only show if" (Conditions as dialogue's, JSON): asked as it's drawn. None: it shows.
     std::function<bool(const std::string& conditions)> onCondition;

@@ -139,7 +139,7 @@ Request
   └─ difficulty ► ⑩ Build places (Build panel per place; manual or automatic)
                   │
                   ▼
-                ⑪ Populate & bind quests ──► ⑫ Write & playtest ──► ⑬ Result
+                ⑪ Requirements, then the Build tabs in order (§5.11) ──► ⑫ Validate & playtest ──► ⑬ Result
                                                                   (later: Animations)
 ```
 
@@ -346,11 +346,11 @@ the major characters, medium the supporting too, extensive everyone. The planner
 what, when. Validate's event map (`X-behaviour`) checks every event is sent, every quest stage and action exists and
 every package is theirs; each error remakes that character's plan.
 
-In ⑫ each step goes to the AI panel's machinery, with what it proposes applied unreviewed (the plan was the review): an
-empty `place` on what the project shares; a place's scene opened from its file (where ⑪ wrote the characters), the request
+On the Build page's **Systems** tab each step goes to the AI panel's machinery, with what it proposes applied unreviewed (the plan was the review): an
+empty `place` on what the project shares; a place's scene opened from its file (where Placements wrote the characters), the request
 run on it, and saved. What was unsaved in the open scene is kept beside it as `.before-gameplay`, never saved over them,
 and the scene open before is open again after. One that fails is reported on the result page, and the game goes on. Each
-character's plan becomes its Character Rules in ⑪, with no AI call.
+character's plan becomes its Character Rules on the Behaviour tab, with no AI call.
 
 **Then the data**, from the Brief's systems tab, the features and what the story and characters use:
 
@@ -388,6 +388,25 @@ for review.
 
 Output: `planner/ui.json` and the UI documents (written to `ui/` in ⑫).
 
+**As built (2026-11-10)**: the step designs the interface as a UI designer designs a web app: its one look ("style":
+mood, palette, materials, typography, ornaments, motion, icons) and every panel (the HUD, inventory, journal, map,
+character, shop, dialogue, menus and the game's own) in full: purpose, the action that opens it, layout region by region,
+components (a character figure items are dragged onto, slot grids, lists, tabs, trackers...: what each shows, what one
+does with it, its look), its look, its images (prompts, sizes, nine-piece frames) and its own RCSS. **Build ▸ Visuals**
+draws each panel's images (`ui/art/`) and writes the panel as an RML document from the design (`/planner/uipanel`,
+keeping the data model and events of the engine's own document for that screen), in the project's screens manifest.
+
+### 5.8b The world: props & objects, small scenes, input
+
+- **World ▸ Props & objects** (stage `world`, after ⑥b): every thing in the places someone uses, its purpose, states,
+  what characters do at it in their day (a SmartObject) and every use — by whom, casual or for a quest, when, why — with
+  the engine's Reaction for it (`planner/objects.json`). **Build ▸ Props & objects** makes each by rule.
+- **Life ▸ Small scenes** (stage `world`, after the props): casual or quest-related scenes that play round the player
+  (`planner/smallscenes.json`). **Build ▸ Scenes** (was Small scenes) writes each as an ambient cutscene and its player-near triggers.
+- **⑦ Systems ▸ Input**: the game's controls designed whole (`planner/input.json`), written into input.json by the build.
+- Every description has its implementation on a Build tab of the same name; every step and Build tab has **Revise**
+  (the AI finds which documents and fields the words are about, then edits only those; a history each).
+
 **Animations** will be a further step here (character animation sets, effects per ability)
 once Phase 18's systems exist; it is left out of this design on purpose.
 
@@ -423,17 +442,43 @@ Output: `planner/report.json`, the baseline.
 Every place is built through the Build panel, in dependency order, manually or
 automatically (§8).
 
-### 5.11 ⑪ Populate and bind quests
+### 5.11 ⑪ The Build tabs: the implementation
 
-Characters are placed, aliases filled, quest objects and triggers set, using what the
-builds know about each place (§9).
+The Build page is the implementation: each tab builds one thing, to the requirements, in
+this order (Continue building runs it the same way):
+1. **Requirements**, first, from the plan alone (each place's scene file is known from the
+   build plan): who is where and when, what each character is animated doing (from its
+   class and whether it fights), the quests' steps, props, cutscenes, systems; the AI
+   reads each story scene for what the rules miss. Each requirement's implementation items
+   belong to one of the tabs below.
+2. **Places** (⑩): the scenes, roads, gateways.
+3. **Characters**: character art and animations only (each drawn once, then animated for
+   what the requirements ask; clips already drawn kept), enemy classes too.
+4. **Props & objects**: their art (item icons, doors and ways through) and animations,
+   each made in its scene with its SmartObject and Reactions; the requirements' prop and
+   asset items.
+5. **Quests**: the engine's `quests/*.json`: stages, objectives, stage effects, journal
+   text, objective markers (guidance).
+6. **Placements**: characters, props and objects placed, the rules first, then the AI
+   decides where exactly each is (given the where-requirements, naming the one each spot
+   meets), using what the builds know about each place (§9); the quests' roles bound to
+   what's placed; the game's files written.
+7. **Behaviour**: AI packages, routines, per-quest-stage changes (⑥b's cells as
+   requirements) and dialogue (one per character the player can talk to).
+8. **Scenes**: story scenes' triggers, cutscenes (tracks and triggers), the small scenes.
+9. **Systems**: ⑦'s scripts, through the AI panel.
+10. **Visuals**: ⑧'s panels, their styles and images, and the interface art.
+11. A final pass for anything left over.
 
-### 5.12 ⑫ Write and playtest
+After each tab, the requirements that already hold are marked verified (never failed
+there). The AI panel is the tool a tab uses for what its rules can't build.
 
-The design becomes the engine's files (§11.1), and an automated playtest checks the game
-can be played (§11.2).
+### 5.12 ⑫ Validate and playtest
 
-**Dialogue is written here**, last, as in Dramatron: by now every scene, character voice,
+The tabs have written the engine's files (§11.1); Validate checks every requirement, and
+an automated playtest checks the game can be played (§11.2).
+
+**Dialogue is written late** (the Behaviour tab), as in Dramatron: by now every scene, character voice,
 quest stage, alias and place is fixed, so lines can name real things. For each scene in
 `dialogue` mode, each quest's conversations (offer, progress, completion, per branch) and
 each character's topics and barks, one call writes the dialogue tree from the scene's
@@ -464,7 +509,7 @@ the documents are wide, editable and long-lived; chat scrolls them away.
 
 ```
 ┌ Planner — The Moon Amulet ────────────────────────────────────────────────────────────────┐
-│ ①Concept ②Outline ③Story ④Characters ⑤Quests ⑥Places ⑦Systems ⑧Visuals ⑨Validate ⑩Build ⑪Populate ⑫Write ⑬Result │
+│ ①Concept ②Outline ③Story ④Characters ⑤Quests ⑥Places ⑦Systems ⑧Visuals ⑨Validate ⑩–⑬Build (Requirements…Result)  │
 │───────────────────────────────────────────────────────────────────────────────────────────│
 │ ┌ Acts ────────┐ ┌ Act I · Chapter 2: Riverford ──────────────────────────────────────────┐ │
 │ │ ▸ Act I      │ │ s-04 Tamsin names the thief   dialogue  kernel  Temple   truth −→+  ✓  │ │
@@ -966,3 +1011,62 @@ Points revised while writing this document set:
 - Not yet: anchors and actor slots declared by modules (§9.2; anchors are found by module or
   made), query fills scored and chosen by the AI among candidates (the first candidate is used),
   local build edits to make a missing part, simulated combat in the playtest, voice and music.
+
+## 18. As built (Phases 33–34: the story built item by item)
+
+The detail is in `docs/project/development_plan.md` Phases 33 and 34; in short:
+
+- **⑥b Cast timeline** (`planner/timeline.json`, after ⑥ Places): for each character, their AI packages, place,
+  behaviour and dialogue at the start and at each quest stage ("—" where unchanged), and the cutscenes with who's in
+  each (cast and role) and their trigger (stage, reach, leave, talk-end, event). A tab per quest (the main quest first),
+  a cell's full detail on click. When several quests change one character, they're ranked by priority (story > normal >
+  ambient), then quest order (main first): packages are all kept, stacked by rank (each conditioned on its quest's
+  stages; the first that holds runs); place and behaviour are the top quest's; dialogue and cutscenes are all kept;
+  overridden changes are marked "yields" (⇅).
+- **Requirements** (`planner/requirements.json`): made by rule from scenes, quests, cast and systems, then by the AI
+  from each scene's events and beats. Kinds: presence, arrival, movement, combat, dialogue, cutscene, item, prop,
+  gateway, effect, quest, guidance, system, scene, asset, animation, character-state.
+- **Implementation items** per requirement: how (art, animation, prefab, marker, stats, quest-effect, objective,
+  package, guidance, cutscene, trigger, script, dialogue) and by (rule, ai-step, ai-panel, art).
+- **The Build tabs build the items** (34.17; §5.11): each item belongs to one tab (Places, Characters, Props & objects,
+  Quests, Placements, Behaviour, Scenes, Systems, Visuals), which shows it and builds it in the tabs' order; a final
+  pass builds what's left. There is no Implement tab. **Build what's left** re-runs only what isn't built. Paid art
+  waits for approval unless plan.building is automatic.
+- **Checks**: static (the files) and played (a scene test's record); **Fix** re-queues a failed requirement's items,
+  to the AI panel with the problem when a rule item still fails. The Behaviour tab (was Cast) checks each character
+  state the same way. After each tab the requirements already met are verified; Validate checks them all at the end.
+- **Story & Test**: Play from here and Test start where the scene's quest stage begins; the autopilot walks between
+  scenes through gateways.
+- **Placements** (34.11, `engine/gamebuild/Placements.cpp`, `planner/placements.json`): ⑪ runs in the Build tabs' order
+  (34.17: Requirements, Places, Characters, Props & objects, Quests, Placements, Behaviour, Scenes, Systems, Visuals):
+  the requirements first, from the plan alone (`MakeRequirements`, before the places are built; animations from
+  `PlanActions`: the class's fighting and whether the character fights, not from the art), then the art (`QueueArt`: the
+  plan's actions plus each animation requirement's; a clip drawn before kept), then the quests (`Populate`: everyone
+  placed by the rules, the roles bound; `ApplyDrawnArt` puts each sheet on the prefab it makes), then the placements (the
+  AI's one call, given the where-requirements: presence, character-state, arrival, movement, prop, item; everyone placed
+  again by it), then ⑫. After the art, the quests and the placements, `MarkMetRequirements` verifies what already holds
+  (never fails one). Made again while the build is stopped (`reqsOnly_`), only the requirements are made and it stops
+  again; Continue goes on. A build stopped at populate in the order before, nothing drawn, goes through requirements and
+  art first. Every
+  building of the built places is found (`PlacementBuildings`: a painted place's from `structures.json`, an assembled
+  one's from its plan's things; its door cell; the interior scene a gateway beside its door leads into, from
+  `gateways.json` or the scene's gateways), then one AI call (`/planner/placements`, `plan_placements`: buildings,
+  scenes and their markers, places, characters with biography and cast timeline, quests' stages, story scenes, props,
+  the rules' draft, the locked entries) decides each character's home, work, spot (a building inside or at its door, a
+  marker, or near one) and whereabouts (from the start / a quest stage / an event, until the next), and each prop's
+  spot and whereabouts (picked up: its holder). `MergePlacements` keeps only what's real (ids, scenes, stages; inside
+  only where an interior is drawn), the rules' decision (`RulePlacements`) for the rest, and the user's locked entries.
+  Rules: a shop, workshop, inn or temple whose interior lists them, inside it; the cast timeline's start (a crowd of 3+
+  at one spot is the story's gathering: they're met at home or work and a whereabouts from the scene's stage takes them
+  there); the place's actor anchor; outdoor work by their words (gate, graves, fields, square); work, else home door;
+  else by the centrepiece, never the arrival. `ResolvePlacements` turns each spot into a cell in the scenes as they are
+  (a whereabouts without a marker gets `where/<who>/<n>`); Populate stands everyone there, puts the story's markers
+  (`story/<scene>/<who>`) where each one's whereabouts has them then, routes the quests' item/spot aliases and the
+  requirements' props (PlaceAsset) through it, and records each cell and own marker back. The timeline's stage moves
+  use the whereabouts' markers. It's decided in ⑪ once the quests are bound, to the requirements (unless a painted place's buildings aren't found yet), again when
+  they are (ApplyEntrances), after Mark again of a Planner place, and on Replace Characters (`build:replaceCharacters`;
+  locked entries kept; the whereabouts requirements made again, built ones whose text didn't change kept). Each
+  whereabouts is a requirement of kind `whereabouts` (accept `at`: the marker is in the scene, and at the start they
+  stand on it, else the quest's move_actor or a package of theirs takes them there by that stage; played: in that
+  scene within 4 cells as the stage began; props `prop-at`), built by rule (the stage's move_actor) or the AI panel
+  (an event's move). The AI panel reads them with the `placements` tool and records an edit with `placement.set`.

@@ -1,4 +1,5 @@
 #include "gameplay/Magic.h"
+#include "install/InstallPath.h"
 
 #include "gameplay/Animation.h"
 #include "gameplay/Attributes.h"
@@ -23,7 +24,7 @@ namespace {
 
 fs::path MagicDir() {
 #ifdef AIGE_MAGIC_DATA_DIR
-    return fs::path(AIGE_MAGIC_DATA_DIR);
+    return InstalledOr(fs::path(AIGE_MAGIC_DATA_DIR), "data/magic"); // next to the program when packaged
 #else
     return fs::path("data") / "magic";
 #endif

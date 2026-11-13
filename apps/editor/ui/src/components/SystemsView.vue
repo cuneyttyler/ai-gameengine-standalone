@@ -19,7 +19,19 @@ interface Feature {
   howItPlays?: string
   needsScript?: boolean
 }
+// ⑦ Systems ▸ Input: the game's controls as designed (written into input.json by the build).
+interface InputAction {
+  name?: string
+  also?: string[]
+  description?: string
+  context?: string
+  keys?: string[]
+  pad?: string[]
+  screen?: string
+  why?: string
+}
 const props = defineProps<{
+  input?: { actions?: InputAction[]; summary?: string; rationale?: string } | null
   systems: { summary?: Record<string, unknown>; records?: SystemRecord[] }
   gameplay?: { features?: Feature[] } | null
   designs?: { subject?: string; rules?: string[]; sends?: { event: string; when?: string }[] }[]
@@ -41,7 +53,9 @@ const whoDoesWhat = computed(() =>
     who: p.character ?? p.subject ?? '', when: whenText(e.when), does: doesText(e.does), conditional: !!e.if?.length,
   }))),
 )
-defineEmits<{ (e: 'open-gameplay'): void }>()
+defineEmits<{ (e: 'open-gameplay'): void; (e: 'regenerate-input'): void }>()
+const tab = ref<'design' | 'input'>('design')
+const inputActions = computed(() => (props.input?.actions ?? []).filter((a): a is InputAction => !!a && !!a.name))
 
 const parts = computed(() => Object.entries(props.systems.summary ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== ''))
 
@@ -102,6 +116,33 @@ function tags(r: SystemRecord): string[] {
 
 <template>
   <div class="systems">
+    <div class="tabs">
+      <button :class="{ active: tab === 'design' }" @click="tab = 'design'">Design</button>
+      <button :class="{ active: tab === 'input' }" title="The game's controls: every action, its keys and gamepad buttons, the screen it opens"
+              @click="tab = 'input'">Input <span class="count">{{ inputActions.length }}</span></button>
+    </div>
+    <template v-if="tab === 'input'">
+      <section>
+        <div class="input-bar">
+          <span class="muted">{{ input?.summary || (inputActions.length ? '' : 'Not designed yet.') }}</span>
+          <button @click="$emit('regenerate-input')">{{ inputActions.length ? 'Design the controls again' : 'Design the controls' }}</button>
+        </div>
+        <table v-if="inputActions.length" class="who">
+          <thead><tr><th>Action</th><th>Keys</th><th>Pad</th><th>Context</th><th>Opens</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr v-for="a in inputActions" :key="a.name" :title="a.why ?? ''">
+              <td class="mono">{{ a.name }}<div v-if="a.also?.length" class="muted small">also {{ a.also.join(', ') }}</div></td>
+              <td><span v-for="k in a.keys ?? []" :key="k" class="key">{{ k }}</span></td>
+              <td><span v-for="k in a.pad ?? []" :key="k" class="key">{{ k }}</span></td>
+              <td>{{ a.context || 'gameplay' }}</td>
+              <td>{{ a.screen || '' }}</td>
+              <td>{{ a.description }}<div v-if="a.why" class="muted small">{{ a.why }}</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
+    <template v-else>
     <section v-if="gameplay?.features?.length">
       <h4 class="head" @click="toggle('__gameplay')">
         <span class="caret">{{ folded.__gameplay ? '▸' : '▾' }}</span> Gameplay <span class="count">{{ gameplay.features.length }}</span>
@@ -162,10 +203,19 @@ function tags(r: SystemRecord): string[] {
         </div>
       </div>
     </section>
+    </template>
   </div>
 </template>
 
 <style scoped>
+.tabs { display: flex; gap: 0; border-bottom: 1px solid #2a2a3a; }
+.tabs button { border-bottom: none; margin-right: -1px; }
+.tabs button.active { border-color: #89b4fa; color: #cdd6f4; background: #313244; }
+.input-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.key { display: inline-block; border: 1px solid #45475a; padding: 0 5px; margin: 0 3px 2px 0; font-family: monospace; font-size: 0.85em; }
+.mono { font-family: monospace; }
+.muted { color: #8a8aa0; }
+.small { font-size: 0.85em; }
 .who { width: 100%; border-collapse: collapse; }
 .who th, .who td { text-align: left; padding: 3px 6px; border-top: 1px solid #2a2a3a; vertical-align: top; }
 .systems {

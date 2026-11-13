@@ -47,6 +47,9 @@ struct Perception {
 };
 
 // Something characters use (14.3): a bed, a chair, a counter, a forge.
+// In a small scene (an ambient cutscene) now: its packages wait until it's over.
+struct SceneHeld {};
+
 struct SmartObject {
     std::string type;        // bed, chair, table, counter, anvil, fireplace, well, bookshelf, altar...
     std::string affordances; // sleep, sit, eat, drink, work, read, pray, warm: comma-separated

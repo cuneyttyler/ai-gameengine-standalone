@@ -101,7 +101,7 @@ nlohmann::json EditorApp::AnimateTargets() {
     // The built plan (assets.json, written by Build), else the plan as it stands: the art made, not built yet.
     nlohmann::json plan = ReadJsonFile(build_->Folder() / "assets.json");
     if (!plan.is_object() || !plan.contains("needs")) plan = PlannedAssets();
-    const bool paint = build_->Method() == "Paint";
+    const bool paint = IsPaintMethod(build_->Method());
     for (const auto& row : plan.value("needs", nlohmann::json::array())) {
         const std::string role = row.value("role", ""), prefab = row.value("prefab", "");
         const bool building = row.value("layer", "") == "building";
@@ -152,6 +152,26 @@ nlohmann::json EditorApp::AnimateTargets() {
                                {"trigger", "near: opens as someone comes to it, closes as they go"}, // painted: its overlay's Action
                                {"where", "cell " + std::to_string(static_cast<int>(x)) + "," + std::to_string(static_cast<int>(y))},
                                {"status", "pending"}});
+        }
+        // Painted freely (docs/places/painted-places.md §2a): the painter placed the buildings, the plan's aren't in it;
+        // each building the vision model found (⑤ Mark's found occluders), its door looked for in its own box.
+        const nlohmann::json marks = LoadMarks(build_->Folder());
+        for (const auto& o : marks.is_object() ? marks.value("occluders", nlohmann::json::array()) : nlohmann::json::array()) {
+            if (!o.value("found", false) || o.value("hidden", false)) continue;
+            const std::string kind = o.value("kind", "building");
+            if (kind == "tree" || kind == "rock" || kind == "plant" || kind == "bush") continue;
+            const nlohmann::json box = o.value("box", nlohmann::json());
+            if (!box.is_array() || box.size() != 4) continue;
+            const int x0 = std::clamp(box[0].get<int>(), 0, W - 1), y0 = std::clamp(box[1].get<int>(), 0, H - 1);
+            const int x1 = std::clamp(box[0].get<int>() + box[2].get<int>(), 1, W), y1 = std::clamp(box[1].get<int>() + box[3].get<int>(), 1, H);
+            if (x1 - x0 < 8 || y1 - y0 < 8) continue;
+            const std::string id = o.value("id", "");
+            targets.push_back({{"key", "painting:found/" + id}, {"kind", "door"}, {"role", kind},
+                               {"label", o.value("name", kind + " " + id)},
+                               {"texture", "places/" + build_->Id() + "/" + painting.value("painting", "painting.png")},
+                               {"region", {x0, y0, x1 - x0, y1 - y0}},
+                               {"trigger", "near: opens as someone comes to it, closes as they go"},
+                               {"where", "found in the painting"}, {"status", "pending"}});
         }
     }
     // What was done before (this build's animate.json) kept; a building's other doors (key "<its key>#<n>") too.

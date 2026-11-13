@@ -12,6 +12,8 @@ import StepOutline from './StepOutline.vue'
 import ProcedureEditor from './ProcedureEditor.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
+import { openContextMenu } from '../contextMenu'
+import { showUses } from '../projectSearch'
 import RecordValue from './story/RecordValue.vue'
 import RulesEditor from './RulesEditor.vue'
 import { defaultFor, fieldShown, withoutUnused, type RecordFieldSpec } from '../records'
@@ -138,6 +140,17 @@ watch(
 )
 onMounted(requestLookups)
 
+// Show uses (projectSearch.ts): every file that names it, a package on characters in every scene among them.
+function usesOf(type: string, id: string): void {
+  showUses({ kind: type === 'package' ? 'package' : 'record', path: `records/${type}/${id}.json`, id, label: `${type} ${id}` })
+}
+function recordMenu(type: string, id: string, event: MouseEvent): void {
+  openContextMenu(event.clientX, event.clientY, [
+    { label: 'Open', action: () => select(type, id) },
+    { label: 'Show uses', action: () => usesOf(type, id) },
+  ])
+}
+
 function select(type: string, id: string): void {
   const r = find(type, id)
   if (!r) return
@@ -250,6 +263,7 @@ function goTo(key: string): void {
               :class="{ active: selected?.type === r.type && selected?.id === r.id }"
               :title="r.path"
               @click="select(r.type, r.id)"
+              @contextmenu.prevent="recordMenu(r.type, r.id, $event)"
             >
               <span class="name">{{ label(r) }}</span>
               <span v-if="r.data.base" class="tag">: {{ r.data.base }}</span>
@@ -351,6 +365,13 @@ function goTo(key: string): void {
         <button :disabled="!dirty && !!draft.originalId" @click="revert">{{ draft.originalId ? 'Revert' : 'Cancel' }}</button>
         <span v-if="dirty" class="muted">Unsaved changes</span>
         <button v-if="draft.originalId" :disabled="dirty" title="A copy under a new id" @click="duplicate">Duplicate</button>
+        <button
+          v-if="draft.originalId"
+          :title="`What refers to it anywhere in the project: scenes and their things, prefabs, ${draft.type === 'package' ? 'other packages' : 'other records'}, story, scripts`"
+          @click="usesOf(draft.type, draft.originalId)"
+        >
+          Show uses
+        </button>
         <span class="spacer"></span>
         <span v-if="draft.originalId" class="muted path">records/{{ draft.type }}/{{ draft.originalId }}.json</span>
         <button v-if="draft.originalId" class="danger" @click="remove">Delete…</button>

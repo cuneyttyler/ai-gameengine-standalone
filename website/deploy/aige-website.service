@@ -1,0 +1,20 @@
+# The AIGE website (website/backend's Flask app) under gunicorn, as the unprivileged aige user, on 127.0.0.1:8000.
+# nginx (aige-website.nginx) is in front of it. Installed by website/deploy/deploy.sh.
+[Unit]
+Description=AIGE website
+After=network.target
+
+[Service]
+User=aige
+Group=aige
+WorkingDirectory=/opt/aige/website/backend
+ExecStart=/opt/aige/venv/bin/gunicorn --workers 2 --threads 4 --timeout 120 --bind 127.0.0.1:8000 --access-logfile - app:app
+Restart=always
+RestartSec=3
+# What it may write: its data (registrations, the outbox).
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/aige/website/backend/data
+
+[Install]
+WantedBy=multi-user.target

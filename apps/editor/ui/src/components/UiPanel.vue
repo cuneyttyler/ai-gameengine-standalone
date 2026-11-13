@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { editorState } from '../editorState'
+import { showUses } from '../projectSearch'
 
 interface Screen {
   id: string
@@ -152,6 +153,7 @@ function isColour(value: string): boolean {
           <button :class="{ on: preview === current.id }" :disabled="editorState.playing" @click="togglePreview(current.id)">
             {{ preview === current.id ? 'Stop preview' : 'Preview' }}
           </button>
+          <button title="What opens it: buttons, scripts, story and scenes that name it" @click="showUses({ kind: 'ui', id: current.id, label: `screen ${current.id}` })">Show uses</button>
           <button class="primary" :disabled="editorState.playing" title="Change it in the UI designer: place elements, import pictures, give buttons actions" @click="editorState.uiDesigner = current.id">Design…</button>
           <button v-if="!source.project" title="Copy it into the project's ui/ folder to change it" @click="customise">
             Customise

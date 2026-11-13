@@ -89,6 +89,15 @@ The **Edit** menu works on the open scene and its selection:
 - **Replace prefab…**: opens the Replace prefab dialog, to swap every copy of one prefab for another.
 - **Background Image…**: use a picture as the scene's ground (a top-down picture of the whole site), with or
   without the AI.
+- **Search in Project…** (Ctrl+Shift+F): a search sheet on the window's right edge. It searches the text of the
+  project's scenes, prefabs, packages and records, story (quests, dialogue, routines, cutscenes, World Bible, planner
+  documents), scripts and UI, and art by file name; the filter buttons narrow it to some of those (none on: all).
+  Results are grouped by file, each line clickable: a scene opens with the thing the line is in selected, a record or
+  package opens in Project ▸ Records, a quest or dialogue in Story, a cutscene in Effects, a script in the script
+  editor, art and prefabs are selected in the Assets panel. **Aa** matches case and the whole text as typed. The open
+  scene is searched as it is now, saved or not. **Show uses** (each result's **uses** button, and the right-click
+  menus of prefabs, art, scenes, records and packages, quests, dialogue, routines and cutscenes, the Scripts tab's
+  **Uses** and the UI tab's **Show uses**) lists what refers to that thing anywhere in the project, the same way.
 - **Copy** (Ctrl+C): copies the selected entity to the editor's clipboard.
 - **Paste at cursor** (Ctrl+V): pastes the copy at the grid cell under the mouse.
 - **Bigger** (] or +) and **Smaller** ([ or -): resize the selection by 10%.
@@ -123,6 +132,38 @@ decal and you want it underneath.
 
 Questions: how do I copy and paste an entity? how do I send something behind the ground? how do I replace every copy
 of a prefab?
+
+## Search in Project and Show uses
+
+**Edit ▸ Search in Project…** (Ctrl+Shift+F) opens a search sheet on the window's right edge. Type and the whole
+project is searched: scenes, prefabs, packages, records, story (quests, dialogue, routines, cutscenes, the World Bible,
+the Planner's documents), scripts, UI, art (by file name) and other files (modules, settings). The filter buttons
+(**Scenes**, **Prefabs**, **Packages**, **Records**, **Story**, **Scripts**, **UI**, **Art**, **Other**) narrow it;
+with none on, everything is searched. **Aa** matches case and the whole text as typed.
+
+Results are grouped by file. Click a line to open it where it's edited: a scene opens with the thing that line is in
+selected, a record or package in Project ▸ Records, a quest or dialogue in Story, a cutscene in Effects, a script in
+the script editor, art and prefabs selected in the Assets panel.
+
+**Show uses** lists everything that refers to one thing, the same way. It's on:
+- the right-click menu of a prefab or a piece of art (Assets panel), a scene (Scenes panel) and a thing in a scene
+  (**Show uses of its prefab**);
+- the Records page's **Show uses** button, for a record or a package (a package is found on characters in every scene);
+- the right-click menu of quests, dialogue and routines in Story, and of cutscenes in Effects;
+- **Uses** beside each script in Project ▸ Scripts, and **Show uses** on the UI tab (what opens a screen: buttons,
+  scripts, story and scenes that name it);
+- each search result's **uses** button.
+
+### Example: where is the healing potion given out?
+
+1. Press **Ctrl+Shift+F** and type `healing-potion`.
+2. Results come grouped by file: `records/item/healing-potion.json`, the loot table `loot/chest-common`, the quest
+   `q-herbs` (its reward) and the scene `bellwether` (a chest's Inventory).
+3. Click the `bellwether` line: the scene opens with the chest selected.
+4. To see only quests and dialogue, click **Story**.
+
+Questions: how do I search the whole project? where is this prefab used? what uses this record? how do I find which
+scenes use a script? what is Ctrl+Shift+F?
 
 ## View menu
 

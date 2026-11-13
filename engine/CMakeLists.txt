@@ -37,6 +37,14 @@ target_include_directories(aige_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(aige_platform PUBLIC glfw)
 target_compile_features(aige_platform PUBLIC cxx_std_20)
 
+# Where the program's data is: next to it (a packaged build) or the source tree's.
+add_library(aige_install STATIC
+    install/InstallPath.h
+    install/InstallPath.cpp
+)
+target_include_directories(aige_install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(aige_install PUBLIC cxx_std_20)
+
 add_subdirectory(rhi)
 add_subdirectory(ecs)
 add_subdirectory(reflection)

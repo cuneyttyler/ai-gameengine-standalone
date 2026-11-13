@@ -465,9 +465,10 @@ watch(design, () => nextTick(measure))
               <label v-if="isOverhead(selected.type)" class="inline" title="Long text breaks into lines at w (else it stays on one line)">
                 <input type="checkbox" :checked="!!selected.wrap" @change="set('wrap', ($event.target as HTMLInputElement).checked)" /> Wrap long text</label>
             </template>
-            <template v-if="selected.type === 'numbers'">
-              <h4>Colours by kind</h4>
-              <label v-for="kind in ['damage', 'heal', 'item']" :key="kind" :title="`The ${kind} numbers' colour: a theme colour or #rrggbb`">{{ kind }}
+            <template v-if="selected.type === 'numbers' || selected.type === 'labels'">
+              <h4>{{ selected.type === 'labels' ? 'Colours by label type' : 'Colours by kind' }}</h4>
+              <p v-if="selected.type === 'labels'" class="muted small">Each label type (the Label component's type) has its own look: place, sign, status, quest and danger; name is the element's own colour.</p>
+              <label v-for="kind in (selected.type === 'labels' ? ['place', 'sign', 'status', 'quest', 'danger'] : ['damage', 'heal', 'item'])" :key="kind" :title="`The ${kind} ${selected.type === 'labels' ? 'labels' : 'numbers'}' colour: a theme colour or #rrggbb`">{{ kind }}
                 <input :value="selected.kinds?.[kind] ?? ''" list="ui-colour-tokens" placeholder="#ff5a4a or accent" @change="setKind(kind, ($event.target as HTMLInputElement).value)" /></label>
               <datalist id="ui-colour-tokens"><option v-for="c in colourChoices" :key="c" :value="c" /></datalist>
             </template>

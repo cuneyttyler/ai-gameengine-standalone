@@ -82,10 +82,10 @@ public:
     void SaveDefaults(const nlohmann::json& defaults);
 
     static std::string Now();
+    std::vector<std::string> AllDocuments() const; // every document, by its name ("outline", "characters/aldric")
 
 private:
     std::filesystem::path root_;
-    std::vector<std::string> AllDocuments() const;
 };
 
 } // namespace aige

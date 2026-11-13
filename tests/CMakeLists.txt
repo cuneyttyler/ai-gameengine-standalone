@@ -81,6 +81,7 @@ add_executable(aige_tests
     layout_tests/layout_revise_test.cpp
     plan_tests/plan_revise_test.cpp
     revise_language_test.cpp
+    paint_build_test.cpp
     big_scene_test.cpp
     catalog_test.cpp
     brief_test.cpp

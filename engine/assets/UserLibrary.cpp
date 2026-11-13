@@ -181,8 +181,23 @@ json UserLibrary::State(const fs::path& projectRoot) const {
     return j;
 }
 
-std::string UserLibrary::Add(const fs::path& file, const json& info, const std::string& folder) {
+// A character's animations beside its sheet (<name>.character.png: <name>.character.anim.json), or "".
+static fs::path AnimOf(const fs::path& sheet) {
+    const std::string s = sheet.string();
+    const std::string tail = ".character.png";
+    if (s.size() <= tail.size() || s.compare(s.size() - tail.size(), tail.size(), tail) != 0) return {};
     std::error_code ec;
+    const fs::path anim = s.substr(0, s.size() - 4) + ".anim.json";
+    return fs::is_regular_file(anim, ec) ? anim : fs::path();
+}
+
+std::string UserLibrary::Add(const fs::path& given, const json& info, const std::string& folder) {
+    std::error_code ec;
+    // A character's animations given: kept as its sheet (the item), the animations beside it.
+    fs::path file = given;
+    if (const std::string g = given.string(); g.size() > 20 && g.compare(g.size() - 20, 20, ".character.anim.json") == 0) {
+        file = g.substr(0, g.size() - 10) + ".png";
+    }
     if (!fs::is_regular_file(file, ec)) return {};
     const std::string hash = HashOf(file);
     if (hash.empty()) return {};
@@ -242,6 +257,23 @@ std::string UserLibrary::Add(const fs::path& file, const json& info, const std::
     // Generated art: shared as the user chose for it (asked when they haven't chosen).
     const std::string sharing = library.value("sharing", "unset");
     item["shared"] = item["source"] == "generated" ? (sharing == "always" ? "yes" : sharing == "never" ? "no" : "unasked") : "no";
+    // A character: its animations kept beside it (the clips it has, for choosing it), its kind said.
+    if (const fs::path anim = AnimOf(file); !anim.empty()) {
+        const std::string animName = name.substr(0, name.size() - 4) + ".anim.json";
+        fs::copy_file(anim, dir_ / "files" / animName, fs::copy_options::overwrite_existing, ec);
+        std::ifstream in(anim, std::ios::binary);
+        const json a = json::parse(in, nullptr, false);
+        json clips = json::array();
+        if (a.is_object() && a.contains("clips") && a["clips"].is_object()) {
+            for (const auto& [clip, c] : a["clips"].items()) clips.push_back(clip);
+        }
+        item["kind"] = "character";
+        item["anim"] = animName;
+        item["clips"] = clips;
+        if (a.is_object() && a.contains("character") && a["character"].is_object()) {
+            item["description"] = a["character"].value("description", std::string());
+        }
+    }
     if (!interior.empty() && interior != hash) {
         item["interior"] = interior;
         if (json* inside = Find(library["items"], interior)) (*inside)["exteriorOf"] = hash;
@@ -319,6 +351,7 @@ std::string UserLibrary::Remove(const std::string& item) {
     if (file.parent_path() == dir_ / "files") {
         fs::remove(file, ec);
         for (const char* extra : {".meta", ".gen.json"}) fs::remove(file.string() + extra, ec);
+        if (const std::string anim = i->value("anim", ""); !anim.empty()) fs::remove(dir_ / "files" / anim, ec);
     }
     auto& items = library["items"];
     items.erase(std::remove_if(items.begin(), items.end(), [&](const json& x) { return x.value("id", "") == item; }), items.end());
@@ -453,6 +486,27 @@ std::string UserLibrary::CopyToProject(const std::string& item, const fs::path& 
     json library = Load();
     const json* i = Find(library["items"], item);
     if (!i) return {};
+    if (const std::string animName = i->value("anim", ""); !animName.empty()) {
+        // A character: its sheet and its animations (the path to the animations returned).
+        std::error_code ec;
+        std::string stem = i->value("file", "");
+        if (stem.size() > 9 && stem[8] == '-') stem = stem.substr(9); // its hash prefix off
+        const std::string tail = ".character.png";
+        if (stem.size() > tail.size() && stem.compare(stem.size() - tail.size(), tail.size(), tail) == 0) stem = stem.substr(0, stem.size() - tail.size());
+        stem = SafeName(stem);
+        const std::string folder = "assets/characters/" + stem;
+        fs::create_directories(projectRoot / folder, ec);
+        const std::string sheet = folder + "/" + stem + ".character.png", animPath = folder + "/" + stem + ".character.anim.json";
+        fs::copy_file(dir_ / "files" / i->value("file", ""), projectRoot / sheet, fs::copy_options::overwrite_existing, ec);
+        if (ec) return {};
+        CopyBeside(dir_ / "files" / i->value("file", ""), projectRoot / sheet);
+        std::ifstream in(dir_ / "files" / animName, std::ios::binary);
+        json a = json::parse(in, nullptr, false);
+        if (!a.is_object()) return {};
+        a["texture"] = sheet;
+        std::ofstream(projectRoot / animPath, std::ios::binary) << a.dump(2);
+        return animPath;
+    }
     const fs::path from = dir_ / "files" / i->value("file", "");
     std::error_code ec;
     fs::create_directories(projectRoot / "assets" / "library", ec);
@@ -536,6 +590,39 @@ int UserLibrary::KeepGenerated(const fs::path& projectRoot) {
             }
         }
         Save(now);
+    }
+    // The characters drawn for it (assets/characters/<name>/<name>.character.png and its animations), in "Characters":
+    // one item each (by where it came from), made again when it's grown (more clips).
+    const fs::path characters = projectRoot / "assets" / "characters";
+    if (fs::is_directory(characters, ec)) {
+        std::string folderId;
+        for (const auto& entry : fs::recursive_directory_iterator(characters, ec)) {
+            const fs::path file = entry.path();
+            if (!entry.is_regular_file() || AnimOf(file).empty()) continue;
+            const std::string origin = projectRoot.filename().string() + ":" + fs::relative(file, projectRoot, ec).generic_string();
+            const std::string hash = HashOf(file);
+            json current = Load();
+            std::string old;
+            bool same = false;
+            for (const auto& item : current["items"]) {
+                if (item.value("hash", "") == hash) same = true;
+                else if (item.value("origin", "") == origin && item.value("kind", "") == "character") old = item.value("id", "");
+            }
+            if (same) continue;
+            if (!old.empty()) Remove(old);
+            if (folderId.empty()) {
+                for (const auto& f : Load()["folders"]) {
+                    if (f.value("name", "") == "Characters" && f.value("parent", "").empty()) folderId = f.value("id", "");
+                }
+                if (folderId.empty()) {
+                    NewFolder("Characters");
+                    for (const auto& f : Load()["folders"]) {
+                        if (f.value("name", "") == "Characters" && f.value("parent", "").empty()) folderId = f.value("id", "");
+                    }
+                }
+            }
+            if (!Add(file, {{"source", "generated"}, {"origin", origin}}, folderId).empty()) ++added;
+        }
     }
     // Art fetched from the web for its builds (with its licence), kept too.
     const fs::path web = projectRoot / "assets" / "web";

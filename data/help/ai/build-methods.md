@@ -1,19 +1,24 @@
 # Build methods: Assembled, matched art and Paint
 
-The two ways the Build panel and the Planner make a place's look (Assembled, with matched art over a painted background, and Paint, one painting marked by hand), where the method is set, and how painting, marking and pre-filling work.
+The three ways the Build panel and the Planner make a place's look (Assembled, with matched art over a painted background; Paint (Free) and Paint (by Plan), one painting marked by hand), where the method is set, and how painting, marking and pre-filling work.
 
-## The two build methods
+## The three build methods
 
 Every scene says how it's built:
 
 - **Assembled**: each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Result.
-- **Paint**: the place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind. Only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, (Animate), Assets, Result.
+- **Paint (Free)**: the place is painted whole as one picture, freely. Its zones are laid out (② Layout), then each zone's ground is coloured flat on the land (orange, yellow, purple, red, white, pink; the roads, water and woods as they are), and the painter fills each colour with its part of the place: the residential ward with its houses, the graveyard with its graves. There is **no Plan step**: ③ Paint follows ② Layout. Then you mark where one can walk and what a character goes behind. Steps: Confirm, Layout, Paint, Mark, (Animate), Assets, Result.
+- **Paint (by Plan)**: the place is planned in full (every building, garden and road), the plan is drawn as a block-out and the block-out is painted whole. Its marks are pre-filled from the plan. Steps: Confirm, Layout, Plan, Paint, Mark, (Animate), Assets, Result.
+
+Painted either way, only doors, chests, items and characters get art of their own. Paint (Free) is for places of zones (villages, towns, camps, castles); a dungeon or a building's floors are painted from their plan either way.
 
 Where it's set:
 - **Project Settings ▸ Places ▸ Method**: the default for new scenes (File ▸ New Project asks too; File ▸ Preferences… ▸ New projects ▸ Build method is what New Project starts with);
-- **a scene's type**: File ▸ New Scene asks for it; right-click a scene in the Scenes panel or Scene Tree ▸ **Type ▸ Assembled / Paint**;
+- **a scene's type**: File ▸ New Scene asks for it; right-click a scene in the Scenes panel or Scene Tree ▸ **Type ▸ Assembled / Paint** (a painted scene is built by the project's Paint method, Free or by Plan);
 - **the Build panel's first page**: its Build method shows the open scene's type; choosing the other sets the scene's type too;
-- **the Planner's home page**: every place the plan builds starts with it.
+- **the Planner's home page**: every place the plan builds starts with it; a place built into a scene that already has a type is built by the scene's type.
+
+A new build always starts from the open scene's type: setting a scene's **Type** (its right-click menu) changes the Build panel's Build method at once, and going back to the first page (a build cancelled, failed or closed) reads it again.
 
 In ④ Paint, **Use Assembled instead** switches a build to Assembled.
 
@@ -28,7 +33,7 @@ The town Greywater should have buildings you can move and edit; the swamp outsid
 
 The swamp build has the steps Confirm, Layout, Plan, Paint, Mark, Animate, Assets, Result; a build in `greywater` has Confirm, Layout, Plan, Assets, Result.
 
-Questions: what is the difference between Assembled and Paint? how do I change a scene's build method? which method should I use?
+Questions: what is the difference between Assembled and Paint? what is Paint (Free)? what is Paint (by Plan)? how do I change a scene's build method? which method should I use?
 
 ## Matched art: Assembled pieces made to fit together
 
@@ -80,7 +85,7 @@ A village, town, camp, castle, farm or forest is **painted freely**: the block-o
 - the painting is shown beside its plan (click to zoom);
 - **⑤ Mark →** goes on.
 
-The paint model is File ▸ Preferences… ▸ Art and painting ▸ Paint model (FLUX-3-Image keeps the layout best; FLUX-2-Klein-4b is a fast rough draft; FLUX-2-Pro, FLUX-2-Max; FLUX-3-Image-to-Pro and -to-Klein repaint the look after), or Project Settings ▸ AI ▸ paint.
+The paint model is File ▸ Preferences… ▸ Art and painting ▸ Paint model (FLUX-3-Image keeps the layout best; FLUX-2-Klein-4b is a fast rough draft), or Project Settings ▸ AI ▸ paint.
 
 From the AI panel, "paint it again ..." (or "repaint") paints the open place again with your words as its notes.
 

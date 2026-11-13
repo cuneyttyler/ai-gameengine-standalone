@@ -374,6 +374,7 @@ def find_structures(provider: Provider, picture: Image.Image, piece: int = 1024,
     if k < 1:
         shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
     found: list[dict] = []
+    asked, failed, last_error = 0, 0, None
 
     def overlaps(a, b) -> float:
         ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
@@ -393,10 +394,14 @@ def find_structures(provider: Provider, picture: Image.Image, piece: int = 1024,
             crop.save(buffer, "PNG")
             url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
             content = [{"type": "text", "text": FIND_STRUCTURES}, {"type": "image_url", "image_url": url}]
+            asked += 1
             try:
                 text = provider.complete([{"role": "user", "content": content}]).text
                 answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
-            except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+            except ProviderError as error:
+                failed, last_error = failed + 1, error
+                continue
+            except (json.JSONDecodeError, ValueError, AttributeError):
                 continue
             items = answer.get("structures", []) if isinstance(answer, dict) else []
             for item in items if isinstance(items, list) else []:
@@ -411,9 +416,144 @@ def find_structures(provider: Provider, picture: Image.Image, piece: int = 1024,
                 low = kind.lower()
                 found.append({"kind": kind, "_xy": box,
                               "tall": not any(w in low for w in ("well", "cart", "stall", "stone", "crate", "barrel"))})
+    if asked and failed == asked:
+        raise ProviderError(f"The vision model didn't answer: {last_error}")  # not "nothing stands there"
     return [{"kind": f["kind"], "tall": f["tall"],
              "box": [round(f["_xy"][0]), round(f["_xy"][1]), round(f["_xy"][2] - f["_xy"][0]), round(f["_xy"][3] - f["_xy"][1])]}
             for f in found]
+
+
+CHOOSE_ENTRANCES = """The numbered pictures are cut from a painted 2D isometric game map: each is one of the buildings, gates and
+other structures standing in it (its number in its top-left corner). The places below are reached from this map. For each,
+which numbered picture is its way in: the building one walks into for it (a smithy for a forge, a shop for a shop, an inn
+for an inn), or the gate, archway, door or stairs it's reached by (a graveyard's gate, a crypt's door)? A place one goes
+OUT to (marked "out": a graveyard, a forest, a road away) is only ever a gate, archway, bridge or opening in a wall
+leading out, never a house, shed, stall or barn. Use a number for one place only. 0 when none of them is it.
+{places}
+Answer as JSON exactly: {{"choices": {{"<place id>": <number>, ...}}}}"""
+
+
+def find_entrances(provider: Provider, picture: Image.Image, places: list[dict], structures: list[dict]) -> list[dict]:
+    """Where each of `places` [{id, name, about}] is entered in a painting (development_plan.md 32.12): the vision model
+    picks, from the structures found in it ([{kind, box: [x, y, w, h]}], find_structures), the building or gate that is
+    each place's way in, then finds that one's door (locate_doors). [{id, found, kind?, box?, door?}], boxes [x, y, w, h]
+    in the painting's pixels; door: the door's own box, or none when the building's is all that's known."""
+    if provider is None or not places:
+        return [{"id": p.get("id", ""), "found": False} for p in places]
+    from PIL import ImageDraw, ImageFont
+    shown = picture.convert("RGB")
+    # The biggest first (a building over a crate), at most 40 on the sheet.
+    candidates = sorted((s for s in structures if s.get("box") and s["box"][2] > 8 and s["box"][3] > 8),
+                        key=lambda s: -(s["box"][2] * s["box"][3]))[:40]
+    if not candidates:
+        return [{"id": p.get("id", ""), "found": False} for p in places]
+
+    def crop_of(box: list[int], margin: float = 0.2) -> tuple[Image.Image, int, int]:
+        x, y, w, h = box
+        mx, my = round(w * margin), round(h * margin)
+        x0, y0 = max(0, x - mx), max(0, y - my)
+        x1, y1 = min(shown.width, x + w + mx), min(shown.height, y + h + my)
+        return shown.crop((x0, y0, x1, y1)), x0, y0
+
+    cell, cols = 240, 8
+    rows = (len(candidates) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * cell, rows * cell), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    try:
+        font = ImageFont.load_default(size=30)
+    except TypeError:
+        font = ImageFont.load_default()
+    for i, s in enumerate(candidates):
+        crop, _, _ = crop_of(s["box"], 0.08)
+        crop.thumbnail((cell - 12, cell - 12), Image.LANCZOS)
+        cx, cy = (i % cols) * cell, (i // cols) * cell
+        sheet.paste(crop, (cx + (cell - crop.width) // 2, cy + (cell - crop.height) // 2))
+        draw.rectangle((cx + 2, cy + 2, cx + 48, cy + 38), fill=(255, 230, 0))
+        draw.text((cx + 6, cy + 4), str(i + 1), fill=(0, 0, 0), font=font)
+    buffer = io.BytesIO()
+    sheet.save(buffer, "PNG")
+    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    listing = "\n".join(f"- {p.get('id', '')}{' (out)' if p.get('out') else ''}: {p.get('name', '')}. {p.get('about', '')}".strip()
+                        for p in places)
+    ways_out = ("gate", "arch", "bridge", "wall", "opening", "portal", "door", "stair", "steps", "tunnel", "cave", "path", "road")
+    content = [{"type": "text", "text": CHOOSE_ENTRANCES.format(places=listing)}, {"type": "image_url", "image_url": url}]
+    try:
+        text = provider.complete([{"role": "user", "content": content}]).text
+        answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
+        choices = answer.get("choices", {}) if isinstance(answer, dict) else {}
+    except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+        choices = {}
+    out, used = [], set()
+    for p in places:
+        pid = p.get("id", "")
+        try:
+            n = int(choices.get(pid, 0)) if isinstance(choices, dict) else 0
+        except (TypeError, ValueError):
+            n = 0
+        if n < 1 or n > len(candidates) or n in used:
+            out.append({"id": pid, "found": False})
+            continue
+        s = candidates[n - 1]
+        if p.get("out") and not any(w in str(s.get("kind", "")).lower() for w in ways_out):
+            out.append({"id": pid, "found": False})  # a house isn't the way out to a graveyard: art is drawn for it
+            continue
+        used.add(n)
+        entry = {"id": pid, "found": True, "kind": s.get("kind", ""), "box": s["box"]}
+        # Its door: the lowest one the model sees on it (the ground floor's, facing the viewer).
+        crop, x0, y0 = crop_of(s["box"], 0.1)
+        doors = locate_doors(provider, crop)
+        if doors:
+            dx, dy, dw, dh = max(doors, key=lambda d: d[1] + d[3])
+            entry["door"] = [x0 + dx, y0 + dy, dw, dh]
+        out.append(entry)
+    return out
+
+
+FIND_WAY_OUT = """The picture is a painted 2D isometric game map of {about}. Find every way OUT of it, where one comes in from
+{outside} and leaves again: a door in its outer walls, a gate, an archway, stairs or a passage leading out, an opening at
+the map's edge. Not a door between two of its own rooms, not a window, not a cupboard. For each, the smallest box round it as
+[x0, y0, x1, y1] in thousandths of the picture (0-1000; x from the left edge, y from the top), its kind in a word, and
+whether one can walk up to it from inside: open floor or ground in front of it, not walled off, not blocked by furniture,
+rubble or water ("reachable"). Answer as JSON exactly:
+{{"exits": [{{"kind": "door", "box_2d": [x0, y0, x1, y1], "reachable": true}}, ...]}} ({{"exits": []}} when none shows)."""
+
+
+def find_way_out(provider: Provider, picture: Image.Image, about: str = "a place", outside: str = "outside",
+                 longest: int = 1600) -> list[dict]:
+    """The ways out of a painted place (an interior's front door, a dungeon's entrance), where its gateway back out stands:
+    [{kind, box: [x, y, w, h] in the painting's pixels, reachable}], [] when the model sees none or can't answer. The
+    caller picks the one that can be walked to (more than one door: an accessible one)."""
+    if provider is None:
+        return []
+    shown = picture.convert("RGB")
+    k = min(1.0, longest / max(shown.width, shown.height))
+    if k < 1:
+        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
+    buffer = io.BytesIO()
+    shown.save(buffer, "PNG")
+    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    content = [{"type": "text", "text": FIND_WAY_OUT.format(about=about or "a place", outside=outside or "outside")},
+               {"type": "image_url", "image_url": url}]
+    answer = None
+    for _ in range(2):  # a busy or odd answer: asked again (a look, not a paid picture)
+        try:
+            text = provider.complete([{"role": "user", "content": content}]).text
+            answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
+            break
+        except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+            continue
+    items = answer.get("exits", []) if isinstance(answer, dict) else []
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        boxes = _boxes([item], shown.width, shown.height)
+        if not boxes:
+            continue
+        x0, y0, x1, y1 = boxes[0]
+        out.append({"kind": str(item.get("kind") or "door")[:40], "reachable": item.get("reachable") is not False,
+                    "box": [round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)]})
+    return out
 
 
 LOCATE_BUILDING = """The picture is part of a painted 2D isometric game place. Is there a building in its middle (a house, a shop, a

@@ -113,12 +113,9 @@ These paint places rather than single pieces, but they are BFL models chosen the
 
 - **Background** (Preferences ▸ Art and painting ▸ Background; Project Settings ▸ AI ▸ background; a build's
   "Background painted by"; Edit ▸ Background Image…'s **Model**): who paints a place's ground, roads and floors as one
-  picture from its plan. **BFL FLUX.3 Image (keeps the map best)**, the default; **BFL FLUX.2 max (as good, slower)**;
-  **BFL FLUX.2 pro**; **BFL FLUX.2 klein (fast, loose)**. All need `BFL_API_KEY`.
+  picture from its plan. **BFL FLUX.3 Image (keeps the map best)**, the default; **BFL FLUX.2 klein (fast, loose)**. Both need `BFL_API_KEY`.
 - **Paint model** (Preferences; Project Settings ▸ AI ▸ paint): who paints a place whole for the Paint build method.
-  FLUX-3-Image (default, keeps the layout best), FLUX-2-Klein-4b (fast, a rough draft), FLUX-2-Pro, FLUX-2-Max (rich
-  looks, may drift from the layout), FLUX-3-Image-to-Pro and FLUX-3-Image-to-Klein (FLUX-3-Image paints the plan, then
-  FLUX.2 pro or klein repaints its look).
+  FLUX-3-Image (default, keeps the layout best) or FLUX-2-Klein-4b (fast, a rough draft). (FLUX.2 pro and max, and FLUX-3-Image-to-Pro/-Klein, are no longer offered: a project or preference still naming one uses the default).
 - **Interiors** are always painted by BFL (an edit of the outside picture), whatever the art model.
 
 **Edit ▸ Background Image…** repaints a build's background from its plan and words, or (with Build "None: the open

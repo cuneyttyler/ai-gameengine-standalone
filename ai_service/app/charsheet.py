@@ -14,7 +14,7 @@ DIRECTIONS = ["south", "south-east", "east", "north-east", "north", "north-west"
 SHORT = {"south": "s", "south-east": "se", "east": "e", "north-east": "ne", "north": "n", "north-west": "nw", "west": "w", "south-west": "sw"}
 COLUMNS = 8
 # What the animators play (engine/gameplay/Animation.cpp): an action asked for in words, as their clip.
-_CLIPS = (("run", "walk"), ("walk", "walk"), ("attack", "attack"), ("strik", "attack"), ("swing", "attack"), ("cast", "cast"),
+_CLIPS = (("run", "run"), ("sprint", "run"), ("climb", "climb"), ("ladder", "climb"), ("walk", "walk"), ("attack", "attack"), ("strik", "attack"), ("swing", "attack"), ("cast", "cast"),
           ("spell", "cast"), ("hurt", "hurt"), ("hit", "hurt"), ("die", "die"), ("death", "die"), ("idle", "idle"), ("breath", "idle"),
           ("use", "use"))
 

@@ -109,7 +109,7 @@ struct AiSettings {
     std::string model;      // its model (empty: the provider's default)
     std::string art;        // who draws the prefabs' art: mistral, pixellab, bfl:<model>
     std::string background; // who paints the places' backgrounds: bfl:flux-3-image
-    std::string paint;      // who paints a place whole (the Paint method): flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein
+    std::string paint;      // who paints a place whole (the Paint method): flux-2-klein-4b or flux-3-image
     std::string animate;       // what animates people and creatures: autosprite, pixellab:animate-v3
     std::string objectAnimate; // what animates things (a door, a chest): pixellab, bfl:flux-video
     // The art's look, for every art prompt (prefabs, matched art, backgrounds, paint, characters): pixel-16, pixel-32,
@@ -127,10 +127,23 @@ inline std::string ArtStyleWords(const std::string& style) {
 }
 inline bool PixelArtStyle(const std::string& style) { return style.empty() || style.rfind("pixel", 0) == 0; }
 
-// How the AI builds the project's places (docs/places/painted-places.md): "Assembled" (each piece's art made and put
-// together on the grid over the painted background: Confirm, Layout, Plan, Assets, Build) or "Paint" (the place painted
-// whole, then marked by hand: Confirm, Layout, Plan, Paint, Mark, Assets, Build). A build and a plan start with it and
-// can choose the other.
+// How the AI builds the project's places (docs/places/painted-places.md):
+// - "Assembled": each piece's art made and put together on the grid over the painted background (Confirm, Layout, Plan,
+//   Assets, Build);
+// - "Paint", shown as Paint (Free): the place painted whole and freely from its zones, each zone's ground a flat colour
+//   on the land block-out, with no Plan step (Confirm, Layout, Paint, Mark, Assets, Build);
+// - "PaintPlan", shown as Paint (by Plan): the place's plan drawn as a block-out and painted (Confirm, Layout, Plan,
+//   Paint, Mark, Assets, Build).
+// A build and a plan start with it and can choose another.
+inline bool IsPaintMethod(const std::string& method) { return method == "Paint" || method == "PaintPlan"; }
+// A method as stored: one of the three ("PaintFree" read as "Paint"; anything else Assembled).
+inline std::string NormalBuildMethod(const std::string& method) {
+    if (method == "Paint" || method == "PaintFree") return "Paint";
+    if (method == "PaintPlan") return "PaintPlan";
+    return "Assembled";
+}
+// A scene's type for a build method: a painted scene either way.
+inline std::string SceneTypeOf(const std::string& method) { return IsPaintMethod(method) ? "Paint" : "Assembled"; }
 struct PlacesSettings {
     std::string method = "Assembled";
 };

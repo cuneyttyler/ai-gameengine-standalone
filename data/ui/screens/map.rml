@@ -1,0 +1,34 @@
+<rml>
+<head>
+	<title>Map</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+</head>
+<!-- The map (32.7): the place's picture; beside it what to do now and where its ways lead. -->
+<body class="menu window map">
+<div class="screen shade" data-model="menu">
+	<div class="panel">
+		<h1>{{title}}</h1>
+		<div class="columns">
+			<div class="picture" data-if="image != ''">
+				<img data-attr-src="image"/>
+				<div class="you" data-if="marker_x >= 0" data-style-left="marker_x + '%'" data-style-top="marker_y + '%'"></div>
+			</div>
+			<div class="items">
+				<div data-for="item, i : items">
+				<div class="heading" data-if="item.heading">{{item.group}}</div>
+				<div class="item row" data-class-lit="i == highlighted" data-class-off="!item.enabled"
+				     data-event-click="choose(i)" data-event-mousedown="context(i)">
+					<img class="icon" data-if="item.icon != ''" data-attr-src="item.icon"/>
+					<span class="label">{{item.label}}</span>
+					<span class="detail" data-if="item.detail != ''">{{item.detail}}</span>
+				</div>
+				</div>
+			</div>
+		</div>
+		<p class="body" data-if="body != ''">{{body}}</p>
+		<p class="footer" data-if="footer != ''">{{footer}}</p>
+	</div>
+</div>
+</body>
+</rml>

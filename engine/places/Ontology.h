@@ -85,6 +85,9 @@ struct RelationDef {
     double weight = 1.0;
 };
 
+// A plan's cell, in the real world: 2 m across. Real sizes (a module's realSize) are turned into cells with it.
+inline constexpr double kCellMetres = 2.0;
+
 struct ModuleDef {
     std::string id;
     std::string name;
@@ -105,6 +108,10 @@ struct ModuleDef {
     // How its things are laid out, by slot (docs/places/ontology-in-use.md): {"car": {"pattern": "bays", "depth": 2,
     // "aisle": 2, "ends": 1, "facing": "aisle"}}: the solver places them so, without asking anyone.
     nlohmann::json layout = nlohmann::json::object();
+    // How big it is in the real world, by its `extent` (small, normal, big, huge): {"big": {"area": 3000}} in m² for a
+    // zone, {"big": {"w": 40, "h": 50}} in metres for a feature. A cell is kCellMetres across: the plan's size follows
+    // (ApplyRealSize), so a big graveyard is as big next to the houses as a real one.
+    nlohmann::json realSize;
     std::string source;                     // where it came from: "engine", a project, "learned"
 
     const FieldDef* Field(const std::string& name) const;

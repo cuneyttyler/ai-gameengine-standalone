@@ -11,7 +11,7 @@ span, em, strong { display: inline; }
 
 body
 {
-	font-family: sans;
+	font-family: var(--font-family);
 	font-size: var(--font-size);
 	color: var(--text);
 	width: 100%;
@@ -24,6 +24,7 @@ h2 { font-size: 22dp; margin-bottom: 4dp; }
 .panel
 {
 	background-color: var(--panel);
+	decorator: var(--panel-decorator);
 	border-top: 2dp var(--panel-border);
 	padding: 16dp 24dp;
 }

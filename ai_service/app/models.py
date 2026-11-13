@@ -332,11 +332,19 @@ class DeleteRecord(BaseModel):
     id: str
 
 
+class DeleteFile(BaseModel):
+    """Deletes a story or interface file (cutscenes/, quests/, dialogue/, schedules/, ui/, scripts/, prefabs/, an
+    .anim.json); a cutscene goes with what starts it."""
+
+    op: Literal["delete_file"]
+    path: str
+
+
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, AddPrefabComponent, RemovePrefabComponent, SetSetting,
         SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteAnim, WriteRecord, DeleteRecord,
+        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteAnim, WriteRecord, DeleteRecord, DeleteFile,
         StoryGraphOp,
     ],
     Field(discriminator="op"),

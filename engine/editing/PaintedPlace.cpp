@@ -8,15 +8,18 @@
 #include "gameplay/Interiors.h"
 #include "physics2d/Components.h"
 #include "places/Ontology.h"
+#include "places/WorldSections.h"
 #include "renderer2d/Components.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <ctime>
 #include <fstream>
 #include <map>
 #include <optional>
+#include <set>
 
 namespace aige {
 
@@ -61,6 +64,32 @@ auto Inherited(const Ontology* ontology, std::string role, Get get) -> decltype(
         role = r->broader;
     }
     return T{};
+}
+
+// Whether a thing of this role blocks walking: 1 or 0 as its role (or the nearest broader one) says, -1 when none does.
+int SolidOf(const Ontology* ontology, std::string role) {
+    for (int i = 0; i < 8 && ontology != nullptr && !role.empty(); ++i) {
+        const Role* r = ontology->FindRole(role);
+        if (r == nullptr) break;
+        if (r->solid != -1) return r->solid;
+        role = r->broader;
+    }
+    return -1;
+}
+
+// Ground a painter may cover with water it adds (a stream, a pond): outdoors, not a floor, a road or stone.
+bool NaturalGround(const std::string& t) {
+    for (const char* hard : {"floor", "stone", "tile", "plank", "cobble", "wall", "brick", "carpet", "marble", "void"}) {
+        if (t.find(hard) != std::string::npos) return false;
+    }
+    return true;
+}
+
+// A painted pixel that reads as water: blue about as strong as green and above red (grass, dirt, forest and their
+// shadows have far less blue than green), neither black nor white.
+bool WaterColour(const uint8_t* p) {
+    const int r = p[0], g = p[1], b = p[2], sum = r + g + b;
+    return b >= g - 6 && b >= r + 2 && sum > 60 && sum < 600;
 }
 
 // How tall a thing of this role stands, in cell widths (its size times its height for its width).
@@ -212,11 +241,12 @@ int PaintTiles(int across, int down) {
     return std::max(1, (std::max(0, across) + std::max(0, down) + kPaintTileSpan - 1) / kPaintTileSpan);
 }
 
-FreePaintPlan PlanFreePaint(int across, int down) {
+FreePaintPlan PlanFreePaint(int across, int down, int cellPx) {
     FreePaintPlan p;
     const int cw = std::max(1, across), ch = std::max(1, down);
-    const double tw = kFreePaintCell, th = tw / 2, top = th * 3.0;
-    p.width = (cw + ch) * kFreePaintCell / 2;
+    cellPx = std::max(2, cellPx);
+    const double tw = cellPx, th = tw / 2, top = th * 3.0;
+    p.width = (cw + ch) * cellPx / 2;
     p.height = static_cast<int>(std::ceil((cw + ch) * th / 2 + top + th / 2));
     auto grid = [](int size, int tile) { return size <= tile ? 1 : 1 + (size - tile + (tile - kFreeTileOverlap) - 1) / (tile - kFreeTileOverlap); };
     p.cols = grid(p.width, kFreeTileW);
@@ -259,7 +289,12 @@ json LandOnly(const json& solved) {
     if (W <= 0 || H <= 0) return land;
     std::vector<uint8_t> main(static_cast<size_t>(W) * H, 0);
     for (const auto& p : solved.value("paths", json::array())) {
-        if (p.value("class", "") != "main") continue;
+        // Its main roads and its districts' streets (a ward's, "market-ward/..."; they were dropped, leaving only the
+        // main road); in a world, every road of its sections too (development_plan.md 32.8: the sections' plans are
+        // what the world's painting keeps, "heartland-<place>/site/..." and "heartland-<place>/<ward>/..."). Lanes and
+        // trails (to parcels, to gateways) are the painter's.
+        const std::string cls = p.value("class", "");
+        if (cls != "main" && cls != "street" && p.value("id", "").find("/site/") == std::string::npos) continue;
         const int r = std::max(1, p.value("width", 2)) / 2 + 1;
         for (const auto& c : p.value("cells", json::array())) {
             for (int dy = -r; dy <= r; ++dy) {
@@ -346,6 +381,72 @@ json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::pat
     painting["preparedAt"] = Now();
     WriteJsonFile(folder / "painting.json", painting);
     return painting;
+}
+
+json TintZones(const json& solved, const Ontology* ontology, const fs::path& folder) {
+    // The colours a zone may have: none a material of the land (green grass, brown roads and fields, blue water, grey
+    // squares), each named for the prompt.
+    struct Tint {
+        const char* name;
+        uint8_t r, g, b;
+    };
+    static const Tint kTints[] = {{"orange", 232, 146, 76}, {"yellow", 236, 212, 58}, {"purple", 146, 96, 196},
+                                  {"red", 200, 60, 60},     {"white", 240, 240, 240}, {"pink", 235, 140, 190}};
+    const json painting = LoadPainting(folder);
+    if (!painting.is_object() || !painting.contains("view") || !solved.contains("grid")) return json::array();
+    auto image = DecodeImage(folder / painting.value("blockout", "blockout.png"));
+    if (!image) return json::array();
+    const json b = solved["grid"].value("bounds", json::array({0, 0, 0, 0}));
+    const int W = b[2].get<int>(), H = b[3].get<int>();
+    if (W <= 0 || H <= 0) return json::array();
+    // Which zone each cell is in: the site's zones that build (not its woods, meadows and water: the land shows those).
+    std::string root;
+    for (const auto& r : solved.value("regions", json::array())) {
+        if (r.value("parent", json()).is_null()) root = r.value("id", "");
+    }
+    std::vector<int> zoneOf(static_cast<size_t>(W) * H, -1);
+    json zones = json::array();
+    for (const auto& r : solved.value("regions", json::array())) {
+        if (root.empty() || r.value("parent", json()) != json(root)) continue;
+        const std::string module = r.value("module", "");
+        const ModuleDef* m = ontology ? ontology->Module(module) : nullptr;
+        if (m == nullptr || m->level != PlaceLevel::Zone || ontology->IsA(module, "NatureArea") || ontology->IsA(module, "WaterBody")) continue;
+        const int k = static_cast<int>(zones.size());
+        const Tint& t = kTints[static_cast<size_t>(k) % std::size(kTints)];
+        zones.push_back({{"id", r.value("id", "")}, {"module", module}, {"colour", t.name}, {"rgb", {t.r, t.g, t.b}}});
+        for (const auto& run : r.value("cells", json::array())) { // [y, x0, x1)
+            const int y = run[0].get<int>();
+            for (int x = run[1].get<int>(); x < run[2].get<int>(); ++x) {
+                if (x >= 0 && y >= 0 && x < W && y < H) zoneOf[static_cast<size_t>(y) * W + x] = k;
+            }
+        }
+    }
+    if (zones.empty()) return zones;
+    // Its roads, water and squares stay as the land has them: only the zone's ground is coloured.
+    const std::vector<std::string> ground = TerrainCells(LandOnly(solved), W, H);
+    static const std::set<std::string> kKeep = {"water", "deep-water", "dirt", "road", "plaza", "cobble", "paved", "gravel", "bridge", "void", "lava"};
+    for (size_t c = 0; c < zoneOf.size() && c < ground.size(); ++c) {
+        if (zoneOf[c] >= 0 && (kKeep.contains(ground[c]) || ground[c].find("wall") != std::string::npos)) zoneOf[c] = -1;
+    }
+    // Every pixel over a coloured cell takes its colour (what grows there, standing up from it, too).
+    const PaintView view = PaintView::From(painting["view"]);
+    for (uint32_t py = 0; py < image->height; ++py) {
+        for (uint32_t px = 0; px < image->width; ++px) {
+            const auto [cx, cy] = view.Cell(px + 0.5, py + 0.5);
+            const int x = static_cast<int>(std::floor(cx)), y = static_cast<int>(std::floor(cy));
+            if (x < 0 || y < 0 || x >= W || y >= H) continue;
+            const int k = zoneOf[static_cast<size_t>(y) * W + x];
+            if (k < 0) continue;
+            const json rgb = zones[static_cast<size_t>(k)]["rgb"];
+            uint8_t* p = &image->rgba[(static_cast<size_t>(py) * image->width + px) * 4];
+            p[0] = rgb[0].get<uint8_t>(), p[1] = rgb[1].get<uint8_t>(), p[2] = rgb[2].get<uint8_t>(), p[3] = 255;
+        }
+    }
+    WritePng(folder / painting.value("blockout", "blockout.png"), *image);
+    json updated = painting;
+    updated["zones"] = zones;
+    WriteJsonFile(folder / "painting.json", updated);
+    return zones;
 }
 
 json LoadPainting(const fs::path& folder) { return ReadJson(folder / "painting.json"); }
@@ -439,13 +540,82 @@ json PrefillMarks(const json& solved, const Ontology* ontology, const fs::path& 
     const json objects = solved.value("objects", json::array());
     std::map<std::string, const json*> byId;
     for (const auto& o : objects) byId[o.value("id", "")] = &o;
+    // Each painted thing's id in the block-out (the painter follows it): where a low thing is painted, over more than
+    // its plan cell (a mound a cell in the plan is painted three across).
+    std::map<std::string, uint32_t> blockoutId;
+    {
+        const json order = painting.value("objects", json::array());
+        for (size_t i = 0; i < order.size(); ++i) blockoutId[order[i].get<std::string>()] = static_cast<uint32_t>(i + 1);
+    }
+    const bool idsFit = idMap && idMap->width == static_cast<uint32_t>(W) && idMap->height == static_cast<uint32_t>(H);
     for (const auto& o : objects) {
         if (!PaintedObject(ontology, o) || o.value("layer", "") == "decal") continue;
         const int ox = o.value("x", 0), oy = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
         const bool building = o.value("layer", "") == "building";
-        if (!building && HeightOf(ontology, o.value("slot", "")) < 0.5) continue; // a bush, flowers: walked past
+        const std::string slot = o.value("slot", "");
+        // What the ontology says (a rock is solid, a mound too); with nothing said, a thing half a cell tall or more.
+        const int solid = SolidOf(ontology, slot);
+        const double height = HeightOf(ontology, slot);
+        if (!building && (solid == 0 || (solid == -1 && height < 0.5))) continue; // a bush, flowers: walked past
         for (int y = oy; y < oy + h; ++y) {
             for (int x = ox; x < ox + w; ++x) block(x, y);
+        }
+        // A low thing: every cell its painted shape covers (a tall one's shape rises over the cells behind it: its footprint only).
+        if (building || height >= 1.0 || !idsFit) continue;
+        const auto it = blockoutId.find(o.value("id", ""));
+        if (it == blockoutId.end()) continue;
+        for (int y = oy - 3; y < oy + h + 3; ++y) {
+            for (int x = ox - 3; x < ox + w + 3; ++x) {
+                const auto [px, py] = view.Pixel(x + 0.5, y + 0.5);
+                const int ix = static_cast<int>(px), iy = static_cast<int>(py);
+                if (ix >= 0 && iy >= 0 && ix < W && iy < H && IdAt(*idMap, ix, iy) == it->second) block(x, y);
+            }
+        }
+    }
+    // Water the painter added (a stream, a pond the plan hasn't): ground cells a third or more water-coloured in the
+    // painting. Roads and bridges across it stay walkable; a lone wet cell is a speck, a dry one ringed by water is water.
+    if (const auto picture = DecodeImage(folder / painting.value("painting", "painting.png")); picture && picture->width > 0) {
+        const double sx = static_cast<double>(picture->width) / std::max(1, W), sy = static_cast<double>(picture->height) / std::max(1, H);
+        std::set<std::pair<int, int>> road;
+        for (const auto& path : solved.value("paths", json::array())) {
+            if (path.value("class", "") == "river") continue;
+            for (const auto& c : path.value("cells", json::array())) road.insert({c[0].get<int>(), c[1].get<int>()});
+        }
+        const size_t gw = static_cast<size_t>(ground.w);
+        std::vector<uint8_t> wet(static_cast<size_t>(std::max(0, ground.w * ground.h)), 0);
+        for (int y = 0; y < ground.h; ++y) {
+            for (int x = 0; x < ground.w; ++x) {
+                if (!NaturalGround(ground.At(x, y))) continue;
+                int samples = 0, water = 0;
+                for (double v = 0.2; v < 0.85; v += 0.15) {
+                    for (double u = 0.2; u < 0.85; u += 0.15) {
+                        const auto [px, py] = view.Pixel(x + u, y + v);
+                        const int ix = static_cast<int>(px * sx), iy = static_cast<int>(py * sy);
+                        if (ix < 0 || iy < 0 || ix >= static_cast<int>(picture->width) || iy >= static_cast<int>(picture->height)) continue;
+                        ++samples;
+                        water += WaterColour(&picture->rgba[(static_cast<size_t>(iy) * picture->width + ix) * 4]) ? 1 : 0;
+                    }
+                }
+                wet[static_cast<size_t>(y) * gw + x] = samples > 0 && water * 10 >= samples * 3;
+            }
+        }
+        auto wetAround = [&](int x, int y) {
+            int n = 0;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int nx = x + dx, ny = y + dy;
+                    if ((dx != 0 || dy != 0) && nx >= 0 && ny >= 0 && nx < ground.w && ny < ground.h) n += wet[static_cast<size_t>(ny) * gw + nx];
+                }
+            }
+            return n;
+        };
+        for (int y = 0; y < ground.h; ++y) {
+            for (int x = 0; x < ground.w; ++x) {
+                const bool isWet = wet[static_cast<size_t>(y) * gw + x] != 0;
+                const int around = wetAround(x, y);
+                const bool water = isWet ? around >= 2 : (around >= 6 && NaturalGround(ground.At(x, y)));
+                if (water && !road.contains({x, y}) && !ground.bridges.contains({x, y})) block(x, y);
+            }
         }
     }
     for (const auto& line : solved.value("lines", json::array())) {
@@ -751,12 +921,20 @@ std::string InteriorKindOf(const Ontology* ontology, const json& choices, const 
     return kind.is_string() ? kind.get<std::string>() : "cutaway";
 }
 
+static std::map<std::string, json> InteriorObjects(const json& solved, const Ontology* ontology, const fs::path& folder, const json& marks);
+
 json InteriorChoices(const json& solved, const Ontology* ontology, const fs::path& folder) {
     json out = json::array();
     if (ontology == nullptr) return out;
     const json choices = LoadInteriorChoices(folder);
     std::map<std::string, int> counts;
-    for (const auto& o : solved.value("objects", json::array())) {
+    // The plan's buildings, and those a free painting's vision found (they stand where they were painted).
+    const json marks = LoadMarks(folder);
+    // Painted freely, the plan's buildings weren't drawn (the painter composed its own): only those found count.
+    const json painted = LoadPainting(folder);
+    const bool free = painted.is_object() && painted.value("free", false);
+    for (const auto& [id, o] : InteriorObjects(solved, ontology, folder, marks.is_object() ? marks : json::object())) {
+        if (free && id.rfind("found/", 0) != 0) continue;
         if (o.value("layer", "") == "building") ++counts[o.value("role", o.value("slot", ""))];
     }
     for (const auto& [role, count] : counts) {
@@ -769,20 +947,69 @@ json InteriorChoices(const json& solved, const Ontology* ontology, const fs::pat
     return out;
 }
 
+// The plan's objects by id, and the buildings a free painting's vision found (docs/places/painted-places.md §2a): a
+// found building has no plan object, so it's one of its own, standing where it was painted: its footprint the foot of
+// its box turned back into cells, its door toward the viewer, its role what the vision model called it (else a house).
+// A found structure's role when it's a building one goes into: its kind's own role when the ontology has it, a house
+// when its kind names a dwelling, shop or hall; else none (a wall, a gate, a tower, a stall, a well, a cart: what the
+// vision model also finds standing, which has no inside and isn't one of the painting's buildings).
+static std::string FoundBuildingRole(const Ontology* ontology, std::string kind) {
+    std::transform(kind.begin(), kind.end(), kind.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::replace(kind.begin(), kind.end(), ' ', '-');
+    if (ontology && ontology->FindRole(kind)) return kind;
+    static const char* kBuildings[] = {"house", "home", "cottage", "hut", "cabin", "shop", "store", "hall", "church", "chapel", "temple",
+                                       "barn", "mill", "inn", "tavern", "smithy", "forge", "manor", "building", "bakery", "workshop", "lodge"};
+    for (const char* word : kBuildings) {
+        if (kind.find(word) != std::string::npos) return "house";
+    }
+    return {};
+}
+
+static std::map<std::string, json> InteriorObjects(const json& solved, const Ontology* ontology, const fs::path& folder, const json& marks) {
+    std::map<std::string, json> out;
+    for (const auto& o : solved.value("objects", json::array())) out[o.value("id", "")] = o;
+    const json painting = LoadPainting(folder);
+    if (!painting.is_object() || !painting.contains("view")) return out;
+    const PaintView view = PaintView::From(painting["view"]);
+    for (const auto& o : marks.value("occluders", json::array())) {
+        // Only what the painting has: an occluder the user hid (or removed) is no building of it.
+        if (!o.value("found", false) || o.contains("object") || o.value("hidden", false)) continue;
+        const std::string role = FoundBuildingRole(ontology, o.value("kind", "building"));
+        if (role.empty()) continue;
+        const json box = o.value("box", json());
+        if (!box.is_array() || box.size() != 4) continue;
+        const double bx = box[0].get<double>(), by = box[1].get<double>(), bw = box[2].get<double>(), bh = box[3].get<double>();
+        // Its foot: the lower third of its box, on the ground.
+        double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const auto& [px, py] : {std::pair{bx, by + bh * 2 / 3}, std::pair{bx + bw, by + bh * 2 / 3}, std::pair{bx, by + bh},
+                                     std::pair{bx + bw, by + bh}, std::pair{bx + bw / 2, by + bh * 2 / 3}, std::pair{bx + bw / 2, by + bh}}) {
+            const auto [cx, cy] = view.Cell(px, py);
+            x0 = std::min(x0, cx), y0 = std::min(y0, cy), x1 = std::max(x1, cx), y1 = std::max(y1, cy);
+        }
+        const int x = static_cast<int>(std::floor(x0)), y = static_cast<int>(std::floor(y0));
+        out["found/" + o.value("id", "")] = {{"id", "found/" + o.value("id", "")}, {"layer", "building"}, {"slot", role}, {"role", role},
+                                             {"x", x}, {"y", y}, {"w", std::max(1, static_cast<int>(std::ceil(x1)) - x)},
+                                             {"h", std::max(1, static_cast<int>(std::ceil(y1)) - y)}, {"facing", "s"}};
+    }
+    return out;
+}
+
+static std::string ObjectOf(const json& occluder) {
+    return occluder.contains("object") ? occluder.value("object", "") : occluder.value("found", false) ? "found/" + occluder.value("id", "") : "";
+}
+
 json InteriorRequests(const json& solved, const Ontology* ontology, const fs::path& folder) {
     json out = json::array();
     const json marks = LoadMarks(folder);
     if (!marks.is_object() || ontology == nullptr) return out;
     const json choices = LoadInteriorChoices(folder);
-    const json objects = solved.value("objects", json::array());
-    std::map<std::string, const json*> byId;
-    for (const auto& o : objects) byId[o.value("id", "")] = &o;
+    const std::map<std::string, json> objects = InteriorObjects(solved, ontology, folder, marks);
     std::error_code ec;
     for (const auto& o : marks.value("occluders", json::array())) {
         const std::string id = o.value("id", "");
-        const auto it = byId.find(o.value("object", ""));
-        if (o.value("hidden", false) || !SafeId(id) || it == byId.end() || it->second->value("layer", "") != "building") continue;
-        const json& object = *it->second;
+        const auto it = objects.find(ObjectOf(o));
+        if (o.value("hidden", false) || !SafeId(id) || it == objects.end() || it->second.value("layer", "") != "building") continue;
+        const json& object = it->second;
         const std::string role = object.value("role", object.value("slot", ""));
         if (InteriorKindOf(ontology, choices, role) != "cutaway") continue;
         if (fs::exists(folder / "marks" / (id + "-interior.png"), ec)) continue;
@@ -796,22 +1023,20 @@ int PairInteriorMarks(const json& solved, const fs::path& folder, const Ontology
     json marks = LoadMarks(folder);
     if (!marks.is_object()) return 0;
     const json choices = LoadInteriorChoices(folder);
-    const json objects = solved.value("objects", json::array());
-    std::map<std::string, const json*> byId;
-    for (const auto& o : objects) byId[o.value("id", "")] = &o;
+    const std::map<std::string, json> objects = InteriorObjects(solved, ontology, folder, marks);
     std::error_code ec;
     int count = 0;
     for (auto& o : marks["occluders"]) {
         const std::string id = o.value("id", "");
-        const auto it = byId.find(o.value("object", ""));
+        const auto it = objects.find(ObjectOf(o));
         o.erase("interiorKind");
-        const bool scene = it != byId.end() && it->second->value("layer", "") == "building" &&
-                           InteriorKindOf(ontology, choices, it->second->value("role", it->second->value("slot", ""))) == "scene";
-        if (!SafeId(id) || it == byId.end() || (!scene && !fs::exists(folder / "marks" / (id + "-interior.png"), ec))) {
+        const bool scene = it != objects.end() && it->second.value("layer", "") == "building" &&
+                           InteriorKindOf(ontology, choices, it->second.value("role", it->second.value("slot", ""))) == "scene";
+        if (!SafeId(id) || it == objects.end() || (!scene && !fs::exists(folder / "marks" / (id + "-interior.png"), ec))) {
             o.erase("interior"), o.erase("cells"), o.erase("door");
             continue;
         }
-        const json& object = *it->second;
+        const json& object = it->second;
         const int x = object.value("x", 0), y = object.value("y", 0), w = std::max(1, object.value("w", 1)), h = std::max(1, object.value("h", 1));
         if (scene) {
             o.erase("interior");
@@ -928,12 +1153,34 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
         if (o.value("hidden", false)) continue;
         const std::string id = o.value("id", "");
         const json box = o.value("box", json());
-        const json base = o.value("base", json());
-        if (!SafeId(id) || !box.is_array() || box.size() < 4 || !base.is_array() || base.empty()) continue;
+        const json savedBase = o.value("base", json());
+        if (!SafeId(id) || !box.is_array() || box.size() < 4 || !savedBase.is_array() || savedBase.empty()) continue;
         const auto mask = DecodeImage(folder / o.value("mask", "marks/" + id + ".png"));
         if (!mask || mask->width == 0) continue;
         const int bx = box[0].get<int>(), by = box[1].get<int>();
         const int bw = static_cast<int>(mask->width), bh = static_cast<int>(mask->height);
+        // Drawn or changed by hand (⑤ Mark's + New, or painted onto a prefilled one) with no base line set: its base is the
+        // foot of what's painted, the lowest
+        // painted pixel of each run of columns (a new occluder's line starts across the painting's middle: kept, it cut
+        // away all that's drawn below it and stood it at the wrong depth).
+        json base = o.value("base", json());
+        if ((!o.value("prefilled", false) || o.value("edited", false)) && !o.value("baseSet", false)) {
+            json foot = json::array();
+            const int step = std::max(4, bw / 64);
+            for (int x0 = 0; x0 < bw; x0 += step) {
+                int lowest = -1;
+                for (int x = x0; x < std::min(bw, x0 + step); ++x) {
+                    for (int y = bh - 1; y > lowest; --y) {
+                        if (mask->rgba[(static_cast<size_t>(y) * bw + x) * 4 + 3] >= 128) {
+                            lowest = y;
+                            break;
+                        }
+                    }
+                }
+                if (lowest >= 0) foot.push_back({bx + x0 + std::min(step, bw - x0) / 2.0, by + lowest + 1.0});
+            }
+            if (!foot.empty()) base = foot;
+        }
         // The painting's pixels under the mask, above the base line (below it is ground in front of the thing).
         ImageData cut;
         cut.width = mask->width, cut.height = mask->height;

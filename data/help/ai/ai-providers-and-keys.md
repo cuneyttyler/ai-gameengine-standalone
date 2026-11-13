@@ -120,10 +120,10 @@ Questions: which model checks the World Bible? how do I change the vision model?
 File ▸ Preferences… ▸ **Art and painting** (the app's choices; a project can have its own in Project Settings ▸ AI, and a build its own in Build ▸ Assets):
 
 - **Prefab art**: Follow the provider (Mistral's images with Mistral; Claude draws nothing, so Mistral if its key is there, else PixelLab), Mistral, PixelLab, BFL FLUX.2 klein, BFL FLUX.3 Image, BFL FLUX.2 pro. Draws every piece of an Assembled build in one style and the Art tool's single pieces.
-- **Background**: BFL FLUX.3 Image (keeps the map best, the default), FLUX.2 max (as good, slower), FLUX.2 pro, FLUX.2 klein (fast, loose). Paints a place's ground, roads and floors as one picture.
+- **Background**: BFL FLUX.3 Image (keeps the map best, the default) or FLUX.2 klein (fast, loose). Paints a place's ground, roads and floors as one picture.
 - **Humanoid animation**: AutoSprite (a character's 8 directions at once; the default) or PixelLab Animate with text v3 (8 frames, up to 256 px; slow).
 - **Non-humanoid animation**: PixelLab Animate with text v3 (the default) or BFL FLUX video (a 5 s clip, 12 frames taken from it): a door opening, a chest, a lever, a flag.
-- **Paint model**: who paints a place whole for the Paint build method: FLUX-3-Image (keeps the layout best), FLUX-2-Klein-4b (fast, a rough draft), FLUX-2-Pro, FLUX-2-Max, FLUX-3-Image-to-Pro, FLUX-3-Image-to-Klein.
+- **Paint model**: who paints a place whole for the Paint build method: FLUX-3-Image (keeps the layout best) or FLUX-2-Klein-4b (fast, a rough draft). (FLUX.2 pro and max, and FLUX-3-Image-to-Pro/-Klein, are no longer offered: a project or preference still naming one uses the default).
 
 When a project has its own choice, the page shows "This project uses its own: ..." with **Use this choice in the project**, which clears the project's choice so it follows Preferences.
 

@@ -33,6 +33,43 @@ cd ../backend && .venv/Scripts/python app.py
 Flask serves `frontend/dist` and the API from one port. Behind a real server, run it with a WSGI server
 (for example `waitress-serve --port 8000 app:app` or gunicorn) rather than Flask's development server.
 
+## Deploy
+
+The site runs on a Hetzner Cloud server: **cx23** (2 vCPU, 4 GB, 40 GB), Ubuntu 24.04, Falkenstein (`fsn1`),
+named `aige-website`. There:
+- nginx answers on port 80; ufw allows only SSH and HTTP(S);
+- gunicorn runs the Flask app as the unprivileged `aige` user on 127.0.0.1:8000 (`deploy/aige-website.service`);
+- everything lives in `/opt/aige`: `website/`, `data/help` (the docs), `venv/`, `beta/` (the zip the links serve).
+
+To deploy (from Git Bash, with `~/.ssh/aige_hetzner`):
+
+```sh
+website/deploy/deploy.sh <server ip> [dist/AIGE-Beta-<date>.zip]
+```
+
+It builds the frontend, then uploads the backend, the built frontend, `data/help`, the beta zip and the server's
+`.env`. That `.env` is `backend/.env` with `SITE_URL=http://<server ip>` (or `SITE_URL=...` given to the script),
+and `BETA_DOWNLOAD_FILE` pointing at the uploaded zip; it is installed readable by `aige` only. The script then
+installs the packages, the unit and the nginx site, restarts them, and checks `/`, `/beta`, `/api/beta` and `/docs`.
+Registrations in the server's `backend/data` are kept across deploys.
+
+The site is **https://aige-dev.com** (Namecheap DNS: A records `@` and `www` to the server). Deploy it with the
+domain:
+
+```sh
+DOMAIN=aige-dev.com website/deploy/deploy.sh 2.31.139.43 [dist/AIGE-Beta-<date>.zip]
+```
+
+With `DOMAIN`:
+- the first deploy gets a Let's Encrypt certificate for the domain and `www` (webroot: `/var/www/certbot`);
+- `certbot.timer` renews it, and reloads nginx after;
+- the site is `deploy/aige-website-tls.nginx`: http and `www` redirect to `https://<domain>`;
+- `SITE_URL` (the links in emails) is `https://<domain>`.
+
+Without `DOMAIN`, the deploy goes back to plain http on the IP.
+
+Logs: `journalctl -u aige-website`.
+
 ## Documentation (/docs)
 
 `/docs` is the editor's documentation, read from its knowledge base in `../data/help` (the same files the editor's AI

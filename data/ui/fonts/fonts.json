@@ -1,0 +1,12 @@
+{
+  "schema": "aige.ui-fonts/1",
+  "license": "SIL Open Font License 1.1 (each font's licence in licenses/), from github.com/google/fonts",
+  "fonts": [
+    {"name": "PTSerif", "file": "fonts/PTSerif.ttf", "style": "a clear book serif: fantasy, history, mystery, any story-heavy game", "license": "licenses/OFL-ptserif.txt"},
+    {"name": "PTSans", "file": "fonts/PTSans.ttf", "style": "a clean, plain sans: modern, science fiction, minimal, cosy", "license": "licenses/OFL-ptsans.txt"},
+    {"name": "IMFellEnglish", "file": "fonts/IMFellEnglish.ttf", "style": "an old printed book face: medieval, gothic, dark fantasy, horror", "license": "licenses/OFL-imfellenglish.txt"},
+    {"name": "CinzelDecorative", "file": "fonts/CinzelDecorative.ttf", "style": "carved Roman capitals: epic fantasy, myth, titles (hard to read small)", "license": "licenses/OFL-cinzeldecorative.txt"},
+    {"name": "PressStart2P", "file": "fonts/PressStart2P.ttf", "style": "a blocky 8-bit pixel face: retro and pixel-art games", "license": "licenses/OFL-pressstart2p.txt"},
+    {"name": "VT323", "file": "fonts/VT323.ttf", "style": "an old terminal's pixel face: retro computers, hacking, science fiction", "license": "licenses/OFL-vt323.txt"}
+  ]
+}

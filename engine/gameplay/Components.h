@@ -281,6 +281,9 @@ struct Label {
     std::string text;
     float within = 0.0f; // shown only while the player is this close, in cells (0: always)
     float height = 0.0f; // raised this much more above its head, in pixels
+    // What sort of label it is; each type has its own look on the HUD (hud.rml, the designer's Labels):
+    // name (a person's or thing's), place (a building, a street), sign ("Shop open"), status ("Ripe"), quest, danger.
+    std::string type = "name";
 };
 
 struct Action {

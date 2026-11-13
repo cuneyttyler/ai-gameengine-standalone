@@ -6,7 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 
 using namespace aige;
 using json = nlohmann::json;
@@ -179,4 +182,43 @@ TEST(PaintedPlaceTest, MarkedCellsAndBase64) {
     EXPECT_FALSE(blocked[1][1]);
     const auto bytes = DecodeBase64("aGVsbG8=");
     EXPECT_EQ(std::string(bytes.begin(), bytes.end()), "hello");
+}
+
+// The marks pre-filled again on a copy of a painted place (AIGE_PREFILL_MARKS=<place folder copy>|<out png>), and its
+// walkable cells drawn over the painting (green: walkable, red: blocked): to see a change to the pre-fill on a real one.
+TEST(PaintedPlaceTest, PrefillASavedPlace) {
+    const char* arg = std::getenv("AIGE_PREFILL_MARKS");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_PREFILL_MARKS=<place folder copy>|<out png>";
+    const std::string text = arg;
+    const fs::path folder = text.substr(0, text.find('|')), out = text.substr(text.find('|') + 1);
+    std::ifstream in(folder / "layout.solved.json");
+    const json solved = json::parse(in);
+    const json marks = PrefillMarks(solved, &Library(), folder, true);
+    ASSERT_TRUE(marks.is_object());
+    const json painting = LoadPainting(folder);
+    const PaintView view = PaintView::From(painting["view"]);
+    auto picture = DecodeImage(folder / painting.value("painting", "painting.png"));
+    ASSERT_TRUE(picture.has_value());
+    const double sx = static_cast<double>(picture->width) / painting["size"][0].get<int>(), sy = static_cast<double>(picture->height) / painting["size"][1].get<int>();
+    const json rows = marks["walk"]["rows"];
+    int walkable = 0, blocked = 0;
+    for (int y = 0; y < static_cast<int>(rows.size()); ++y) {
+        const std::string row = rows[y].get<std::string>();
+        for (int x = 0; x < static_cast<int>(row.size()); ++x) {
+            const bool walk = row[x] == '.';
+            (walk ? walkable : blocked)++;
+            const auto [px, py] = view.Pixel(x + 0.5, y + 0.5);
+            const int cx = static_cast<int>(px * sx), cy = static_cast<int>(py * sy);
+            for (int dy = -3; dy <= 3; ++dy) {
+                for (int dx = -3; dx <= 3; ++dx) {
+                    const int ix = cx + dx, iy = cy + dy;
+                    if (ix < 0 || iy < 0 || ix >= static_cast<int>(picture->width) || iy >= static_cast<int>(picture->height)) continue;
+                    uint8_t* p = &picture->rgba[(static_cast<size_t>(iy) * picture->width + ix) * 4];
+                    p[0] = walk ? 40 : 255, p[1] = walk ? 230 : 30, p[2] = walk ? 60 : 30;
+                }
+            }
+        }
+    }
+    ASSERT_TRUE(WritePng(out, *picture));
+    std::cout << "walkable " << walkable << ", blocked " << blocked << std::endl;
 }

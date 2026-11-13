@@ -13,11 +13,11 @@ namespace {
 
 const std::map<std::string, std::set<std::string>> kOps = {
     {"actor", {"move", "face", "show", "hide", "place", "tween", "animate"}},
-    {"dialogue", {"line"}},
+    {"dialogue", {"line", "talk"}},
     {"camera", {"follow", "move", "shake", "zoom"}},
     {"audio", {"music", "sound"}},
     {"screen", {"fade_out", "fade_in", "title", "letterbox"}},
-    {"logic", {"do", "emit", "wait_input"}},
+    {"logic", {"do", "emit", "wait_input", "wait_until"}},
     {"effect", {"play"}},
 };
 
@@ -42,6 +42,9 @@ std::optional<Cutscene> CutsceneFromJson(const nlohmann::json& json, const std::
     cutscene.name = json.value("name", "");
     cutscene.letterbox = json.value("letterbox", true);
     cutscene.skippable = json.value("skippable", true);
+    cutscene.worldRuns = json.value("world", std::string("waits")) == "runs";
+    cutscene.ambient = json.value("ambient", false);
+    if (cutscene.ambient) cutscene.letterbox = false, cutscene.worldRuns = true;
     cutscene.length = json.value("length", 0.0f);
     for (const auto& t : json["tracks"]) {
         if (!t.is_object()) continue;
@@ -53,7 +56,7 @@ std::optional<Cutscene> CutsceneFromJson(const nlohmann::json& json, const std::
             CutsceneKey key;
             key.at = std::max(0.0f, k.value("at", 0.0f));
             key.seconds = std::max(0.0f, k.value("seconds", 0.0f));
-            key.op = k.value("op", track.type == "dialogue" ? "line" : track.type == "logic" && k.contains("do") ? "do" : "");
+            key.op = k.value("op", track.type == "dialogue" ? (k.contains("with") ? "talk" : "line") : track.type == "logic" && k.contains("do") ? "do" : "");
             key.data = k;
             key.data.erase("at");
             key.data.erase("seconds");
@@ -71,6 +74,8 @@ nlohmann::json CutsceneToJson(const Cutscene& cutscene) {
     nlohmann::json json = {{"name", cutscene.name}};
     if (!cutscene.letterbox) json["letterbox"] = false;
     if (!cutscene.skippable) json["skippable"] = false;
+    if (cutscene.worldRuns) json["world"] = "runs";
+    if (cutscene.ambient) json["ambient"] = true;
     if (cutscene.length > 0.0f) json["length"] = cutscene.length;
     nlohmann::json tracks = nlohmann::json::array();
     for (const auto& track : cutscene.tracks) {
@@ -81,7 +86,7 @@ nlohmann::json CutsceneToJson(const Cutscene& cutscene) {
             nlohmann::json k = key.data.is_object() ? key.data : nlohmann::json::object();
             k["at"] = key.at;
             if (key.seconds > 0.0f) k["seconds"] = key.seconds;
-            if (track.type != "dialogue") k["op"] = key.op;
+            if (track.type != "dialogue" || key.op != "line") k["op"] = key.op;
             keys.push_back(k);
         }
         t["keys"] = keys;
@@ -115,6 +120,10 @@ std::vector<std::string> ValidateCutscene(const Cutscene& cutscene) {
             if ((key.op == "sound" || key.op == "music") && !key.data.contains("path")) problems.push_back(at + ": needs a path");
             if (key.op == "emit" && key.data.value("event", "").empty()) problems.push_back(at + ": emit needs an event");
             if (key.op == "follow" && key.data.value("actor", "").empty()) problems.push_back(at + ": follow needs an actor");
+            if (key.op == "talk" && key.data.value("with", "").empty()) problems.push_back(at + ": talk needs with (a character)");
+            if (key.op == "wait_until" && !(key.data.contains("until") && key.data["until"].is_object())) {
+                problems.push_back(at + ": wait_until needs until ({moves}, {talk}, {event}, {flag})");
+            }
         }
     }
     return problems;
@@ -176,6 +185,7 @@ void CutscenePlayer::Start(Cutscene cutscene) {
     next_ = 0;
     time_ = 0.0f;
     waiting_ = false;
+    waitKey_ = nullptr;
     active_ = true;
 }
 
@@ -188,8 +198,9 @@ void CutscenePlayer::Update(float dt, const FireFn& fire) {
         const CutsceneKey& key = track.keys[entry.key];
         if (key.at > time_) break;
         ++next_;
-        if (key.op == "wait_input") {
+        if (key.op == "wait_input" || key.op == "wait_until" || key.op == "talk") {
             waiting_ = true;
+            waitKey_ = &key;
             time_ = key.at; // the clock stops here
         }
         fire({&track, &key, false});
@@ -200,6 +211,7 @@ void CutscenePlayer::Update(float dt, const FireFn& fire) {
 void CutscenePlayer::Skip(const FireFn& fire) {
     if (!active_) return;
     waiting_ = false;
+    waitKey_ = nullptr;
     for (; next_ < order_.size(); ++next_) {
         const CutsceneTrack& track = cutscene_.tracks[order_[next_].track];
         fire({&track, &track.keys[order_[next_].key], true});

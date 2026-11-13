@@ -76,6 +76,7 @@ The defaults, all of which you can rebind:
 - Ctrl+Y or Ctrl+Shift+Z: redo
 - Ctrl+C: copy the selection
 - Ctrl+V: paste at the cursor
+- Ctrl+Shift+F: Search in Project (works while typing in a text box too)
 - Ctrl+D: duplicate the selection
 - Delete or Backspace: delete the selection
 - Escape: deselect, back to the Select tool

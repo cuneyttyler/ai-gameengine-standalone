@@ -75,6 +75,8 @@ InputMap InputMap::Defaults() {
                                      "gameplay", {static_cast<Key>(static_cast<int>(Key::Num0) + i)}));
     }
     map.actions.push_back(Button("spellbook", "Open your abilities.", "gameplay", {Key::K}));
+    map.actions.push_back(Button("character", "Open your character: level, attributes, what you wear.", "gameplay", {Key::P}));
+    map.actions.push_back(Button("map", "Open the map.", "gameplay", {Key::M}));
     map.actions.push_back(Button("journal", "Open or close your quest journal.", "any", {Key::J, Key::PadBack}));
     map.actions.push_back(Button("skip", "Skip a cutscene.", "cutscene", {Key::Escape, Key::Enter, Key::Space, Key::PadA}));
     map.actions.push_back(Button("confirm", "Continue a conversation; pick the highlighted choice.", "dialogue",

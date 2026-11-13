@@ -75,7 +75,7 @@ def beta_register():
     if new:
         def notify():
             try:
-                where = beta.send(beta.setting("AIGE_SUPPORT_EMAIL"), lambda cid: beta.support_email(row, cid))
+                where = beta.send(beta.support_address(), lambda cid: beta.support_email(row, cid))
                 app.logger.info("beta registration %s: support email %s", email, where)
             except Exception as error:  # noqa: BLE001 - the registration is kept; the email is logged as failed
                 app.logger.error("beta registration %s: the support email failed: %s", email, error)

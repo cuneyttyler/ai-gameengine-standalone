@@ -10,7 +10,10 @@ endif()
 
 # WIN32: GUI subsystem (wWinMain entry point, no console) — this app is
 # Windows-native via WebView2 throughout, unlike apps/sandbox.
-add_executable(editor WIN32 main.cpp EditorApp.h EditorApp.cpp BuildAnimate.cpp InteriorAnimate.cpp PathTool.cpp EditorLists.cpp Win32Util.h Win32Util.cpp Launcher.h Launcher.cpp editor.rc) # editor.rc: its icon
+add_executable(editor WIN32 main.cpp EditorApp.h EditorApp.cpp BuildAnimate.cpp InteriorAnimate.cpp PathTool.cpp EditorLists.cpp ProjectSearch.cpp Win32Util.h Win32Util.cpp Launcher.h Launcher.cpp BetaExpiry.h BetaExpiry.cpp editor.rc) # editor.rc: its icon
+if(MSVC)
+    target_compile_options(editor PRIVATE /bigobj) # EditorApp.cpp is past the default object section limit
+endif()
 # A map of where each function is (editor.map next to editor.exe): a crash dump's addresses named by it. It doesn't
 # change the program.
 if(MSVC)
@@ -72,3 +75,7 @@ foreach(SHADER ${AIGE_SHADER_SOURCES})
     )
 endforeach()
 target_compile_definitions(editor PRIVATE AIGE_MAGIC_PRESETS="${CMAKE_SOURCE_DIR}/data/magic")
+
+# A beta build: the last day it works (YYYY-MM-DD; tools/package_beta.py sets it, then clears it). Empty: never expires.
+set(AIGE_BETA_EXPIRES "" CACHE STRING "The last day a beta build works (YYYY-MM-DD); empty for a build that never expires")
+set_source_files_properties(BetaExpiry.cpp PROPERTIES COMPILE_DEFINITIONS "AIGE_BETA_EXPIRES=\"${AIGE_BETA_EXPIRES}\"")

@@ -50,7 +50,8 @@ Questions: do I need a script? where do scripts go? how do I attach a script to 
   opens it.
 - **Project ▸ Scripts** lists every Lua script in the project with what uses it (things in the open scene, packages).
   Search box: "Search scripts and what uses them". **Refresh** looks again. **New script…** asks for a name and opens
-  `scripts/<name>.lua` in the script editor. Double-click a row or press **✎ Edit** to open one.
+  `scripts/<name>.lua` in the script editor. Double-click a row or press **✎ Edit** to open one. **Uses** on a row
+  lists what uses it anywhere in the project: every scene's things, prefabs, packages, other scripts.
 - **The script editor** (a window over the editor): the script with line numbers, **Tab** indents by four spaces,
   **Ctrl+S** or **Save** saves, **Close** (asks before discarding unsaved changes; Esc too). A dot ● marks unsaved
   changes. The header says what uses the script. **Open outside** opens it in the program your computer uses for .lua

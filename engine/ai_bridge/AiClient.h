@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <map>
 #include <vector>
 
 namespace aige {
@@ -29,6 +31,8 @@ public:
         // How the service is launched (inside serviceDir). uv provides the
         // project's own Python environment.
         std::string launchCommand = "uv run --extra segment uvicorn app.main:app --host 127.0.0.1 --port {port}"; // segment: click-to-select (SAM 2)
+        // Given to the service it starts, over this process's own (the user's API keys, Preferences ▸ Beta Settings).
+        std::map<std::string, std::string> environment;
     };
 
     explicit AiClient(Options options);
@@ -71,6 +75,10 @@ public:
     // editor shows the service's progress (what each model call is doing).
     int InFlight() const { return inFlight_; }
 
+    // A provider out of credits (or over its quota), from what an answer said: {provider, message, said}. Each provider
+    // once until it answers well again or a quarter of an hour has passed. Call once per frame.
+    std::optional<nlohmann::json> TakeCreditAlert();
+
     // Blocking GET for tests and diagnostics; nullopt if unreachable.
     std::optional<nlohmann::json> GetJson(const std::string& path, int timeoutSeconds = 2);
 
@@ -82,6 +90,7 @@ private:
     std::optional<nlohmann::json> Send(const std::string& method, const std::string& path, const nlohmann::json* body,
                                        int timeoutSeconds, std::string* error);
     void Push(Result result);
+    void NoteCredits(const nlohmann::json& body); // an answer's errors: a provider out of credits, an alert
     bool LaunchProcess(std::string* error);
     void StopProcess();
     void Worker(bool quick);
@@ -103,6 +112,8 @@ private:
     };
     std::deque<Job> jobs_;
     std::deque<Result> results_;
+    std::deque<nlohmann::json> creditAlerts_;
+    std::map<std::string, std::chrono::steady_clock::time_point> creditAlerted_; // provider: when it was last told
     bool quitting_ = false;
     bool starting_ = false; // a start job is running
     int nextRequestId_ = 1;

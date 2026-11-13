@@ -24,8 +24,10 @@ add_library(aige_places STATIC
     Compile.cpp
     Arrange.h
     Arrange.cpp
+    WorldSections.h
+    WorldSections.cpp
 )
 target_include_directories(aige_places PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_places PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(aige_places PUBLIC aige_install nlohmann_json::nlohmann_json)
 target_compile_definitions(aige_places PRIVATE AIGE_PLACES_DATA_DIR="${CMAKE_SOURCE_DIR}/data/places")
 target_compile_features(aige_places PUBLIC cxx_std_20)

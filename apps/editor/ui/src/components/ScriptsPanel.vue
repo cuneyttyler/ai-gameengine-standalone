@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { editorState } from '../editorState'
 import { promptDialog } from '../dialogs'
 import { lookups, requestLookups } from '../lookups'
+import { showUses } from '../projectSearch'
 
 const query = ref('')
 const shown = computed(() => {
@@ -40,6 +41,7 @@ async function create(): Promise<void> {
         <span class="icon">{ }</span>
         <span class="name">{{ s.replace(/^scripts\//, '') }}</span>
         <span class="users muted">{{ (lookups.scriptUsers[s] ?? []).join(', ') || 'not used here' }}</span>
+        <button class="small" title="What uses it anywhere in the project: every scene's things, prefabs, packages, other scripts" @click="showUses({ kind: 'script', path: s, label: s })">Uses</button>
         <button class="small" title="Open in the script editor" @click="open(s)">✎ Edit</button>
       </div>
       <p v-if="!shown.length" class="muted pad">Nothing matches.</p>

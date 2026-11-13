@@ -165,6 +165,8 @@ item?
   press **Create** to write it.
 - **Delete…** asks for confirmation and deletes the file. The confirmation lists what still uses the record ("Still
   used by: …"), and the form shows a **Used by** line with links to each record that references this one.
+- **Show uses** (also on a record's right-click menu) lists everything in the project that names it: other records,
+  scenes, quests, scripts; for a package, the characters in every scene that run it.
 
 ### Example: renaming a potion used in a loot table and a recipe
 

@@ -17,7 +17,7 @@ export interface MenuEntity {
   interiorFloors?: number // its floors (one picture each)
   interiorFloor?: number // the one shown
   interiorScene?: string // a building whose interior is its own scene: that scene ("" not built yet)
-  building?: boolean // it has a footprint (an Obstacle): it can have an interior scene
+  building?: boolean // a building (its art's role: a house, a shop...) or one with an interior: only these can have one
 }
 
 // Extra items other features add (copy/paste, resize, ...), given the target.
@@ -66,7 +66,7 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
            action: () => (editorState.interiorPartsDialog = entity.id) }]
       : []),
     // None yet: one added (on its prefab, so every copy has it).
-    ...(!entity.tile && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
+    ...(!entity.tile && entity.building && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
       ? [
           { label: 'Add interior: cutaway', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', id: entity.id, kind: 'cutaway' }) },
           { label: 'Add interior: its own scene', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', id: entity.id, kind: 'scene' }) },

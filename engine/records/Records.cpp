@@ -669,6 +669,47 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                 "What every level adds to the base attributes.")
         .List();
 
+    // What the AI Planner's characters are made from (development_plan.md 32.2-32.4): a class's numbers at level 1
+    // and per level, how it fights, what it carries and wears, what it gives when killed.
+    r.RecordType("character-class", "A character class (32.2): a character's attributes at level 1 and what each level "
+                                    "adds, how it fights, its kit, and what killing it gives. A character names it "
+                                    "(gameplay.class).")
+        .Field("name", FieldType::String, "A label (Bandit, Village elder).").Required()
+        .Field("description", FieldType::String, "What it is, in a line.")
+        .Field("role", FieldType::Enum, "What sort it is.")
+        .Options({"civilian", "fighter", "archer", "caster", "beast", "boss"})
+        .Object("attributes",
+                {MakeRecordValue("attribute", FieldType::String, "An attribute: maxHealth, maxMana, maxStamina, attack, defense, "
+                                                                 "moveSpeed, healthRegen, resistFire, resistFrost, resistShock, resistPoison"),
+                 MakeRecordValue("value", FieldType::Float, "Its value at level 1")},
+                "Its attributes at level 1 (the rest at the engine's defaults).")
+        .List()
+        .Object("perLevel",
+                {MakeRecordValue("attribute", FieldType::String, "An attribute"),
+                 MakeRecordValue("value", FieldType::Float, "Added at each level after the first")},
+                "What each level adds.")
+        .List()
+        .Field("combat", FieldType::Enum, "How it fights (none: it doesn't).").Options({"none", "melee", "ranged", "caster"})
+        .Field("damage", FieldType::Float, "Its attack's own damage, before its weapon and attack attribute.").Min(0)
+        .Field("damageType", FieldType::Enum, "Its attack's kind of damage.").Options({"physical", "fire", "frost", "shock", "poison"})
+        .Field("aggression", FieldType::Enum, "How it meets the player.").Options({"peaceful", "defensive", "aggressive", "frenzied"})
+        .Field("confidence", FieldType::Enum, "When it runs.").Options({"cowardly", "cautious", "average", "brave", "foolhardy"})
+        .Field("carries", FieldType::String, "Items it carries: item ids, \"potion*2\" for several.").List()
+        .Object("equipment",
+                {[] {
+                     RecordField slot = MakeRecordValue("slot", FieldType::Enum, "Where");
+                     slot.options = {"weapon", "offhand", "head", "body", "hands", "feet", "ring", "amulet"};
+                     return slot;
+                 }(),
+                 MakeRecordRef("item", "item", "The item worn or wielded")},
+                "What it wears and wields.")
+        .List()
+        .Field("abilities", FieldType::String, "Abilities it knows (ability ids).").List()
+        .Field("gold", FieldType::Int, "Gold it carries.").Min(0)
+        .Ref("loot", "loot", "What killing it drops.")
+        .Field("experience", FieldType::Float, "Experience its killer gets, at level 1 (times its level).").Min(0)
+        .Ref("stock", "loot", "A merchant's stock (rolled each day).");
+
     r.RecordType("faction", "A faction (13.7): who belongs together, and how it stands with the others.")
         .Field("name", FieldType::String, "Shown to the player.").Required()
         .Field("description", FieldType::String, "Who they are.")

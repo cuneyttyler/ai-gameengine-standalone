@@ -56,6 +56,9 @@ void AddToast(std::vector<UiQuad>& out, const std::string& text, float viewportW
 struct MenuItemView {
     std::string label;
     bool enabled = true;
+    std::string icon;   // a picture beside it (an item's icon)
+    std::string detail; // a second column: a price, a count, a quest's state, a key
+    std::string group;  // a heading it comes under (Active, Done; Gameplay, Menus)
 };
 struct MenuView {
     std::string title;
@@ -64,6 +67,8 @@ struct MenuView {
     std::vector<MenuItemView> items;
     int highlighted = 0;
     std::string footer;
+    std::string image; // a picture the window shows (the map's)
+    float markerX = -1.0f, markerY = -1.0f; // where on it the player is, 0..1 across and down (< 0: not shown)
     bool dimBackground = true; // the game shows through, darkened
 };
 void AddMenu(std::vector<UiQuad>& out, const MenuView& view, float viewportWidth, float viewportHeight);

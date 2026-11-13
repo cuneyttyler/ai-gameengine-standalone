@@ -40,13 +40,16 @@ struct StoryEffect {
     // set_flag | clear_flag | start_quest | complete_quest | complete_objective |
     // fail_quest | set_stage (15.1) | set_var | add_var (15.2) | give_item | take_item |
     // give_gold | give_xp | reputation | play_cutscene (handed to the game, 15.5) | open_screen | close_screen |
-    // push_package | pop_package | say | send_event (docs/systems/actions.md §5)
+    // push_package | pop_package | say | send_event (docs/systems/actions.md §5) |
+    // move_actor | hide_actor | show_actor | set_hostile | set_friendly | follow_player | stop_following | spawn |
+    // give_to (characters moved by the story, development_plan.md 32.5: `who` and the item's own keys in `args`)
     std::string op;
     std::string name;      // the flag, quest, variable, item, faction or cutscene
     std::string objective; // complete_objective: which one
     int stage = 0;         // set_stage
     nlohmann::json value;  // set_var / add_var; a count or amount for the world's ops
     std::string who;       // push_package, pop_package, say, send_event: the character's name (empty: the one it runs on)
+    nlohmann::json args;   // the effect as written (move_actor's scene and marker, spawn's prefab and count...)
 };
 
 struct DialogueChoice {
@@ -141,6 +144,7 @@ struct Quest {
     std::string name;
     std::string description;
     std::string giver; // World Bible key
+    bool atStart = false; // started when a new game starts (not from a save), not by a giver or an event
     std::vector<QuestObjective> objectives; // every stage's, in order (a v1 quest: one per stage)
     std::vector<StoryEffect> onComplete;
     // Quests v2 (15.1). A v1 file (objectives only) gets one stage per objective.
@@ -276,7 +280,9 @@ public:
     void CompleteObjective(const std::string& quest, const std::string& objective, const StoryLibrary& library);
 
     // Game events that can advance an active quest's current objective.
-    void OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library);
+    // `names`: the one killed by name and key (a named boss: its World Bible key), as well as its prefab and team.
+    void OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library,
+                    const std::vector<std::string>& names = {});
     void OnCollected(const std::string& prefab, const StoryLibrary& library);
     void OnTalkedTo(const std::string& character, const StoryLibrary& library);
     // The player is at a Marker (reach objectives).

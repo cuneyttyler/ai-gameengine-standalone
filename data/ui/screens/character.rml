@@ -1,0 +1,28 @@
+<rml>
+<head>
+	<title>Character</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+</head>
+<!-- The character (32.7): level and attributes, resistances, what's worn. -->
+<body class="menu window sheet">
+<div class="screen shade" data-model="menu">
+	<div class="panel">
+		<h1>{{title}}</h1>
+			<div class="items wide">
+				<div data-for="item, i : items">
+				<div class="heading" data-if="item.heading">{{item.group}}</div>
+				<div class="item row" data-class-lit="i == highlighted" data-class-off="!item.enabled"
+				     data-event-click="choose(i)" data-event-mousedown="context(i)">
+					<img class="icon" data-if="item.icon != ''" data-attr-src="item.icon"/>
+					<span class="label">{{item.label}}</span>
+					<span class="detail" data-if="item.detail != ''">{{item.detail}}</span>
+				</div>
+				</div>
+			</div>
+		<p class="body" data-if="body != ''">{{body}}</p>
+		<p class="footer" data-if="footer != ''">{{footer}}</p>
+	</div>
+</div>
+</body>
+</rml>

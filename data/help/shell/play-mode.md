@@ -6,12 +6,12 @@ saving and loading during Play, the difficulty Play uses, and the debug tools.
 ## Starting and stopping Play
 
 - **Start**: press **F5**, click **▶ Play** at the right end of the toolbar, or choose **Play ▸ Play**.
-- **Stop**: press **F5** again, press **Esc** in the viewport, click **■ Stop**, or choose **Play ▸ Stop**.
+- **Stop**: press **F5** again, click **■ Stop**, or choose **Play ▸ Stop**. **Esc** is the game's: it closes the open window or panel (the journal, the inventory, a shop), else opens the pause menu.
 
 Play runs the **open scene as it is now**, saved or not. The viewport gets the keyboard focus, so WASD works without
 clicking first. The camera switches to following the player at Project Settings ▸ Camera ▸ playZoom. The toolbar's
 editing tools grey out, its bottom edge turns blue, and the status bar reads "Playing · WASD move · Space or click
-attack · Esc stop · changes revert on stop".
+attack · Esc closes a window · F5 stop · changes revert on stop".
 
 Each Play starts fresh. Dialogue, quests, animations, the World Bible, schedules and the game's UI are read from disk
 again, and the day starts at Project Settings ▸ Time ▸ startHour.
@@ -22,7 +22,7 @@ You just placed a rope bridge across the gorge in `ravine_pass` and haven't save
 
 1. Press F5. Play starts with the scene as it is now, bridge included, and the camera follows the player.
 2. Press W and D to walk across (the viewport already has the keyboard focus, no click needed).
-3. The bridge works: press F5 (or Esc in the viewport) to stop, then Ctrl+S to save.
+3. The bridge works: press F5 to stop, then Ctrl+S to save.
 4. The game clock started at Project Settings ▸ Time ▸ startHour, and the dialogue and quests were read fresh from
    disk, so a dialogue you edited a moment ago is the one you heard.
 
@@ -64,7 +64,7 @@ The game's keys come from **Project Settings ▸ Input** (your project's input.j
 - **Inventory** I or Tab, **crafting** C, **journal** J, **spellbook** K, **abilities** 1–4.
 - With an item in your hand, a click uses it on what you click instead of attacking.
 
-The editor keeps a few keys during Play: **F5** stop, **Esc** stop, **F6** save game, **F9** load game, **F3** frame
+The editor keeps a few keys during Play: **F5** stop, **F6** save game, **F9** load game, **F3** frame
 stats, **F1** shortcuts. All other keys go to the game. When a game window (a menu or inventory) is open over Play,
 mouse clicks go to that window.
 
@@ -76,10 +76,9 @@ See also: input-settings.md.
 2. Press E (or Space) beside her: the conversation opens.
 3. Press 1 for her first answer ("A room for the night"), or use Up/Down and Enter.
 4. Press I to check your inventory for the room key she gave you, then J for the journal.
-5. Esc stops Play rather than opening the game's menu, because the editor keeps Esc while play-testing.
+5. Esc closes the journal (the game's own Esc: it closes the open window, else opens the pause menu); F5 stops Play.
 
-Questions: what are the play controls? how do I talk to an NPC? how do I attack? why does Esc stop the game instead
-of opening the menu?
+Questions: what are the play controls? how do I talk to an NPC? how do I attack? does Esc stop Play? (no: F5 does)
 
 ## Saving and loading during Play
 

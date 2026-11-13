@@ -234,7 +234,7 @@ class PaintRequest(BaseModel):
     story: dict = {}                   # {mood, purpose, logline}
     look: dict = {}                    # {goals, style}
     notes: str = ""                    # the user's, when painting again
-    model: str = "flux-3-image"        # flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein (Project Settings ▸ AI ▸ paint)
+    model: str = "flux-3-image"        # flux-3-image or flux-2-klein-4b (Project Settings ▸ AI ▸ paint)
     seed: int = 7
     reference: str = ""                # in dir: a picture the painting is made after (docs/places/scene-types.md)
     objects: bool = True               # the block-out shows its things (props, doors) as coloured markers; else its ground only
@@ -244,11 +244,25 @@ class PaintRequest(BaseModel):
     design: str = ""                   # the Brief's style, in words
     request: str = ""                  # the user's request
     scale: str = ""                    # its size class (large-village)
+    zones: list = []                   # its parts: [{name, where (in the picture), buildings: [{kind, count}]}]
 
 
 class FindMarksRequest(BaseModel):
     dir: str                           # the place's folder (places/<id>): its painting is there
     painting: str = "painting.png"
+
+
+class FindEntrancesRequest(BaseModel):
+    dir: str                           # the place's folder (places/<id>): its painting is there
+    painting: str = "painting.png"
+    places: list[dict] = []            # [{id, name, about}]: the places reached from it
+
+
+class FindWayOutRequest(BaseModel):
+    dir: str                           # the place's folder (places/<id>): its painting is there
+    painting: str = "painting.png"
+    about: str = ""                    # what the place is ("the inside of Ash Forge, a smithy")
+    outside: str = ""                  # where its way out leads ("Bellwether")
 
 
 class InteriorsRequest(BaseModel):
@@ -419,8 +433,9 @@ def available_providers() -> dict[str, bool]:
 # What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), Mistral, PixelLab, or a BFL model ("bfl:<model>").
 ART_PROVIDERS = ("auto", "mistral", "pixellab") + tuple(f"bfl:{m}" for m in ("flux-2-klein-4b", "flux-3-image", "flux-2-pro"))
 # What paints a place's background (docs/places/background.md): FLUX.3 Image only, for now (klein invents objects).
-# FLUX.3 Image keeps the map best; FLUX.2 max is as good, slower; pro and klein are weaker (builder_tests/background_tests).
-BACKGROUND_PROVIDERS = ("bfl:flux-3-image", "bfl:flux-2-max", "bfl:flux-2-pro", "bfl:flux-2-klein-4b")
+# FLUX.3 Image keeps the map best; klein is weaker (builder_tests/background_tests). FLUX.2 pro and max are no longer offered:
+# a setting still naming one (or any unknown) falls back to FLUX.3 Image.
+BACKGROUND_PROVIDERS = ("bfl:flux-3-image", "bfl:flux-2-klein-4b")
 
 
 def make_image_generator(art: str, llm: str | None) -> ImageGenerator | None:
@@ -565,6 +580,22 @@ def create_app(
     vision: Provider | None = None,
 ) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, error: Exception) -> JSONResponse:
+        """A request that failed in the service itself: the editor is told why (not just "HTTP 500"), and the whole
+        traceback goes to %LOCALAPPDATA%/aige/logs/ai-service.log (the packaged service has no console to show it)."""
+        import traceback
+        text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        try:
+            logs = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "aige" / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            with open(logs / "ai-service.log", "a", encoding="utf-8") as log:
+                log.write(f"--- {datetime.now(timezone.utc).isoformat(timespec='seconds')} {request.method} {request.url.path}\n{text}\n")
+        except OSError:
+            pass
+        print(text, flush=True)
+        return JSONResponse(status_code=500, content={"ok": False, "errors": [f"{type(error).__name__}: {error}"]})
 
     # Only the editor that started it (development_plan.md 11): a web page in the user's browser
     # can reach 127.0.0.1 too. Every request but /health carries the editor's token (given to
@@ -936,10 +967,10 @@ def create_app(
     @app.put("/background-provider")
     def set_background_provider(request: BackgroundProviderRequest) -> dict:
         """What paints the backgrounds (Preferences ▸ AI ▸ Background, or the project's own)."""
-        if request.provider not in BACKGROUND_PROVIDERS:
-            return {"ok": False, "errors": [f"Unknown background provider {request.provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
-        state["backgroundProvider"] = request.provider
-        return {"ok": True, "backgroundProvider": request.provider}
+        # A removed model (FLUX.2 pro, max) saved in a project or the preferences: the default instead.
+        provider = request.provider if request.provider in BACKGROUND_PROVIDERS else BACKGROUND_PROVIDERS[0]
+        state["backgroundProvider"] = provider
+        return {"ok": True, "backgroundProvider": provider}
 
     @app.post("/places/background")
     def places_background(request: BackgroundRequest) -> dict:
@@ -959,7 +990,7 @@ def create_app(
             return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
         provider = request.provider or state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
         if provider not in BACKGROUND_PROVIDERS:
-            return {"ok": False, "errors": [f"Unknown background model {provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
+            provider = BACKGROUND_PROVIDERS[0]  # a removed model still named somewhere: the default
         try:
             made = paint_background(BflPainter(key, provider.split(":", 1)[1]), request.terrain, (request.cells[0], request.cells[1]),
                                     request.description, folder, seed=request.seed, report=progress.reporter(),
@@ -1006,7 +1037,7 @@ def create_app(
             return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
         report = progress.reporter()
         if request.model not in PAINT_MODELS:
-            return {"ok": False, "errors": [f"Unknown paint model {request.model}: one of {', '.join(PAINT_MODELS)}"]}
+            request.model = "flux-3-image"  # a removed model (FLUX.2 pro, max, FLUX-3-Image-to-…) still saved: the default
         report(0, 1, f"Painting the place from its plan ({PAINT_MODELS[request.model]})")
         started = _time.monotonic()
         # Its kind's paint prompt (the ontology's) and its own words (the LLM's, from the request): both with the plan.
@@ -1017,6 +1048,9 @@ def create_app(
             query = str(json.loads((folder / "request.json").read_text(encoding="utf-8")).get("query", ""))
         except (OSError, ValueError):
             pass
+        # The plan's parts (each zone, where it is, its buildings by kind and count) go with the place to every prompt.
+        if request.zones:
+            request.place = {**request.place, "zones": request.zones}
         if request.free:
             # Composed by the painter on the land, then its tiles (saved as they're painted: a run cut short goes on).
             from .bfl import paint_free
@@ -1066,9 +1100,74 @@ def create_app(
             return {"ok": False, "errors": ["No vision model: set one in Preferences ▸ AI"]}
         report = progress.reporter()
         report(0, 1, "Finding the buildings and what stands in the painting")
-        structures = find_structures(vision, Image.open(folder / request.painting))
+        try:
+            structures = find_structures(vision, Image.open(folder / request.painting))
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error) + " (Preferences ▸ AI: choose another vision model)"]}
         report(1, 1, f"{len(structures)} found")
         return {"ok": True, "structures": structures}
+
+    @app.post("/places/find-entrances")
+    def places_find_entrances(request: FindEntrancesRequest) -> dict:
+        """Where the places reached from a painted place are entered (development_plan.md 32.12): for each, the building
+        or gate in the painting that is its way in and that one's door, by the vision model: {entrances: [{id, found,
+        kind?, box?, door?}]} in the painting's pixels. What stands in it is found once (structures.json, kept)."""
+        from PIL import Image
+        from .vision import find_entrances, find_structures
+        Image.MAX_IMAGE_PIXELS = None
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not (folder / request.painting).is_file():
+            return {"ok": False, "errors": [f"No painting in {request.dir}"]}
+        vision = state["vision"] or state["provider"]
+        if vision is None:
+            return {"ok": False, "errors": ["No vision model: set one in Preferences ▸ AI"]}
+        report = progress.reporter()
+        picture = Image.open(folder / request.painting)
+        kept = folder / "structures.json"
+        structures = []
+        if kept.is_file():
+            try:
+                structures = json.loads(kept.read_text(encoding="utf-8")).get("structures", [])
+            except (OSError, ValueError):
+                structures = []
+        if not structures:
+            report(0, 3, "Finding the buildings and gates in the painting")
+            try:
+                structures = find_structures(vision, picture)
+            except ProviderError as error:
+                return {"ok": False, "errors": [str(error) + " (Preferences ▸ AI: choose another vision model)"]}
+            if structures:
+                kept.write_text(json.dumps({"structures": structures}, indent=1), encoding="utf-8")
+        report(1, 3, f"Choosing the ways into {len(request.places)} places among {len(structures)} things standing")
+        entrances = find_entrances(vision, picture, request.places, structures)
+        report(3, 3, f"{sum(1 for e in entrances if e.get('found'))} of {len(entrances)} found")
+        return {"ok": True, "entrances": entrances}
+
+    @app.post("/places/find-way-out")
+    def places_find_way_out(request: FindWayOutRequest) -> dict:
+        """Where a painted place is entered and left (an interior's front door, a dungeon's entrance): its ways out, by the
+        vision model, {exits: [{kind, box: [x, y, w, h], reachable}]} in the painting's pixels. The editor stands the gateway
+        back out on the one that can be walked to, the arrival marker beside it."""
+        from PIL import Image
+        from .vision import find_way_out
+        Image.MAX_IMAGE_PIXELS = None
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not (folder / request.painting).is_file():
+            return {"ok": False, "errors": [f"No painting in {request.dir}"]}
+        vision = state["vision"] or state["provider"]
+        if vision is None:
+            return {"ok": False, "errors": ["No vision model: set one in Preferences ▸ AI"]}
+        try:
+            exits = find_way_out(vision, Image.open(folder / request.painting), request.about, request.outside)
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error) + " (Preferences ▸ AI: choose another vision model)"]}
+        return {"ok": True, "exits": exits}
 
     @app.post("/places/interiors")
     def places_interiors(request: InteriorsRequest) -> dict:
@@ -1119,7 +1218,7 @@ def create_app(
             return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
         provider = request.provider or state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
         if provider not in BACKGROUND_PROVIDERS:
-            return {"ok": False, "errors": [f"Unknown background model {provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
+            provider = BACKGROUND_PROVIDERS[0]  # a removed model still named somewhere: the default
         view = ("seen from above at the game's isometric angle (2:1), the ground receding diagonally" if request.view == "isometric"
                 else "seen straight from above (top-down), as a map")
         prompt = (f"A game's background: the ground of a scene, {view}. {request.description.strip()}\n"

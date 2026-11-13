@@ -1,6 +1,6 @@
 <script setup>
 // /beta: what the beta is, how getting it works, and registering (website/backend/beta.py).
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import BetaForm from './BetaForm.vue'
 
 const data = ref(null)
@@ -12,6 +12,11 @@ onMounted(async () => {
     const response = await fetch('/api/beta')
     if (!response.ok) throw new Error(String(response.status))
     data.value = await response.json()
+    // A link to a section (/beta#goals, from the download email): the section exists only now that the page has its content.
+    if (location.hash) {
+      await nextTick()
+      document.getElementById(location.hash.slice(1))?.scrollIntoView()
+    }
   } catch {
     failed.value = true
   }
@@ -62,7 +67,24 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section>
+    <section v-if="data.goals?.length" id="goals">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Goals</span>
+          <h2>What the beta is for</h2>
+          <p class="section-lead">What each part aims at. Tell us where it gets there, and where it doesn't.</p>
+        </div>
+        <div class="goals">
+          <article v-for="g in data.goals" :key="g.area" class="card goal">
+            <h3>{{ g.area }}</h3>
+            <p class="goal-sub">{{ g.sub }}</p>
+            <ul><li v-for="item in g.items" :key="item"><span class="cube"></span>{{ item }}</li></ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt">
       <div class="wrap how">
         <div>
           <div class="section-head">
@@ -126,6 +148,14 @@ onMounted(async () => {
 .grid.four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .card h3 { font-size: 17px; margin-bottom: 10px; }
 .card p { color: var(--muted); font-size: 14.5px; }
+
+.section-lead { color: var(--muted); font-size: 16px; margin-top: 10px; }
+.goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.goal h3 { font-size: 18px; margin-bottom: 4px; }
+.goal-sub { font: 500 12px/1.4 var(--mono); color: var(--ice); margin-bottom: 14px; }
+.goal ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.goal li { display: flex; gap: 10px; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.goal .cube { flex: none; width: 8px; height: 8px; margin-top: 7px; }
 
 .how { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: start; }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }

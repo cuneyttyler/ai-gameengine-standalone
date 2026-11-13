@@ -13,6 +13,7 @@
 #include "editing/VillageBuild.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Cutscene.h"
+#include "assets/SceneIO.h"
 #include "ui/Documents.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
@@ -646,6 +647,62 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             }
         }
 
+    } else if (kind == "delete_file") {
+        // A story or interface file removed (a cutscene with what starts it); the users of the rest named.
+        const std::string path = op.value("path", "");
+        item.kind = "file";
+        item.touchesFiles = true;
+        item.target = "Delete · " + path;
+        if (const std::string why = DeletableFile(project, path); !why.empty()) {
+            error = why;
+            return item;
+        }
+        const std::filesystem::path file = project.Resolve(path);
+        {
+            std::ifstream in(file, std::ios::binary);
+            item.before = std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        item.after = "(deleted)";
+        const std::string stem = file.stem().string();
+        const bool cutscene = path.rfind("cutscenes/", 0) == 0;
+        if (cutscene) {
+            const auto starts = CutsceneStartFiles(project, stem);
+            if (!starts.empty()) {
+                std::string list;
+                for (const auto& f : starts) list += (list.empty() ? "" : ", ") + f;
+                item.detail = "What starts it is taken away too (its triggers, the effects that play it) in: " + list;
+            }
+        } else {
+            // Who still names it (a Talk's dialogue, a script's path, a prefab in a scene): said, not changed.
+            std::vector<std::string> users;
+            std::error_code ec;
+            const std::string name = path.rfind("prefabs/", 0) == 0 || path.rfind("scripts/", 0) == 0 || path.rfind("ui/", 0) == 0 ? path : stem;
+            for (const char* folder : {"scenes", "prefabs", "quests", "dialogue", "cutscenes", "scripts"}) {
+                const std::filesystem::path dir = project.Resolve(folder);
+                if (!std::filesystem::is_directory(dir, ec)) continue;
+                for (auto it = std::filesystem::recursive_directory_iterator(dir, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+                    if (!it->is_regular_file(ec) || it->path() == file || users.size() >= 8) continue;
+                    std::ifstream in(it->path(), std::ios::binary);
+                    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    if (text.find(name) != std::string::npos) users.push_back(std::filesystem::relative(it->path(), project.root, ec).generic_string());
+                }
+            }
+            if (!users.empty()) {
+                std::string list;
+                for (const auto& u : users) list += (list.empty() ? "" : ", ") + u;
+                item.detail = "Still named in " + list + " (change those too, or they point at nothing)";
+            }
+        }
+        if (apply) {
+            if (cutscene) RemoveCutsceneStarts(registry, project, stem);
+            std::error_code ec;
+            std::filesystem::remove(file, ec);
+            if (ec) error = "couldn't delete " + path + ": " + ec.message();
+            if (path.size() > 6 && path.compare(path.size() - 6, 6, ".prefab") == 0) {
+                if (outcome) outcome->prefabsChanged = true;
+            }
+        }
+
     } else if (kind == "write_record" || kind == "delete_record") {
         // Records (development_plan.md 12.1): whole files under records/<type>/,
         // checked against the type's fields; references may name records this
@@ -732,7 +789,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             return item;
         }
         item.touchesFiles = name == "script.write" || name == "prefab.createFromEntity" || name == "world.write" ||
-                            name == "world.delete" || name == "prefab.create" || name == "prefab.createCharacter";
+                            name == "world.delete" || name == "prefab.create" || name == "prefab.createCharacter" || name == "placement.set";
         nlohmann::json args = op.value("args", nlohmann::json::object());
         std::vector<FieldValue> values;
         for (const auto& param : command->params) {
@@ -871,6 +928,151 @@ ResolvedProposal ResolveProposal(const nlohmann::json& proposal, Registry& regis
         resolved.items.push_back(Process(op, Mode::Resolve, registry, reflection, prefabs, project, scope, nullptr));
     }
     return resolved;
+}
+
+// --- Deleting the story's and the interface's files ---------------------------------------------------------------
+
+std::string DeletableFile(const Project& project, const std::string& path) {
+    if (path.empty() || path.find("..") != std::string::npos || path[0] == '/' || path.find(':') != std::string::npos) {
+        return "give the file's path in the project (cutscenes/<id>.json)";
+    }
+    static const std::vector<std::string> folders = {"cutscenes/", "quests/", "dialogue/", "schedules/", "ui/", "scripts/", "prefabs/"};
+    const bool anim = path.size() > 10 && path.compare(path.size() - 10, 10, ".anim.json") == 0;
+    if (!anim && std::none_of(folders.begin(), folders.end(), [&](const std::string& f) { return path.rfind(f, 0) == 0; })) {
+        return "only the story's and the interface's files are deleted this way (cutscenes/, quests/, dialogue/, schedules/, ui/, "
+               "scripts/, prefabs/, an .anim.json): a scene with scene.delete, a record with delete_record, art with asset.delete, "
+               "a World Bible entry with world.delete";
+    }
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(project.Resolve(path), ec)) return "there's no file " + path;
+    return {};
+}
+
+namespace {
+
+// play_cutscene of `id` taken out of a list of effects (JSON text); whether it changed.
+bool DropPlays(std::string& effects, const std::string& id) {
+    if (effects.find(id) == std::string::npos) return false;
+    nlohmann::json list = nlohmann::json::parse(effects, nullptr, false);
+    if (!list.is_array()) return false;
+    nlohmann::json kept = nlohmann::json::array();
+    for (const auto& e : list) {
+        const bool plays = e.is_object() && e.value("op", "") == "play_cutscene" && (e.value("cutscene", "") == id || e.value("name", "") == id);
+        if (!plays) kept.push_back(e);
+    }
+    if (kept.size() == list.size()) return false;
+    effects = kept.empty() ? std::string() : kept.dump();
+    return true;
+}
+
+// The same in a JSON document (a quest's stages, a dialogue's nodes): every array of effects, anywhere in it.
+bool DropPlaysIn(nlohmann::json& doc, const std::string& id) {
+    bool changed = false;
+    if (doc.is_array()) {
+        nlohmann::json kept = nlohmann::json::array();
+        for (auto& e : doc) {
+            const bool plays = e.is_object() && e.value("op", "") == "play_cutscene" && (e.value("cutscene", "") == id || e.value("name", "") == id);
+            if (plays) {
+                changed = true;
+                continue;
+            }
+            changed = DropPlaysIn(e, id) || changed;
+            kept.push_back(e);
+        }
+        if (changed) doc = kept;
+    } else if (doc.is_object()) {
+        for (auto& [k, v] : doc.items()) changed = DropPlaysIn(v, id) || changed;
+    }
+    return changed;
+}
+
+// Its start taken out of one scene's (or prefab's) entities; whether it changed.
+bool DropStartsIn(Registry& reg, const std::string& id) {
+    std::vector<Entity> gone;
+    bool changed = false;
+    for (auto [e, t] : reg.view<CutsceneTrigger>().each()) {
+        if (t.cutscene == id) gone.push_back(e);
+    }
+    for (auto [e, n] : reg.view<Name>().each()) {
+        if (n.value == "Cutscene " + id && std::find(gone.begin(), gone.end(), e) == gone.end()) gone.push_back(e);
+    }
+    for (auto [e, a] : reg.view<Action>().each()) {
+        if (DropPlays(a.doEffects, id)) {
+            changed = true;
+            // A small scene's trigger only played it: gone with it.
+            const auto* n = reg.try_get<Name>(e);
+            if (a.doEffects.empty() && n && n->value.rfind("Small scene", 0) == 0 && std::find(gone.begin(), gone.end(), e) == gone.end()) gone.push_back(e);
+        }
+    }
+    for (auto [e, i] : reg.view<Interactable>().each()) changed = DropPlays(i.doEffects, id) || changed;
+    for (auto [e, r] : reg.view<Responses>().each()) {
+        if (r.rules.find(id) == std::string::npos) continue;
+        nlohmann::json rules = nlohmann::json::parse(r.rules, nullptr, false);
+        if (!rules.is_array()) continue;
+        nlohmann::json kept = nlohmann::json::array();
+        bool dropped = false;
+        for (auto rule : rules) {
+            if (rule.is_object() && rule.contains("do") && DropPlaysIn(rule["do"], id)) {
+                dropped = true;
+                if (rule["do"].empty() && !rule.contains("says") && !rule.contains("clip")) continue; // it did nothing else
+            }
+            kept.push_back(rule);
+        }
+        if (dropped) r.rules = kept.dump(), changed = true;
+    }
+    for (const Entity e : gone) {
+        if (reg.valid(e)) reg.destroy(e), changed = true;
+    }
+    return changed;
+}
+
+std::string Slurp(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+std::vector<std::string> CutsceneStartFiles(const Project& project, const std::string& id) {
+    std::vector<std::string> out;
+    if (id.empty()) return out;
+    std::error_code ec;
+    for (const char* folder : {"scenes", "prefabs", "quests", "dialogue"}) {
+        const std::filesystem::path dir = project.Resolve(folder);
+        if (!std::filesystem::is_directory(dir, ec)) continue;
+        for (auto it = std::filesystem::recursive_directory_iterator(dir, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            const std::string ext = it->path().extension().string();
+            if (ext != ".aige" && ext != ".prefab" && ext != ".json") continue;
+            const std::string text = Slurp(it->path());
+            // Named as a trigger's, an effect's or a holder's: worth a look.
+            if (text.find(id) == std::string::npos || text.find("utscene") == std::string::npos) continue;
+            out.push_back(std::filesystem::relative(it->path(), project.root, ec).generic_string());
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> RemoveCutsceneStarts(Registry& open, const Project& project, const std::string& id) {
+    std::vector<std::string> changed;
+    DropStartsIn(open, id); // the open scene: undone with the change
+    for (const std::string& file : CutsceneStartFiles(project, id)) {
+        const std::string path = project.Resolve(file).string();
+        if (file.size() > 5 && file.compare(file.size() - 5, 5, ".json") == 0) {
+            nlohmann::json doc = nlohmann::json::parse(Slurp(path), nullptr, false);
+            if (!doc.is_discarded() && DropPlaysIn(doc, id)) {
+                std::ofstream(path, std::ios::binary | std::ios::trunc) << doc.dump(2);
+                changed.push_back(file);
+            }
+            continue;
+        }
+        Registry reg;
+        if (LoadScene(reg, path) && DropStartsIn(reg, id)) {
+            SaveScene(reg, path);
+            changed.push_back(file);
+        }
+    }
+    return changed;
 }
 
 ApplyOutcome ApplyOperations(const std::vector<nlohmann::json>& operations, Registry& registry,

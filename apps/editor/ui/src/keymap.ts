@@ -37,6 +37,7 @@ export const actions: ActionDef[] = [
   { id: 'edit.smallerFine', label: 'A little smaller', group: 'Edit', keys: ['{'] },
   { id: 'edit.rotate', label: 'Turn: the brush while one is armed, else the selection (flat: a quarter; upright: mirror)', group: 'Edit', keys: ['R'] },
   { id: 'edit.rotateBack', label: 'Turn the other way', group: 'Edit', keys: ['Shift+R'] },
+  { id: 'edit.searchProject', label: 'Search in project: scenes, prefabs, packages, story, scripts, UI, art', group: 'Edit', keys: ['Ctrl+Shift+F'], whileTyping: true },
   { id: 'tool.select', label: 'Select tool', group: 'Tools', keys: ['V'] },
   { id: 'tool.erase', label: 'Erase tool', group: 'Tools', keys: ['E'] },
   { id: 'view.frame', label: 'Frame the scene', group: 'View', keys: ['F'] },

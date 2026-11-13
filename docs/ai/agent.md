@@ -13,8 +13,8 @@ One JSON object a turn (`ai_service/app/prompt.py` OUTPUT_FORMAT, `models.py` Pr
 | `small` | its operations, reviewed and applied (most requests) |
 | `task` | step by step on a working copy (`TaskRunner`, up to 40 steps and 10 million input tokens by default: the AI panel's settings change the budget), each applied, played, its results sent back; the whole reviewed at the end |
 | `split` | too big: smaller requests; **Do them all, step by step** runs them as one task |
-| `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results and every earlier round's lookups (up to 8 rounds; the last is told to answer with what it has) |
-| `route` | another panel's work — a NEW place from nothing (Build) or a whole game from a brief (Planner): a card opens that panel with the request filled in. Everything about a place or plan that already exists stays here, however big |
+| `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results and every earlier round's lookups (`kMaxToolRounds`, now 100: a safety stop only, since each round is a paid call; what ends a search sooner is the AI asking again for what it already has) |
+| `route` | another panel's work — a brand-new place from nothing (Build) or a whole new game (Planner): a card asks, **Open the Build panel / the Planner with it** or **Do it here in the AI panel** (sent again with "(Do it here: …)", which is never routed). Everything about a place or a game that already exists stays here, however big; a request naming a scene the project has ("in Bellwether") is never routed (`open_scene`, then the edit). A route to the Planner while the project already has its game (planner/buildstate.json, or quests written) is asked again, once, to do it here |
 | `ask` | unclear: one question with 2–5 answers to click (or the user answers in words) |
 
 Any answer can also carry:
@@ -35,7 +35,8 @@ feature work goes ahead without waiting. Mechanical tasks (a new enemy, a farm) 
 
 Such requests stay in this panel: the Build router ignores requests about a place's people and story
 (`LooksLikeBuildRequest`: story, populate, NPCs, dialogue, gossip, lore, villagers...), and a place named in the plan
-doesn't make "populate it" a plan revision. People for a building whose inside is its own scene go in that scene, as
+doesn't make "populate it" a plan revision. (Plan revisions from the AI panel are gone altogether: `AboutThePlan` no
+longer routes; a change to the game is made here.) People for a building whose inside is its own scene go in that scene, as
 another request.
 
 ## Tools
@@ -56,6 +57,8 @@ Run by the editor (`engine/ai_bridge/AiTools.cpp`, `EditorApp::RunAiTools`), rea
 | `check` | the project's problems: gateways, records, sheets, script errors |
 | `look` | a picture of the scene (around an entity, an area, or all of it), drawn by the CPU renderer and attached to the next message |
 | `playtest` | the scene played headless for a few seconds, pressing the actions asked for in turn (`move_x+` walks): its events, script errors, where the player went, its pockets and health |
+| `requirements` | the AI Planner's requirements (planner/requirements.json, development_plan.md 34), filtered by id, scene, status, kind or words: each one's when, where, who, accept checks and their results, and its implementation items |
+| `open_scene` | (not read-only: it opens a scene) the scene a request is about opened, the open one saved first (`AiOpenScene`); the lookups after it and every edit are made there |
 
 ## Actions
 
@@ -74,6 +77,13 @@ quests, settings, input.json, World Bible entries, new scenes and prefabs delete
 again writes them anew. Ctrl+Z undoes the scene's side only. A `file.move`'s rewritten references aren't put back.
 
 **Review each step** (the AI panel's settings): a task waits after each step, the step shown, for **Continue** or Stop.
+
+**Stop**: while the AI works, "Thinking…" has a **Stop** button (`ai:stop`, `StopAi`); nothing is changed.
+
+**Out of credits**: `AiClient::NoteCredits` reads every answer's `error` / `errors` / `detail` for a provider out of
+credits or over its quota (PixelLab, OpenRouter, BFL, Anthropic, OpenAI, Gemini, AutoSprite…), names the provider
+nearest those words, and posts `ai:credits` once per provider per 15 minutes. `CreditBanner.vue` shows a red banner
+naming it until closed ("Show what it said"), and the alert is also a failed entry in Notifications.
 
 ## Context
 

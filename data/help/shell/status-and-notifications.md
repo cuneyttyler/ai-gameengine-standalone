@@ -34,7 +34,8 @@ right, listing what has been happening, newest first:
 - the AI's calls, running and finished: art, characters, animations, backgrounds, a place's build steps, AI panel
   requests, checks, web searches;
 - a part being animated (Animate a part…) and an interior's things being animated (Animate the interior…);
-- every notice the editor has shown on the status bar.
+- every notice the editor has shown on the status bar;
+- a provider out of credits ("BFL: out of credits", ✕), with its own words. The same is shown as a red banner at the top of the editor until you close it (see ai-panel.md, "When a provider runs out of credits").
 
 Each entry has an icon (◌ running, ✓ done, ✕ failed, • information), a title, a detail line (its step or phase and
 seconds), a progress bar when the work has counted steps, and how long ago it changed. The header counts how many are

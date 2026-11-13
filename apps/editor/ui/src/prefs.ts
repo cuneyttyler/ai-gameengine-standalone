@@ -10,7 +10,7 @@ export interface Prefs {
   invertZoom: boolean // the wheel zooms the other way
   recoveryMinutes: number // how often unsaved changes are kept for a crash (0: never)
   paintModel: string // who paints a place whole when a project doesn't say (Project Settings ▸ AI ▸ paint)
-  defaultBuildMethod: 'Assembled' | 'Paint' // what New Project starts with
+  defaultBuildMethod: 'Assembled' | 'Paint' | 'PaintPlan' // what New Project starts with (Paint: Paint (Free))
 }
 
 export const prefs = reactive<Prefs>({

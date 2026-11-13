@@ -140,6 +140,16 @@ bool AreHostile(Registry& registry, Entity attacker, Entity target) {
     return IsHostile(at, bt);
 }
 
+bool WouldAttack(Registry& registry, Entity actor, Entity target) {
+    if (!AreHostile(registry, actor, target)) return false;
+    if (TeamOf(registry, actor) != Team::Neutral) return true;
+    // Neutral: hostile above only by its faction's say against the player (turned on them, or at war), or not at all.
+    if (registry.all_of<FactionMember>(actor) && TeamOf(registry, target) == Team::Player) return true;
+    if (const auto* b = registry.try_get<Behaviour>(actor); b && b->aggression == Aggression::Frenzied) return true;
+    const auto* s = registry.try_get<BehaviourState>(actor);
+    return s && s->target == target && s->mode == BehaviourState::Mode::Combat; // fighting back
+}
+
 std::optional<Entity> TryRangedAttack(Registry& registry, Entity attacker, float dirX, float dirY) {
     if (!registry.valid(attacker) || registry.all_of<Dead>(attacker)) return std::nullopt;
     auto* ranged = registry.try_get<RangedAttack>(attacker);

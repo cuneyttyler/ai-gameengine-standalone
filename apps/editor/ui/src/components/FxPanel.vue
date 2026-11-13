@@ -9,6 +9,8 @@ import { editorState } from '../editorState'
 import { promptDialog } from '../dialogs'
 import SheetEditor from './SheetEditor.vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import { openContextMenu } from '../contextMenu'
+import { revealState, showUses } from '../projectSearch'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 
@@ -187,6 +189,23 @@ const opsByType: Record<string, string[]> = {
 function openCutscene(id: string): void {
   sendToHost({ type: 'fx:cutscene', id })
 }
+// Opened from elsewhere (Search in project, Show uses): the Cutscenes page, that one.
+watch(
+  () => revealState.at,
+  () => {
+    if (!revealState.cutscene) return
+    section.value = 'cutscenes'
+    openCutscene(revealState.cutscene)
+    revealState.cutscene = ''
+  },
+  { immediate: true },
+)
+function cutsceneMenu(id: string, event: MouseEvent): void {
+  openContextMenu(event.clientX, event.clientY, [
+    { label: 'Open', action: () => openCutscene(id) },
+    { label: 'Show uses', action: () => showUses({ kind: 'cutscene', path: `cutscenes/${id}.json`, id, label: id }) },
+  ])
+}
 function newCutscene(): void {
   const id = newCutsceneId.value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
   if (!id) return
@@ -335,7 +354,8 @@ const cutsceneProblems = computed(() => cutscenes.value.find((c) => c.id === cut
     <!-- Cutscenes --------------------------------------------------------------->
     <div v-else class="split">
       <aside class="list">
-        <button v-for="c in cutscenes" :key="c.id" class="row" :class="{ active: cutsceneId === c.id }" @click="openCutscene(c.id)">
+        <button v-for="c in cutscenes" :key="c.id" class="row" :class="{ active: cutsceneId === c.id }" @click="openCutscene(c.id)"
+                @contextmenu.prevent="cutsceneMenu(c.id, $event)">
           <span class="name">{{ c.name || c.id }}</span>
           <span v-if="c.problems.length" class="warn">⚠</span>
           <span v-else class="muted small">{{ c.seconds.toFixed(1) }}s</span>

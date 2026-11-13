@@ -39,7 +39,7 @@ Questions: how do I change the game's menus? where are the game's screens? can I
 - **Screens:** each screen with its source (the engine's or the project's). **Customise** copies it into the project's
   `ui/` folder to change it; **Design…** opens it in the UI designer; a preview shows it over the viewport with sample
   data. New screens can be made here (a new screen id starts in the designer).
-- **Theme:** a **Base theme** (stone, parchment, iron, arcane, scifi-glass, minimal, pixel) and token overrides (colours
+- **Theme:** a **Base theme** (stone, parchment, iron, arcane, scifi-glass, minimal, pixel, clear: no panel backgrounds) and token overrides (colours
   used as `var(--token)`); **Save theme** writes `ui/theme.json`.
 - **Notifications:** rules mapping events to notifications (`ui/notifications.json`); **Save rules**.
 - **Check all** shows every screen once and lists what doesn't load ("Every screen loads cleanly").
@@ -114,7 +114,10 @@ Text over people and things, drawn by the HUD document and styled in the designe
 - **Speech bubbles:** what characters say (the Speech component's lines, the `say` effect, a Character Rule's `says`,
   Lua `say`). Project Settings ▸ UI ▸ **speech**: bubble, subtitle or both; **speechSeconds**. One bubble per speaker.
 - **Labels:** the **Label** component (`text`, `within`: shown only while the player is that close, 0 always,
-  `height`); Settings ▸ UI ▸ labels turns them off.
+  `height`, `type`); Settings ▸ UI ▸ labels turns them off. Each **type** has its own look: **name** (a person's or
+  thing's: plain highlight text), **place** (a building, a street: larger, capitals, underlined), **sign** ("Shop
+  open": on a small panel), **status** ("Ripe": small green italics), **quest** (gold, framed), **danger** (white on red).
+  The designer's Labels element can recolour each type (Colours by label type).
 - **Floating numbers:** damage and heals over who took them (**damageNumbers**), items gained over the player ("+3
   Wheat", **itemNumbers**). They rise and fade.
 
@@ -124,7 +127,7 @@ a bubble's speaker `{{it.name}}`, numbers' colours by kind).
 ### Example: a sign over the smithy and subtitles instead of bubbles
 
 1. Select the smithy and choose **Label** from **+ Add component**: **text** `Brannoc's Smithy`, **within** `6`,
-   **height** `2.5`.
+   **height** `2.5`, **type** `place`.
 2. In Project Settings ▸ UI, set **speech** to `subtitle` and **speechSeconds** to `4`; untick **damageNumbers**.
 3. Give Brannoc a Speech **idle** line `Hot iron waits for no one.`
 

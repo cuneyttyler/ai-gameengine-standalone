@@ -18,9 +18,11 @@
 		.hud .key { background-color: var(--accent); color: var(--panel); padding: 1dp 7dp; margin-right: 6dp; }
 		.hud .subtitle { position: absolute; left: 10%; right: 10%; bottom: 100dp; text-align: center; }
 		.hud .subtitle span { background-color: var(--shade); padding: 4dp 10dp; }
-		.hud .marker { position: absolute; width: 10dp; height: 10dp; margin-left: -5dp; margin-top: -5dp;
-		               background-color: var(--highlight); }
-		.hud .marker span { position: absolute; top: 12dp; left: -20dp; width: 50dp; text-align: center;
+		.hud .marker { position: absolute; width: 30dp; height: 15dp; margin-left: -15dp; margin-top: -7dp;
+		               border: 2dp var(--highlight); border-radius: 15dp; }
+		.hud .marker.edge { width: 14dp; height: 14dp; margin-left: -7dp; margin-top: -7dp; border-radius: 7dp;
+		                    background-color: var(--highlight); }
+		.hud .marker span { position: absolute; top: 16dp; left: -40dp; width: 110dp; text-align: center;
 		                    font-size: 13dp; color: var(--highlight); }
 		.hud .toast { position: absolute; left: 0; right: 0; top: 24dp; text-align: center; }
 		.hud .toast span { background-color: var(--panel); border-top: 2dp var(--panel-border); padding: 6dp 14dp; }
@@ -34,6 +36,13 @@
 		.hud .bubble { background-color: var(--panel); border: 1dp var(--panel-border); padding: 4dp 9dp; margin-top: -8dp;
 		               max-width: 280dp; font-size: 15dp; }
 		.hud .label { color: var(--highlight); font-size: 13dp; margin-top: -4dp; }
+		/* Each label type its own look (the Label component's type). */
+		.hud .label.place { color: #f2e6c8; font-size: 16dp; font-weight: bold; text-transform: uppercase;
+		                    border-bottom: 1dp #f2e6c8; padding: 0 4dp 1dp; }
+		.hud .label.sign { color: var(--text); background-color: var(--panel); border: 1dp var(--panel-border); padding: 2dp 7dp; }
+		.hud .label.status { color: #9fe3a0; font-size: 12dp; font-style: italic; }
+		.hud .label.quest { color: #ffd25a; font-weight: bold; background-color: #00000099; border: 1dp #ffd25a; padding: 1dp 6dp; }
+		.hud .label.danger { color: #ffffff; font-weight: bold; background-color: #b3261ecc; padding: 1dp 6dp; }
 		.hud .number { font-size: 18dp; font-weight: bold; margin-top: -10dp; }
 		.hud .number.damage { color: #ff5a4a; }
 		.hud .number.heal { color: #6ee36e; }
@@ -59,12 +68,14 @@
 		<div class="slots" data-if="abilities != ''"><span>{{abilities}}</span></div>
 		<div class="prompt" data-if="prompt_text != ''"><span class="key">{{prompt_key}}</span>{{prompt_text}}</div>
 		<div class="subtitle" data-if="subtitle != ''"><span>{{subtitle}}</span></div>
-		<div class="over label" data-for="it : labels" data-style-left="it.x + 'px'" data-style-top="it.y + 'px'">{{it.text}}</div>
+		<div class="over label" data-for="it : labels" data-class-place="it.kind == 'place'" data-class-sign="it.kind == 'sign'"
+		     data-class-status="it.kind == 'status'" data-class-quest="it.kind == 'quest'" data-class-danger="it.kind == 'danger'"
+		     data-style-left="it.x + 'px'" data-style-top="it.y + 'px'">{{it.text}}</div>
 		<div class="over bubble" data-for="it : bubbles" data-style-left="it.x + 'px'" data-style-top="it.y + 'px'" data-style-opacity="it.alpha">{{it.text}}</div>
 		<div class="over number" data-for="it : numbers" data-class-damage="it.kind == 'damage'" data-class-heal="it.kind == 'heal'" data-class-item="it.kind == 'item'"
 		     data-style-left="it.x + 'px'" data-style-top="it.y + 'px'" data-style-opacity="it.alpha">{{it.text}}</div>
-		<div class="marker" data-if="marker != ''" data-style-left="marker_x + 'px'" data-style-top="marker_y + 'px'">
-			<span>{{marker}}</span>
+		<div class="marker" data-for="m : markers" data-class-edge="m.kind == 'edge'" data-style-left="m.x + 'px'" data-style-top="m.y + 'px'">
+			<span>{{m.name}} {{m.text}}</span>
 		</div>
 	</div>
 	<div data-model="notes">

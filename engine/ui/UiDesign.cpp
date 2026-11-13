@@ -185,6 +185,14 @@ struct Writer {
         const std::string text = Escape(n.value("text", std::string()));
         if (overhead) {
             // One for each: its text says {{it.text}} (and a bubble's {{it.name}}); numbers styled by their kind.
+            // Labels: each type its own look (the Label component's type), before the designer's colours for them.
+            if (type == "labels") {
+                style << "." << cls << ".place { color: #f2e6c8; font-weight: bold; text-transform: uppercase; border-bottom: 1dp #f2e6c8; padding: 0 4dp 1dp; }\n"
+                      << "." << cls << ".sign { color: var(--text); background-color: var(--panel); border: 1dp var(--panel-border); padding: 2dp 7dp; }\n"
+                      << "." << cls << ".status { color: #9fe3a0; font-style: italic; }\n"
+                      << "." << cls << ".quest { color: #ffd25a; font-weight: bold; background-color: #00000099; border: 1dp #ffd25a; padding: 1dp 6dp; }\n"
+                      << "." << cls << ".danger { color: #ffffff; font-weight: bold; background-color: #b3261ecc; padding: 1dp 6dp; }\n";
+            }
             const json kinds = n.value("kinds", json::object());
             for (const auto& [kind, colour] : kinds.items()) {
                 if (colour.is_string() && !colour.get<std::string>().empty()) style << "." << cls << "." << Safe(kind) << " { color: " << Colour(colour.get<std::string>()) << "; }\n";
@@ -196,6 +204,9 @@ struct Writer {
                 << "\" data-style-left=\"it.x + 'px'\" data-style-top=\"it.y + 'px'\" data-style-opacity=\"it.alpha\"";
             if (type == "numbers") {
                 for (const char* kind : {"damage", "heal", "item"}) out << " data-class-" << kind << "=\"it.kind == '" << kind << "'\"";
+            }
+            if (type == "labels") {
+                for (const char* kind : {"place", "sign", "status", "quest", "danger"}) out << " data-class-" << kind << "=\"it.kind == '" << kind << "'\"";
             }
             out << ">" << (text.empty() ? std::string("{{it.text}}") : text) << "\n";
             for (const auto& child : n.value("children", json::array())) Node(child, out, depth + 1);
@@ -213,6 +224,14 @@ struct Writer {
             const std::string row = list.value("row", std::string(source == "items" && model == "hud" ? "{{item.name}}" : "{{item.label}}"));
             const double rowH = list.value("rowH", 32.0);
             const bool chooses = model == "menu" || model == "dialogue";
+            // Its rows' look (list.look), the highlighted or hovered one's (list.lit: the theme's highlight when not
+            // said), one not to be chosen dimmed.
+            const std::string rowLook = Look(n, id + "-row", list.value("look", json::object()));
+            std::string litLook = Look(n, id + "-lit", list.value("lit", json::object()));
+            if (litLook.empty()) litLook = "color: var(--highlight); ";
+            style << "." << cls << " .item { display: block; padding: 0 12dp; line-height: " << Num(rowH) << "dp; " << rowLook << "}\n";
+            if (chooses) style << "." << cls << " .item:hover, ." << cls << " .item.lit { " << litLook << "}\n";
+            style << "." << cls << " .item.off { color: var(--text-dim); }\n";
             out << pad << "<div" << attrs << ">\n" << pad << "  <div class=\"item\" style=\"height: " << Num(rowH) << "dp;\" data-for=\"item, i : "
                 << source << "\"" << (chooses ? " data-class-lit=\"i == highlighted\" data-event-click=\"choose(i)\"" : "")
                 << (model == "menu" ? " data-class-off=\"!item.enabled\" data-event-mousedown=\"context(i)\"" : "") << ">" << Escape(row) << "</div>\n"

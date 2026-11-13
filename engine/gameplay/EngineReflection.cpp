@@ -244,12 +244,15 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("text", &Label::text, "What it says.")
         .Field("within", &Label::within, "Shown only while the player is this close, in cells (0: always).").Range(0, 100)
         .Field("height", &Label::height, "Raised this much more above its head, in pixels.").Range(-500, 500)
+        .Field("type", &Label::type, "What sort of label: name (a person's or thing's), place (a building, a street), sign "
+                                     "(\"Shop open\"), status (\"Ripe\"), quest (something to do here), danger. Each has its own look.")
+        .Options({"name", "place", "sign", "status", "quest", "danger"})
         .DependsOn({"WorldTransform2D"});
     r.Component<Action>("Action", "Does something when its trigger happens, to whoever uses it: the player pressing its action "
                                   "near it, a character (Behaviour step act), a script (act), an event or a timer. A field "
                                   "farmed, a crop grown, a crop harvested (docs/systems/actions.md).")
         .Label("Reaction")
-        .Field("trigger", &Action::trigger, "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto; near: someone comes within range.").Options({"input", "event", "timer", "touch", "near"})
+        .Field("trigger", &Action::trigger, "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto; near: someone comes within range; player-near: the player comes within range (a small scene's start).").Options({"input", "event", "timer", "touch", "near", "player-near"})
         .Field("action", &Action::action, "The input action (Project Settings ▸ Input): interact, or one of the project's (farm, chop...).")
         .Field("event", &Action::event, "trigger event: the event's name.")
         .Field("seconds", &Action::seconds, "trigger timer: seconds after it appears.").Min(0)
@@ -593,6 +596,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("cutscene", &CutsceneTrigger::cutscene, "The cutscene, cutscenes/<id>.json (its id).").Choices("cutscenes")
         .Field("radius", &CutsceneTrigger::radius, "How close the player must come, in cells.").Range(0.2, 50)
         .Field("once", &CutsceneTrigger::once, "Only the first time (remembered in saves).")
+        .Field("conditions", &CutsceneTrigger::conditions,
+               "Only while these hold: JSON, as dialogue's ([{\"quest\": \"q-main\", \"stage\": 80}]); empty: always.")
         .DependsOn({"WorldTransform2D"});
     r.Component<Music>("Music", "The scene's music and ambience (development_plan.md 12.6): while the player is in "
                                 "this scene, the first entity with Music sets what plays. Changing scene "
@@ -730,12 +735,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("art", &AiSettings::art, "Who draws the prefabs' art (empty: the app's).")
         .Options({"", "mistral", "pixellab", "bfl:flux-2-klein-4b", "bfl:flux-3-image", "bfl:flux-2-pro"})
         .Field("background", &AiSettings::background, "Who paints the places' backgrounds (empty: the app's).")
-        .Options({"", "bfl:flux-3-image", "bfl:flux-2-max", "bfl:flux-2-pro", "bfl:flux-2-klein-4b"})
+        .Options({"", "bfl:flux-3-image", "bfl:flux-2-klein-4b"})
         .Field("paint", &AiSettings::paint,
                "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows "
-               "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "
-               "paints the plan, then FLUX.2 pro or klein repaints its look. Dungeons are always painted with FLUX-3-Image.")
-        .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"})
+               "the plan as a rough draft; FLUX-3-Image: keeps the layout best. Dungeons are always painted with FLUX-3-Image.")
+        .Options({"", "flux-2-klein-4b", "flux-3-image"})
         .Field("animate", &AiSettings::animate,
                "What animates people and creatures (Generate ▸ Animate, the AI panel's walks; empty: the app's). AutoSprite: "
                "a character's 8 directions at once; PixelLab Animate with text v3: 8 frames, slow.")
@@ -749,13 +753,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "painted, flat vector; empty: from the project (each kind of art its own look, matched to the art already "
                "made). The planner's art style sets it.")
         .Options({"", "pixel-16", "pixel-32", "painted", "flat-vector"});
-    r.Settings("Places", "How the AI builds places: each build and plan starts with this and can choose the other.", &settings.places)
+    r.Settings("Places", "How the AI builds places: each build and plan starts with this and can choose another.", &settings.places)
         .Field("method", &PlacesSettings::method,
                "Assembled: each building, tree and prop gets its own art, put together on the grid over a painted "
-               "background; every piece can be moved and edited. Paint: the place is painted whole as one picture (as "
-               "Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only "
-               "doors, chests, items and characters get art of their own.")
-        .Options({"Assembled", "Paint"});
+               "background; every piece can be moved and edited. Paint (Free, \"Paint\"): the place is painted whole as "
+               "one picture, freely, from its zones (each zone's ground a colour on the land; no Plan step). Paint (by "
+               "Plan, \"PaintPlan\"): its plan is drawn as a block-out and painted. Painted either way, you then mark where "
+               "one can walk and what a character goes behind; only doors, chests, items and characters get art of their own.")
+        .Options({"Assembled", "Paint", "PaintPlan"});
     r.Settings("Game", "The game as a whole.", &settings.game)
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
         .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")

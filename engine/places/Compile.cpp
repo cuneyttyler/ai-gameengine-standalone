@@ -130,6 +130,7 @@ private:
     const json& spec_;
     const CompileOptions& options_;
     json statements_ = json::array();
+    double largestPlace_ = 0; // a world's biggest place's side (its spacing: the gaps between their edges)
     double woods_ = -1; // the root's `woods` (a density for the landscape's woods); -1: the module's own
     // The root's `links` (a world's: one road network joining all its sites and the main road), and its members, as
     // the scattered zones place them; none: each zone connects its own.
@@ -173,6 +174,8 @@ private:
     // The other layouts (7.10): levels of rooms and corridors; floors of rooms.
     void DungeonRoot(const json& root, const ModuleDef& m);
     void InteriorRoot(const json& root, const ModuleDef& m);
+    // The Spec's gateways (ways into other places): placed late, out in the land (a site) or on a room's floor (inside).
+    void EmitGateways(const std::string& node, bool inside);
     // A zone whose parcels stand apart (points of interest, a region's sites), joined by trails or roads.
     void ScatteredZone(const json& zone, const ModuleDef& m, const json& hints);
     // The module's contents hints ({slot, count|density, where, near, layer, mix}), as scatters in `in`.
@@ -239,6 +242,18 @@ static double MediumSiteSide(const Ontology& ontology, const json& parcel, const
     if (build == nullptr || build->scale.empty()) return 0;
     const ScaleClass& scale = build->scale[std::min<size_t>(1, build->scale.size() - 1)];
     return (scale.side.first + scale.side.second) / 2.0 * std::max(1.0, m.compile.value("padding", 1.0));
+}
+
+void Compiler::EmitGateways(const std::string& node, bool inside) {
+    for (const auto& g : spec_.value("gateways", json::array())) {
+        const json fp = g.value("footprint", json::array({3, 3}));
+        json st = {{"op", "gateway"}, {"id", "site/" + g.value("id", std::string("gateway"))}, {"node", node}, {"in", "site"},
+                   {"role", g.value("role", "gateway")}, {"to", g.value("to", "")}, {"suits", inside ? json::array() : g.value("suits", json::array())},
+                   {"footprint", {{"w", fp.is_array() && fp.size() == 2 ? fp[0] : json(3)}, {"h", fp.is_array() && fp.size() == 2 ? fp[1] : json(3)}}},
+                   {"outside", inside ? false : g.value("outside", true)}, {"inside", inside}, {"at", g.value("at", "")}, {"late", true}};
+        if (g.contains("near") && !inside) st["near"] = g["near"];
+        Emit(st);
+    }
 }
 
 json Compiler::LotSize(const json& parcel, const ModuleDef& m, int index, int instances) const {
@@ -605,7 +620,13 @@ void Compiler::Root(const json& root) {
             if (cm == nullptr || cm->level != PlaceLevel::Zone) continue;
             double scale = 1.0;
             if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
-            required += ParcelArea(c) * 1.9 * scale;
+            const double lots = ParcelArea(c);
+            required += lots * 1.9 * scale;
+            // A zone without lots (a graveyard, a green) needs its own area: its real size (its extent) is land the
+            // site must hold beside the lots, not what's left over.
+            if (lots <= 0 && FieldOf(c, *cm, "extent").is_string()) {
+                if (const auto area = Range(c, *cm, "area")) required += (area->first + area->second) / 2;
+            }
         }
         if (!options_.fixedSide && form_.value("site-fit", "") == "content") {
             // Sized to the content (the layout form's site-fit): the plan's lots and their streets, its open space on
@@ -651,6 +672,7 @@ void Compiler::Root(const json& root) {
                 // takes more of the world rather than making it that much bigger); its columns and rows; each outer
                 // place off the edge as the solver keeps it (its own width, or an eighth of the side). Then room for
                 // the land's parts (their least shares: the sea, the forests, the border woods), and no more.
+                largestPlace_ = site;
                 const double pitch = site + (unit > 0 ? unit : site) * spacing.get<double>();
                 const int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(places))));
                 const int rows = (places + cols - 1) / cols;
@@ -844,6 +866,9 @@ void Compiler::Root(const json& root) {
         if (rootHints.value("roadsAfterLand", false)) road["late"] = true;
         Emit(road);
     }
+    // Its gateways (the Spec's: ways into other places, GatewaysIntoSpec): each placed where it suits once the land and
+    // the roads are laid (late), with a trail to the nearest road; linked to its place when that's built.
+    EmitGateways(id, false);
     // Roads leading out over its border (the root's `exits`: a world's roads to the lands beyond), from the edges it names
     // to its main road, laid once the main road is there.
     {
@@ -980,7 +1005,8 @@ void Compiler::Root(const json& root) {
                     for (const auto& p : c.value("children", json::array())) {
                         if (const ModuleDef* pm = ontology_.Module(p.value("module", ""))) medium = std::max(medium, MediumSiteSide(ontology_, p, *pm));
                     }
-                    zone["edge"]["apart"] = std::ceil(side + (medium > 0 ? medium : side) * spacing.get<double>());
+                    // (half its own land and half the biggest place's: a village by a city keeps the same open country)
+                    zone["edge"]["apart"] = std::ceil((side + std::max(side, largestPlace_)) / 2.0 + (medium > 0 ? medium : side) * spacing.get<double>());
                 }
             }
         }
@@ -1779,6 +1805,7 @@ void Compiler::DungeonRoot(const json& root, const ModuleDef& m) {
               {"args", {{"ref", levelId + "/rooms"}, {"range", {static_cast<int>(level.rooms.size()), static_cast<int>(level.rooms.size())}}}}});
         previousGoal = goal;
     }
+    EmitGateways(id, true); // stairs down, a portal, a trapdoor: on a room's floor
     Emit({{"op", "check"}, {"id", "site/completable"}, {"node", id}, {"predicate", "completable"}, {"args", {{"goal", goal}}}});
     Emit({{"op", "check"}, {"id", "site/rooms-reachable"}, {"node", id}, {"predicate", "rooms-reachable"}, {"args", {{"class", "Room"}}}});
     Emit({{"op", "check"}, {"id", "site/doors-free"}, {"node", id}, {"predicate", "doors-free"}});
@@ -1869,6 +1896,7 @@ void Compiler::InteriorRoot(const json& root, const ModuleDef& m) {
         below = floorId + "/rooms";
     }
     Emit({{"op", "check"}, {"id", "site/rooms-reachable"}, {"node", id}, {"predicate", "rooms-reachable"}, {"args", {{"class", "Room"}}}});
+    EmitGateways(id, true); // a cellar hatch, stairs, a trapdoor: on a room's floor
     Emit({{"op", "check"}, {"id", "site/groups-reachable"}, {"node", id}, {"predicate", "groups-reachable"}, {"args", {{"anchors", groupAnchors_}}}});
     Emit({{"op", "check"}, {"id", "site/doors-free"}, {"node", id}, {"predicate", "doors-free"}});
 }

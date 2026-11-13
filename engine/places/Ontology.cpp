@@ -1,4 +1,5 @@
 #include "places/Ontology.h"
+#include "install/InstallPath.h"
 
 #include "places/Expr.h"
 
@@ -170,6 +171,7 @@ ModuleDef ParseModule(const json& j, const std::string& source) {
     }
     m.compile = j.value("compile", json());
     m.layout = j.value("layout", json::object());
+    m.realSize = j.value("realSize", json());
     m.source = source;
     return m;
 }
@@ -896,24 +898,40 @@ json Ontology::Subgraph(const std::string& id) const {
         const std::string target = rule.appliesTo.rfind("class:", 0) == 0 ? rule.appliesTo.substr(6) : rule.appliesTo;
         if (target.empty() || IsA(id, target)) rules.push_back({{"id", rule.id}, {"text", rule.text}, {"source", rule.source}});
     }
-    return {{"module", m->id},
-            {"name", m->name},
-            {"description", m->description},
-            {"level", PlaceLevelName(m->level)},
-            {"quantity", fieldsJson(m->quantity)},
-            {"quality", fieldsJson(m->quality)},
-            {"children", children},
-            {"relations", relations},
-            {"constraints", m->constraints},
-            {"requires", m->required},
-            {"prefersSite", m->prefersSite},
-            {"rules", rules},
-            {"concepts", concepts}};
+    json out = {{"module", m->id},
+                {"name", m->name},
+                {"description", m->description},
+                {"level", PlaceLevelName(m->level)},
+                {"quantity", fieldsJson(m->quantity)},
+                {"quality", fieldsJson(m->quality)},
+                {"children", children},
+                {"relations", relations},
+                {"constraints", m->constraints},
+                {"requires", m->required},
+                {"prefersSite", m->prefersSite},
+                {"rules", rules},
+                {"concepts", concepts}};
+    // Its real sizes by extent, in cells (as the plan gives sizes): what each extent means here.
+    if (m->realSize.is_object()) {
+        json sizes = json::object();
+        for (const auto& [extent, size] : m->realSize.items()) {
+            if (!size.is_object()) continue;
+            json cells = json::object();
+            if (size.contains("area")) cells["area"] = static_cast<int>(std::lround(size["area"].get<double>() / (kCellMetres * kCellMetres)));
+            for (const char* d : {"w", "h"}) {
+                if (size.contains(d)) cells[d] = static_cast<int>(std::lround(size[d].get<double>() / kCellMetres));
+            }
+            sizes[extent] = cells;
+        }
+        out["extentCells"] = sizes;
+        out["cellMetres"] = kCellMetres;
+    }
+    return out;
 }
 
 fs::path EnginePlacesDir() {
 #ifdef AIGE_PLACES_DATA_DIR
-    return fs::path(AIGE_PLACES_DATA_DIR);
+    return InstalledOr(fs::path(AIGE_PLACES_DATA_DIR), "data/places"); // next to the program when packaged
 #else
     return fs::path("data") / "places";
 #endif

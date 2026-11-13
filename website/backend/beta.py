@@ -56,6 +56,11 @@ def setting(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def support_address() -> str:
+    """Where registrations are sent: AIGE_SUPPORT_EMAIL, else the account that sends (never nowhere)."""
+    return setting("AIGE_SUPPORT_EMAIL") or setting("SMTP_USER")
+
+
 def site_url() -> str:
     return setting("SITE_URL", "http://127.0.0.1:5000").rstrip("/")
 
@@ -249,12 +254,25 @@ reply to this email for a new one. Please don't share it.
 </td></tr></table>
 <p style="margin:0 0 6px;font-size:14px;color:#55617f;">If the button doesn't work, copy this address into your browser:</p>
 <p style="margin:0 0 20px;font-size:13px;word-break:break-all;"><a href="{html.escape(link)}" style="color:#2f7cf6;">{html.escape(link)}</a></p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;"><tr>
+<td style="background:#eef5ff;border-left:4px solid #2f7cf6;padding:12px 16px;font-size:14px;line-height:1.55;color:#1f3357;">
+<strong style="display:block;margin-bottom:6px;">Preliminary steps</strong>
+The AI features need API keys to be set for beta testing. You can choose which provider to use in
+<strong>File &gt; Preferences</strong> or <strong>File &gt; Project Settings</strong>, and set an API key for each provider in
+<strong>Preferences &gt; Beta Settings</strong>.
+<p style="margin:10px 0 0;">Check the <strong>Goals</strong> section of
+<a href="{site_url()}/beta#goals" style="color:#2f7cf6;">{html.escape(site_url().split('://')[-1])}/beta</a> to learn what to try out in the beta.</p>
+</td></tr></table>
 <p style="margin:0 0 4px;font-size:15px;"><strong>Getting started</strong></p>
 <p style="margin:0 0 14px;font-size:14px;color:#55617f;">The documentation walks through every panel with worked examples:
 <a href="{site_url()}/docs" style="color:#2f7cf6;">{html.escape(site_url().split('://')[-1])}/docs</a>. We'd love to hear what you make, and what gets in your way: just reply.</p>
 <p style="margin:0;">The AIGE team</p>"""
     text = (f"{'Hi ' + row['name'] if row['name'] else 'Hi'},\n\nThanks for registering for the AIGE beta. Download it here:\n{link}\n\n"
             f"This link is yours and works for {LINK_DAYS} days, until {expires}. After that it expires: reply for a new one.\n\n"
+            "Preliminary steps\n"
+            "The AI features need API keys to be set for beta testing. You can choose which provider to use in File > Preferences "
+            "or File > Project Settings, and set an API key for each provider in Preferences > Beta Settings.\n"
+            f"Check the Goals section of {site_url()}/beta#goals to learn what to try out in the beta.\n\n"
             f"Docs: {site_url()}/docs\n\nThe AIGE team\n")
     return "Your AIGE beta download link", _shell(logo_cid, f"Your personal download link, valid until {expires}", body), text
 
@@ -266,11 +284,11 @@ def send(to: str, compose) -> str:
     message = EmailMessage()
     message["Subject"] = subject
     # From the account that sends (mail servers refuse other senders), unless SMTP_FROM says otherwise.
-    sender = setting("SMTP_USER") or setting("AIGE_SUPPORT_EMAIL")
+    sender = setting("SMTP_USER") or support_address()
     message["From"] = setting("SMTP_FROM") or (f"AIGE <{sender}>" if sender else "AIGE <no-reply@localhost>")
     message["To"] = to
-    if setting("AIGE_SUPPORT_EMAIL"):
-        message["Reply-To"] = setting("AIGE_SUPPORT_EMAIL")
+    if support_address():
+        message["Reply-To"] = support_address()
     message.set_content(text)
     message.add_alternative(html_body, subtype="html")
     if LOGO.is_file():

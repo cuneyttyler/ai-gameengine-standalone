@@ -10,3 +10,12 @@ target_link_libraries(plan_blockout PRIVATE aige_editing aige_places aige_assets
 # A request read into a Brief as the Builder reads it, and its Confirm window (the AI service's /places/interpret).
 add_executable(brief_test brief_test/main.cpp)
 target_link_libraries(brief_test PRIVATE aige_editing aige_places aige_ai_bridge)
+
+# A place planned from a request with the AI service, as the Planner plans it, without the editor (its Brief, plan and images).
+add_executable(plan_place plan_place/main.cpp)
+target_link_libraries(plan_place PRIVATE aige_editing aige_places aige_assets aige_ai_bridge)
+
+# A project's planned places built into their scenes again, without the editor (their marks' occluders and walkable ground).
+add_executable(build_scenes build_scenes/main.cpp)
+target_link_libraries(build_scenes PRIVATE aige_gamebuild aige_ai_bridge)
+target_compile_features(build_scenes PRIVATE cxx_std_20)

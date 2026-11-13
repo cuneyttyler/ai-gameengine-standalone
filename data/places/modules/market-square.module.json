@@ -55,6 +55,18 @@
       ],
       "unit": "per free cell",
       "default": "some"
+    },
+    "extent": {
+      "type": "enum",
+      "values": [
+        "small",
+        "normal",
+        "big",
+        "huge"
+      ],
+      "default": "normal",
+      "ask": true,
+      "description": "How big it is in the real world (a plan cell is 2 m): small = a village green market (16 x 20 m); normal = a village market square (24 x 30 m); big = a town's market place (40 x 50 m); huge = a city's great market (60 x 80 m). The plan's size follows it."
     }
   },
   "quality": {
@@ -135,6 +147,24 @@
       "layer": "prop",
       "margin": 1,
       "why": "stalls in rows of about four with walkways between, the square's middle and edges left free for shoppers"
+    }
+  },
+  "realSize": {
+    "small": {
+      "w": 16,
+      "h": 20
+    },
+    "normal": {
+      "w": 24,
+      "h": 30
+    },
+    "big": {
+      "w": 40,
+      "h": 50
+    },
+    "huge": {
+      "w": 60,
+      "h": 80
     }
   }
 }

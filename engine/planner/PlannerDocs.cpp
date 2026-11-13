@@ -1,4 +1,5 @@
 #include "planner/PlannerDocs.h"
+#include "install/InstallPath.h"
 
 #include "places/Ontology.h"
 #include "places/PlaceValidate.h"
@@ -102,7 +103,7 @@ bool HasErrors(const std::vector<PlanProblem>& problems) {
 const PlannerData& PlannerData::Engine() {
     static const PlannerData data = [] {
         PlannerData d;
-        const fs::path dir = AIGE_PLANNER_DATA_DIR;
+        const fs::path dir = InstalledOr(AIGE_PLANNER_DATA_DIR, "data/planner"); // next to the program when packaged
         d.briefSchema = ReadJson(dir / "brief-schema.json");
         d.scope = ReadJson(dir / "scope.json");
         std::error_code ec;
@@ -407,6 +408,13 @@ std::string PlanSlug(const std::string& id) {
     return slash == std::string::npos ? id : id.substr(slash + 1);
 }
 
+std::string Utf8Cut(const std::string& text, size_t bytes) {
+    if (text.size() <= bytes) return text;
+    size_t end = bytes;
+    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) --end; // back to a character's first byte
+    return text.substr(0, end);
+}
+
 std::vector<std::string> RepairOutline(json& outline, const StoryOntology& gso) {
     std::vector<std::string> out;
     if (!outline.is_object() || !outline.contains("cast") || !outline["cast"].is_array()) return out;
@@ -527,6 +535,44 @@ std::vector<PlanProblem> ValidateOutline(const json& outline, const json& brief,
         if (!parent.empty()) {
             links[parent].insert(Text(p, "id"));
             links[Text(p, "id")].insert(parent);
+        }
+    }
+    // An open world (the outline's "world"): its sections are joined by the world's roads (no connection between two of
+    // them); every other place is entered from a section, or a place inside one, through a gateway.
+    if (const json world = outline.value("world", json()); world.is_object() && !world.empty()) {
+        std::vector<std::string> sections;
+        std::map<std::string, const json*> byId;
+        for (const auto& p : places) {
+            byId[Text(p, "id")] = &p;
+            if (p.value("section", false)) sections.push_back(Text(p, "id"));
+            if (Text(p, "kind") == "world") out.push_back({"places", "'world' isn't a place's kind: the world holds the sections"});
+            if (p.value("section", false) && p.contains("size") && !Contains({"small", "medium", "big", "huge"}, Text(p, "size"))) {
+                out.push_back({"places", Text(p, "id") + "'s size '" + Text(p, "size") + "' isn't small, medium, big or huge"});
+            }
+        }
+        if (sections.empty()) out.push_back({"places", "an open world needs its outdoor places marked as sections"});
+        if (const json sp = world.value("spacing", json()); !sp.is_null() && (!sp.is_number() || sp.get<double>() < 1 || sp.get<double>() > 10)) {
+            out.push_back({"world.spacing", "isn't a number from 1 to 10", true});
+        }
+        if (world.contains("settlementSize") && !Contains({"small", "medium", "big", "huge"}, Text(world, "settlementSize"))) {
+            out.push_back({"world.settlementSize", "isn't small, medium, big or huge", true});
+        }
+        for (const auto& a : sections) {
+            for (const auto& b : sections) {
+                if (a != b) links[a].insert(b);
+            }
+        }
+        for (size_t i = 0; i < outline.value("connections", json::array()).size(); ++i) {
+            const json& c = outline["connections"][i];
+            const auto from = byId.find(Text(c, "from")), to = byId.find(Text(c, "to"));
+            if (from == byId.end() || to == byId.end()) continue;
+            if (from->second->value("section", false) && to->second->value("section", false)) {
+                out.push_back({"connections[" + std::to_string(i) + "]", "joins two sections: the world's roads join them", true});
+            } else if ((from->second->value("section", false) || to->second->value("section", false)) &&
+                       (!c.contains("gateway") || !c["gateway"].is_object())) {
+                // (Only from the outdoors: a dungeon's levels, or a house's rooms, join by their own stairs and doors.)
+                out.push_back({"connections[" + std::to_string(i) + "]", "an entrance into " + Text(c, "to") + " needs its gateway (its kind and where it is)", true});
+            }
         }
     }
     if (!places.empty()) {

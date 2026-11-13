@@ -1,0 +1,102 @@
+{
+  "schema": "aige.module/1",
+  "id": "graveyard-ward",
+  "name": "Graveyard ward",
+  "level": "zone",
+  "description": "A graveyard as a part of the place of its own (a cemetery, a burial ground): fenced plots of graves in rows, paths between them, old trees, and perhaps a chapel. Plan it when the request places a graveyard somewhere in the place (at the east, at its edge, on a hill); the small graveyard inside a temple ward is the temple's own churchyard.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        300,
+        1500
+      ],
+      "min": 64,
+      "unit": "cells²"
+    },
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    },
+    "extent": {
+      "type": "enum",
+      "values": [
+        "small",
+        "normal",
+        "big",
+        "huge"
+      ],
+      "default": "normal",
+      "ask": true,
+      "description": "How big it is in the real world (a plan cell is 2 m): small = a churchyard of a hamlet (about 25 x 25 m); normal = a village graveyard (about 45 x 45 m); big = a large village's graveyard (about 65 x 70 m); huge = a town cemetery (about 110 x 110 m). The plan's size follows it."
+    }
+  },
+  "quality": {
+    "age": {
+      "type": "enum",
+      "values": [
+        "fresh",
+        "old"
+      ],
+      "default": "old"
+    }
+  },
+  "slots": {},
+  "children": {
+    "graveyard": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 8
+    },
+    "chapel-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 20
+    }
+  },
+  "prefersSite": {
+    "edge": 0.5
+  },
+  "realSize": {
+    "small": {
+      "area": 600
+    },
+    "normal": {
+      "area": 2000
+    },
+    "big": {
+      "area": 4500
+    },
+    "huge": {
+      "area": 12000
+    }
+  },
+  "compile": {
+    "placement": "scattered",
+    "spread": 2
+  }
+}

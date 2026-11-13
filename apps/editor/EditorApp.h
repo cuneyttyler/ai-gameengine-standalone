@@ -5,6 +5,7 @@
 #include "ai_bridge/Proposal.h"
 #include "ai_bridge/ReviewPolicy.h"
 #include "ai_bridge/TaskRunner.h"
+#include "ai_bridge/ApiKeys.h"
 #include "ai_bridge/UserPrefs.h"
 #include "world/WorldBible.h"
 #include "assets/AssetDatabase.h"
@@ -20,6 +21,7 @@
 #include "gameplay/Archetypes.h"
 #include "game/GameFlow.h"
 #include "game/PlayWindows.h"
+#include "game/Actors.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
@@ -29,6 +31,7 @@
 #include "editing/PlaceBuild.h"
 #include "planner/GamePlan.h"
 #include "gamebuild/GameBuild.h"
+#include "gamebuild/SceneAutopilot.h"
 #include "editing/PlaceScene.h"
 #include "editing/ScenePreview.h"
 #include "renderer2d/Camera2D.h"
@@ -40,6 +43,7 @@
 
 #include <windows.h>
 
+#include <array>
 #include <atomic>
 #include <deque>
 #include <functional>
@@ -133,6 +137,21 @@ public:
     void CapturePlayWorld();
     void ApplyPlayWorld(const std::string& scene);
     std::map<std::string, nlohmann::json> playWorlds_; // what changed in each scene visited in Play (12.5)
+    // ⑬ Test, watched: the autopilot playing a story scene in Play (it holds the keys), and which scene it is.
+    std::unique_ptr<SceneAutopilot> autopilot_;
+    std::string autopilotScene_;
+    void StepAutopilot(double frameSeconds);
+    void EndAutopilot(const std::string& why);
+    // Play from here: the story's earlier scenes, played by the autopilot fast, one after another; then the player's
+    // turn at this one (or its watched test).
+    std::deque<std::string> chain_;
+    int chainTotal_ = 0;
+    std::string chainTarget_;
+    bool chainWatch_ = false;
+    bool autopilotFast_ = false; // the autopilot is playing an earlier scene (fast), not the one tested
+    double chainAhead_ = 0.0;    // play time owed to the earlier scenes' faster pace
+    void NextInChain();
+    ActorRoster playActors_; // Play's persistent characters (14.4): a quest moving one to another scene, as a shipped game
     GameManifest playManifest_;                        // game.json, read when Play starts
     CameraRig cameraRig_;                              // the play camera's level edges (12.7)
     void SaveGame();
@@ -172,6 +191,8 @@ private:
     bool showMarkers_ = true;
     nlohmann::json LookupsJson();
     bool HandleListsMessage(const std::string& type, const nlohmann::json& message);
+    // Edit ▸ Search in project, Show uses, and opening a scene at one of its things (ProjectSearch.cpp).
+    bool HandleSearchMessage(const std::string& type, const nlohmann::json& message);
     std::optional<Entity> MarkerAt(float sceneX, float sceneY);
     void Undo();
     void Redo();
@@ -194,6 +215,10 @@ private:
 
     // Prefabs.
     void RefreshPrefabs();
+    // The project's files written by anyone (the Planner's build, the AI, another program): once a second each
+    // folder's files are compared, and the panels listing a changed one are sent it again (quests, dialogue, routines,
+    // the world, records, prefabs, scenes).
+    void WatchProjectFiles(double frameSeconds);
     void EnsureStarterPrefabs();
     nlohmann::json PrefabsJson();
     // `flat`: the art is top-down; it's mapped onto the grid's diamond (5.2).
@@ -267,6 +292,15 @@ private:
         int gx = 0, gy = 0;
     };
     std::optional<CellPick> selectedCell_;
+    // What the Placements tab showed (34.11), painted in its scene until a click in the viewport: the cell someone stands
+    // on, and the building's box and door when it's a building's.
+    struct PlacementMark {
+        std::string scene;
+        int x = 0, y = 0;
+        std::optional<std::array<int, 4>> box;
+        std::optional<std::pair<int, int>> door;
+    };
+    std::optional<PlacementMark> placementMark_;
     // Erasing a built place's ground: the cells a stroke took, one undo step when it ends.
     std::vector<TileLayerEdit> strokeLayerEdits_;
     void EraseLayerCell(const CellPick& cell);
@@ -493,7 +527,9 @@ private:
     void RemoveFolder(const std::string& folder, bool deleteContents);
     // Scenes (5.3): the Scene Manager, and gateways during Play.
     nlohmann::json ScenesJson();
-    std::string OpenSceneRelative() const; // "scenes/main.aige"
+    std::string OpenSceneRelative() const;
+    nlohmann::json AiOpenScene(const nlohmann::json& args); // the AI panel's open_scene tool
+    void StopAi(); // the AI panel's Stop: a task, or a request being answered // "scenes/main.aige"
     void OpenScene(const std::string& scene);
     bool AskToSaveChanges(const wchar_t* question); // false: cancelled (or the save failed)
     void HandleTravel();
@@ -546,6 +582,9 @@ private:
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
     std::unique_ptr<UserPrefs> userPrefs_;
+    std::unique_ptr<ApiKeys> apiKeys_; // the user's API keys (Preferences ▸ Beta Settings), given to the service it starts
+    std::filesystem::path serviceDir_;
+    nlohmann::json ApiKeysJson() const;
     std::unique_ptr<AiConnection> aiConnection_; // runs the service only if the user said yes
     AiClient* Ai();                              // null while AI is off or not set up
     void SetAiEnabled(bool enabled);
@@ -608,6 +647,9 @@ private:
     // The lookups so far in a request's chain of tool rounds (what it asked, what came back), carried to each next
     // round: without them it forgot round 1 by round 3 and asked again until the cap.
     std::map<int, nlohmann::json> toolTrail_;
+    std::map<int, int> toolRepeats_; // a request's rounds that asked again for what it had (told it may not exist, to make it)
+    std::map<int, nlohmann::json> toolMisses_; // a request's searches that found nothing (what it looked for)
+    std::set<int> finalPush_;        // a Planner step's request asked to make the change now, no more lookups
     bool taskPaused_ = false; // a task waiting at a step for the user's Continue (Review each step)
     // Animate a part (docs/assets/animations.md §4): the request in flight and what it's for.
     int partRequest_ = 0;
@@ -748,6 +790,14 @@ private:
     bool gameBuildDirty_ = false;
     std::unique_ptr<GameBuild> MakeGameBuild();
     void StepGameBuild();
+    // Placements (development_plan.md 34.11): the Build panel's Characters tab (build:placements, build:setPlacement,
+    // build:replaceCharacters, build:focusPlacement). Replace waits for a running Pump; after Mark again, it runs once the
+    // place is built into its scene again (replaceAfterBuild_: that build's id).
+    bool HandlePlacementMessage(const std::string& type, const nlohmann::json& message);
+    void StartReplaceCharacters(const std::string& why);
+    bool replaceCharacters_ = false;
+    std::string replaceCharactersWhy_;
+    std::string replaceAfterBuild_;
     void StepPlannerFeature();
     void FinishPlannerFeature(const std::string& status);
     bool IsPlannerFeature(const std::string& instruction);
@@ -805,6 +855,8 @@ private:
 
     // Coalesced UI updates, flushed in Tick.
     bool sceneTreeStale_ = true;
+    std::map<std::string, size_t> watchedFolders_; // a folder's path -> what its files were (count, sizes, times)
+    double watchClock_ = 0.0;
     bool inspectorStale_ = false;
     bool editorStateStale_ = true;
     double sinceInspectorRefresh_ = 0.0;

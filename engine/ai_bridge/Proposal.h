@@ -66,4 +66,14 @@ struct ApplyOutcome {
 ApplyOutcome ApplyOperations(const std::vector<nlohmann::json>& operations, Registry& registry,
                              const ReflectionRegistry& reflection, PrefabLibrary& prefabs, const Project& project);
 
+// The files a delete_file may remove: the story's and the interface's (cutscenes/, quests/, dialogue/, schedules/,
+// ui/, scripts/, prefabs/, an animation's .anim.json). Empty: it may; else why not.
+std::string DeletableFile(const Project& project, const std::string& path);
+// What starts a cutscene, by file: the scenes and prefabs with its trigger or a rule, Action or Interactable that plays
+// it, the quests and dialogues whose effects play it (project-relative).
+std::vector<std::string> CutsceneStartFiles(const Project& project, const std::string& id);
+// Those taken away (the open scene's in `open`, the rest in their files): its triggers and the entities that only held
+// its start, its play_cutscene effects. The files it changed.
+std::vector<std::string> RemoveCutsceneStarts(Registry& open, const Project& project, const std::string& id);
+
 } // namespace aige

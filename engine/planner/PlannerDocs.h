@@ -75,6 +75,9 @@ nlohmann::json BriefChoices(const StoryOntology& gso);
 // "character/tamsin" -> "tamsin"; "q-main" -> "q-main".
 std::string PlanSlug(const std::string& id);
 
+// Its first `bytes` bytes at most, never ending inside a UTF-8 character ("…", "⑫"): safe to send as JSON.
+std::string Utf8Cut(const std::string& text, size_t bytes);
+
 std::vector<PlanProblem> ValidateOutline(const nlohmann::json& outline, const nlohmann::json& brief, const StoryOntology& gso,
                                          const std::vector<std::string>& buildTypes);
 // The cast's roles put right before the outline is checked: a gameplay role listed as a narrative

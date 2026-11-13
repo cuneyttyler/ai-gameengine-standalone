@@ -2,7 +2,9 @@
 
 #include <httplib.h>
 
+#include <cctype>
 #include <cwchar>
+#include <functional>
 #include <random>
 
 #include <chrono>
@@ -23,6 +25,45 @@ constexpr int kProposeTimeoutSeconds = 5 * 3600; // a thinking model can take mi
 
 nlohmann::json Failure(const std::string& message) {
     return {{"ok", false}, {"errors", nlohmann::json::array({message})}};
+}
+
+// Lost, not refused: the service wasn't there (stopped, not started, gone mid-answer). Said so ("unreachable"), so
+// what asked can wait for it and ask again instead of taking it as the answer.
+nlohmann::json Unreachable(const std::string& message) {
+    nlohmann::json f = Failure(message);
+    f["unreachable"] = true;
+    return f;
+}
+bool Lost(const std::string& error) { return error.rfind("can't reach the AI service", 0) == 0; }
+
+std::string LowerText(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// What an error says when a provider's account is out of credits or over its quota, and whose it is.
+bool OutOfCredits(const std::string& lower) {
+    static const char* const said[] = {"insufficient generations and credits", "insufficient credits", "insufficient credit",
+                                       "requires more credits", "not enough credits", "out of credits", "no credits",
+                                       "credit balance is too low", "credits: 0.0", "insufficient_quota", "exceeded your current quota",
+                                       "quota exceeded", "payment required", "answered 402", "http 402", "status 402", "error 402",
+                                       "insufficient balance", "billing hard limit"};
+    for (const char* s : said) {
+        if (lower.find(s) != std::string::npos) return true;
+    }
+    return false;
+}
+
+std::string ProviderIn(const std::string& lower) {
+    static const std::pair<const char*, const char*> names[] = {
+        {"openrouter", "OpenRouter"}, {"pixellab", "PixelLab"},   {"bfl", "Black Forest Labs (FLUX)"},
+        {"flux", "Black Forest Labs (FLUX)"}, {"black forest", "Black Forest Labs (FLUX)"}, {"autosprite", "Autosprite"},
+        {"anthropic", "Anthropic"},   {"claude", "Anthropic"},    {"openai", "OpenAI"},  {"gemini", "Google Gemini"},
+        {"elevenlabs", "ElevenLabs"}, {"replicate", "Replicate"}, {"fal.ai", "fal"},     {"stability", "Stability AI"}};
+    for (const auto& [key, name] : names) {
+        if (lower.find(key) != std::string::npos) return name;
+    }
+    return "An AI provider";
 }
 
 } // namespace
@@ -140,11 +181,11 @@ int AiClient::Request(const std::string& method, const std::string& path, nlohma
     if (counted) ++inFlight_;
     jobs_.push_back({false, [this, id, method, path, body = std::move(body), timeoutSeconds, counted] {
         if (state_ != State::Ready) {
-            Push({Result::Kind::Response, id, Failure(StatusText())});
+            Push({Result::Kind::Response, id, Unreachable(StatusText())});
         } else {
             std::string error;
             auto response = Send(method, path, &body, timeoutSeconds, &error);
-            Push({Result::Kind::Response, id, response ? *response : Failure(error)});
+            Push({Result::Kind::Response, id, response ? *response : Lost(error) ? Unreachable(error) : Failure(error)});
         }
         if (counted) --inFlight_;
     }, !counted});
@@ -163,8 +204,58 @@ std::optional<AiClient::Result> AiClient::Poll() {
 }
 
 void AiClient::Push(Result result) {
+    if (result.kind != Result::Kind::Status) NoteCredits(result.body);
     std::lock_guard lock(mutex_);
     results_.push_back(std::move(result));
+}
+
+void AiClient::NoteCredits(const nlohmann::json& body) {
+    // Its errors, wherever they are in it (a step's, a call's): a provider out of credits. Only what's under "error",
+    // "errors" or "detail" is read (a model's own words about a shop's billing aren't an alert).
+    std::string text;
+    std::function<void(const nlohmann::json&, bool)> collect = [&](const nlohmann::json& j, bool isError) {
+        if (j.is_string()) {
+            if (isError) text += j.get<std::string>() + "\n";
+        } else if (j.is_array()) {
+            for (const auto& x : j) collect(x, isError);
+        } else if (j.is_object()) {
+            for (const auto& [k, v] : j.items()) collect(v, isError || k == "error" || k == "errors" || k == "detail");
+        }
+    };
+    collect(body, false);
+    if (text.empty()) return;
+    const std::string lower = LowerText(text);
+    if (!OutOfCredits(lower)) return;
+    // Who: the provider named nearest the words that said it.
+    std::string provider = "An AI provider";
+    std::string said;
+    for (const char* key : {"credit", "quota", "402", "billing", "payment", "balance"}) {
+        const size_t at = lower.find(key);
+        if (at == std::string::npos) continue;
+        const size_t from = at > 400 ? at - 400 : 0;
+        provider = ProviderIn(lower.substr(from, 600));
+        if (provider == "An AI provider") provider = ProviderIn(lower);
+        // The provider's own words around it, for the detail.
+        const size_t s = at > 160 ? at - 160 : 0;
+        said = text.substr(s, 320);
+        break;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard lock(mutex_);
+    if (const auto it = creditAlerted_.find(provider); it != creditAlerted_.end() && now - it->second < std::chrono::minutes(15)) return;
+    creditAlerted_[provider] = now;
+    creditAlerts_.push_back({{"provider", provider},
+                             {"message", provider + " is out of credits: its calls fail until the account is topped up. Top it up (or "
+                                         "choose another model in Preferences ▸ AI), then go on: Implement what's left, or Continue."},
+                             {"said", said}});
+}
+
+std::optional<nlohmann::json> AiClient::TakeCreditAlert() {
+    std::lock_guard lock(mutex_);
+    if (creditAlerts_.empty()) return std::nullopt;
+    nlohmann::json alert = std::move(creditAlerts_.front());
+    creditAlerts_.pop_front();
+    return alert;
 }
 
 void AiClient::Worker(bool quick) {
@@ -220,7 +311,16 @@ std::optional<nlohmann::json> AiClient::Send(const std::string& method, const st
         return std::nullopt;
     }
     if (response->status != 200) {
-        if (error) *error = "the AI service answered HTTP " + std::to_string(response->status);
+        if (error) {
+            *error = "the AI service answered HTTP " + std::to_string(response->status);
+            // Its reason, when it gave one ({"errors": [...]}, or FastAPI's {"detail": ...}).
+            const nlohmann::json body = nlohmann::json::parse(response->body, nullptr, false);
+            if (body.is_object() && body.contains("errors") && body["errors"].is_array() && !body["errors"].empty() && body["errors"][0].is_string()) {
+                *error += ": " + body["errors"][0].get<std::string>();
+            } else if (body.is_object() && body.contains("detail")) {
+                *error += ": " + (body["detail"].is_string() ? body["detail"].get<std::string>() : body["detail"].dump().substr(0, 300));
+            }
+        }
         return std::nullopt;
     }
     try {
@@ -290,8 +390,8 @@ void AiClient::RunStart(nlohmann::json schema) {
         return;
     }
     if (health->value("provider", nlohmann::json()).is_null()) {
-        setStatus(State::Failed, "AI service running, but no model provider is configured (set MISTRAL_API_KEY in "
-                                 "ai_service/.env)");
+        setStatus(State::Failed, "AI service running, but there's no key for the language model: set one in "
+                                 "Preferences > Beta Settings (Mistral, Anthropic or OpenRouter)");
         return;
     }
     setStatus(State::Ready, "AI ready (" + health->value("model", std::string("unknown model")) + ")");
@@ -299,12 +399,12 @@ void AiClient::RunStart(nlohmann::json schema) {
 
 void AiClient::RunPropose(int id, const nlohmann::json& request) {
     if (state_ != State::Ready) {
-        Push({Result::Kind::Proposal, id, Failure(StatusText())});
+        Push({Result::Kind::Proposal, id, Unreachable(StatusText())});
         return;
     }
     std::string error;
     auto response = Send("POST", "/propose", &request, kProposeTimeoutSeconds, &error);
-    Push({Result::Kind::Proposal, id, response ? *response : Failure(error)});
+    Push({Result::Kind::Proposal, id, response ? *response : Lost(error) ? Unreachable(error) : Failure(error)});
 }
 
 bool AiClient::LaunchProcess(std::string* error) {
@@ -314,7 +414,10 @@ bool AiClient::LaunchProcess(std::string* error) {
     if (at != std::string::npos) {
         command.replace(at, 6, std::to_string(options_.port));
     }
-    std::wstring wideCommand(command.begin(), command.end());
+    // UTF-8 (a path in it may not be ASCII: the package in a user's own folder).
+    std::wstring wideCommand(static_cast<size_t>(MultiByteToWideChar(CP_UTF8, 0, command.c_str(), -1, nullptr, 0)), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, command.c_str(), -1, wideCommand.data(), static_cast<int>(wideCommand.size()));
+    if (!wideCommand.empty() && wideCommand.back() == L'\0') wideCommand.pop_back();
     std::wstring directory = options_.serviceDir.wstring();
 
     auto handle = std::make_unique<ProcessHandle>();
@@ -332,10 +435,20 @@ bool AiClient::LaunchProcess(std::string* error) {
     if (wchar_t* block = GetEnvironmentStringsW()) {
         for (const wchar_t* at = block; *at; at += wcslen(at) + 1) {
             if (_wcsnicmp(at, L"AIGE_SERVICE_TOKEN=", 19) == 0) continue;
+            bool given = false; // one of the options' own wins
+            for (const auto& [name, value] : options_.environment) {
+                const std::wstring prefix = std::wstring(name.begin(), name.end()) + L"=";
+                given = given || _wcsnicmp(at, prefix.c_str(), prefix.size()) == 0;
+            }
+            if (given) continue;
             environment += at;
             environment.push_back(L'\0');
         }
         FreeEnvironmentStringsW(block);
+    }
+    for (const auto& [name, value] : options_.environment) {
+        environment += std::wstring(name.begin(), name.end()) + L"=" + std::wstring(value.begin(), value.end());
+        environment.push_back(L'\0');
     }
     environment += L"AIGE_SERVICE_TOKEN=" + std::wstring(token_.begin(), token_.end());
     environment.push_back(L'\0');

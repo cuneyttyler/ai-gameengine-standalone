@@ -89,8 +89,6 @@ background picture?
 
 The models that paint backgrounds (the same list in the dialog and the Build panel):
 - **BFL FLUX.3 Image (keeps the map best)**: the default and recommended.
-- **BFL FLUX.2 max (as good, slower)**.
-- **BFL FLUX.2 pro**.
 - **BFL FLUX.2 klein (fast, loose)**: it tends to invent buildings, cars, walls and objects even when told not to, so
   the tested method uses FLUX.3 Image.
 

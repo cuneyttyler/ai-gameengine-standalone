@@ -46,7 +46,7 @@ Questions: how do I turn on AI? how do I turn off the AI? what data is sent to t
 
 ## Sending a request
 
-Type in the box at the bottom and press **Enter** (Shift+Enter for a new line) or **Send**. While the AI works the panel shows "Thinking…" and a progress strip under the header (see "The progress strip"). You can't send while the AI is busy, while the service isn't ready, or while the game is playing: requests during Play mode get "Stop Play mode before asking for changes."
+Type in the box at the bottom and press **Enter** (Shift+Enter for a new line) or **Send**. While the AI works the panel shows "Thinking…" with a **Stop** button, and a progress strip under the header (see "The progress strip"). **Stop** ends what the AI is doing; nothing is changed. You can't send while the AI is busy, while the service isn't ready, or while the game is playing: requests during Play mode get "Stop Play mode before asking for changes."
 
 When the conversation is empty, the panel offers example requests you can click to fill the box, such as "Give the hero a sword that burns enemies for 3 seconds", "Make skeletons tougher but slower", "Add two more skeletons near the courtyard entrance" and "Make the background a dark blue night sky".
 
@@ -83,7 +83,7 @@ For every request the AI first decides how big it is (its `scope`) and answers o
 - **task**: a new feature with parts that build on each other (a new enemy with its behaviour, its prefab and copies placed). It is carried out step by step on a working copy; you review the whole result at the end. See ai-panel-tasks.md.
 - **split**: too big for one go (many unrelated features, or more than about twenty steps). No changes; it suggests 2 to 6 smaller requests. **Do them all, step by step** runs them as one task, or click one to put it in the message box.
 - **tools**: it needs to read or look first (an entity's fields, a script, which assets fit, a picture of the view). The editor runs its tools and asks again with the results. A line "Looked at: find_entities, read_entity..." shows what it read. See ai-panel-tools-and-context.md.
-- **route**: the request is another panel's work: building a NEW place from nothing (the Build panel) or designing a whole game from a brief (the Planner). A card "This is the Build panel's work" / "This is the Planner's work" opens that panel with the request filled in (**Open the Build panel with it**, **Open the Planner with it**).
+- **route**: the request reads like another panel's work: building a brand-new place from nothing (the Build panel) or designing a whole new game (the Planner). A card "This reads like the Build panel's work" / "the Planner's work" gives you the choice: **Open the Build panel with it** / **Open the Planner with it**, or **Do it here in the AI panel**. Everything else the AI panel does itself: adding to a place that exists, populating it, changing a game that's built (its quests, cutscenes, characters, gateways). A request that names a scene the project has ("in Bellwether") is never routed; the AI opens that scene and works there.
 - **ask**: the request is unclear in a way that changes what it would do. It asks one question with 2 to 5 answers to click, or you answer in your own words.
 
 ### Example: a request too big for one go
@@ -109,10 +109,10 @@ Questions: what does split mean? why did the AI ask me a question? why did it se
 
 Some requests are recognised by the editor and sent straight to another panel:
 
-- **Designing a whole game**: requests containing phrases like "plan a game", "design a game", "make a game", "make me a game", "create a game", "make an RPG", "design an RPG", "make a life-sim" start a plan in the Planner panel, and a plan card appears in the chat.
+- **Designing a whole game**: requests containing phrases like "plan a game", "design a game", "make a game", "make me a game", "create a game", "make an RPG", "design an RPG", "make a life-sim" show a card asking where to do it: **Open the Planner with it** starts a plan (a plan card appears in the chat), **Do it here in the AI panel** has the AI panel do it. When the project already has its game (a plan being built, or quests written), a request the AI would send to the Planner is done in the AI panel instead.
 - **"Build the game"** (also "build my game", "build it all", "build the plan", "build everything") when the project has a plan: the Planner's ⑩–⑬ build starts if the plan is validated, otherwise you're told to validate it first (⑨ in the Planner panel).
-- **A change to the open plan** ("make Aldric the mentor's son") goes to the Planner as a revision.
-- **Building a place** ("build a large village by a river"): the Build panel starts a build and a build card appears. On the card, while it's still reading the request, **Ask as a change instead** cancels the build and sends the words to the AI panel as an ordinary change.
+- **Building a new place** ("build a large village by a river"): a card asks first, **Open the Build panel with it** or **Do it here in the AI panel**. A request that names a scene the project has ("add a gate to Bellwether"), or the place just built, isn't asked about: it's an edit of a place that exists, done in the AI panel.
+- A change to the plan's characters, places or quests is no longer sent to the Planner: the AI panel makes it in the game.
 - **A change to the place the Build panel has open**, while it's at its layout or plan, goes to the Build panel as a revision ("That's about Riverford, so it went to the Build panel as a revision").
 - For a painted place: "paint it again ...", "repaint", "pre-fill the marks" and "check the marks" are done by the editor.
 
@@ -121,10 +121,10 @@ Requests about a place's people and story (populate, NPCs, villagers, residents,
 ### Example: a build request that was really a change
 
 1. In the AI panel type "build a fence around the farm" and press **Enter**.
-2. The editor takes it for a place to build: a card "Building ..." appears and the Build panel starts reading the request.
-3. You meant a change to the farm already in the scene, so click **Ask as a change instead** on the card while it is still reading.
+2. The editor takes it for a place to build: a card "This reads like the Build panel's work" asks where to do it.
+3. You meant a change to the farm already in the scene, so click **Do it here in the AI panel**.
 
-The build is cancelled and the same words go to the AI panel as an ordinary request; a proposal card for the fence comes back to review.
+The same words go to the AI panel as an ordinary request; a proposal card for the fence comes back to review. (Had you clicked **Open the Build panel with it**, a build card would appear; while it's still reading the request, **Ask as a change instead** on it cancels the build the same way.)
 
 ### Example: populating a village stays in the AI panel
 
@@ -136,7 +136,19 @@ The build is cancelled and the same words go to the AI panel as an ordinary requ
 
 Because it is about people and gossip, it is not sent to the Build panel as a revision; the AI panel answers it (usually as a task with an outline of who lives where, see ai-panel-tasks.md).
 
-Questions: why did my request open the Planner? why did my message go to the Build panel? how do I stop a request being treated as a build?
+Questions: why did my request open the Planner? why did my message go to the Build panel? how do I stop a request being treated as a build? why does the AI panel ask "Open the Planner with it"?
+
+## When a provider runs out of credits
+
+When any AI provider (PixelLab, OpenRouter, BFL FLUX, Anthropic, OpenAI, Gemini, AutoSprite…) answers that its account is out of credits or over its quota, a red banner appears at the top of the editor: "BFL is out of credits", with what to do (top it up, or choose another model in File ▸ Preferences… ▸ AI, then go on: **Build what's left**, or **Continue building**). **Show what it said** shows the provider's own words. The banner stays until you close it (**×**), so a build that stops on it says why. It's also listed in Notifications (the bell). Each provider is reported once in 15 minutes, however many calls fail.
+
+### Example: PixelLab runs out while drawing characters
+
+1. The Planner's Build ▸ **Characters** tab is drawing the cast. A banner appears: "PixelLab is out of credits".
+2. Click **Show what it said** to read PixelLab's answer, then top up the account.
+3. Close the banner and click **Retry failed** in the Planner (or **Build what's left** on the Requirements tab).
+
+Questions: why did my builds fail all at once? what does "out of credits" mean? where do I see which provider ran out?
 
 ## Editor actions in an answer
 

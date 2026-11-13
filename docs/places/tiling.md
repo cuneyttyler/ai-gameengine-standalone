@@ -272,6 +272,42 @@ places/<world-id>/
 
 A section's folder is a place's folder, so everything that works on one place works on a section.
 
+## 8a. The world's Brief, layout, sections and gateways (Phase 31.3)
+
+**The Brief.** A world's Brief holds its **places** (`places.<key>`: name, type, size small/medium/big/huge, where
+`{type: near|by, to: sea|lake|forest|mountains|<another place>}`, and its own `components` as a single place's), its
+**spacing** (`root.spacing`, 1-10: the open country between two places in small places' widths) and default size
+(`root.settlementSize`), and its **gateways** (`gateways: [{to, kind, at, from}]`). A type's size is a scale class by
+its `sizes` (buildtypes.json). ① Confirm shows them: the Places table (Configure: a place's own zones and counts, as
+for a single place), the spacing slider, the Gateways table. The build type a request names: "open-world" or a
+world's words, or several settled places named (villages, towns, castles), make it a world.
+
+**Laying out a world** (Solver Partition, `landFirst`): the land first (sea, coast as a band along the sea, lakes,
+hills, mountains, forests, border woods growing in from the edges), then the places on spread points of the open land
+(each one's whole square free of water and roads, off the edge, on the main body of the land, as far apart as the
+spacing says, near what its "where" names, a harbour by the beach), then the padding (open country). The world's side
+comes from the lattice its places sit on (Compile). Each world has its own shapes (the build's seed in the noise).
+Roads come after: never on the sea or a beach, kept back from the waterline, crossing rivers by bridges.
+
+**② World.** *Layout*: the world's places, forests and water (no roads: they're laid at ③ Plan), drawn and revised as
+a single place's zones are. *Sections*: Plan the sections makes each section (each place, each forest) a build of
+its own (WorldSections: its land, its ways in, the world's roads through it, its Brief with the place's own
+components, its story from a game plan), driven to its plan, then all put into the world (`together`): one plan to
+paint or assemble. A section can be opened (its zones drawn, its plan revised), then Put the sections into the world.
+
+**Gateways.** A way into a place drawn as a scene of its own: a role whose broader role is `gateway` (cave mouth,
+dungeon stairs, crypt door, mine shaft, tower, cellar hatch, tent, portal, well, sewer grate, barrow, ruin, gate, ship,
+trapdoor; roles.json, each its footprint and the land it suits in `look.gateway`). It's placed late (after the
+roads): by the land it suits (within reach of its place), near its place, with a trail to the nearest road. Never
+painted: its art is its own (⑥ Assets), in both methods. The game build links it to its place's scene (walking into
+it goes there; one arrives in front of it coming back). A place's own buildings with a scene inside are entered by
+their doors instead.
+
+**The Planner.** An open-world game's outline has a `world` (landform, spacing, size); its outdoor places are
+sections (size, where), joined by the world's roads; every other place is entered from a section through a gateway
+(its kind and where, in words). ⑩ builds the world as one row (its Brief made from the plan; its sections planned
+first), then the dungeons and interiors, then links the gateways.
+
 ## 9. Limits and later
 
 - **Size**: no limit on the number of sections. A world's scene loads every section today; streaming sections in

@@ -93,7 +93,16 @@
         "slot": "reed",
         "density": 0.01
       }
-    ]
+    ],
+    "edge": {
+      "organic": true,
+      "along": [
+        "sea",
+        "ocean",
+        "lake"
+      ],
+      "description": "a band along the water's edge (the sea's, the ocean's, else a lake's): the land within a few cells of it, its inner edge wobbling; never a patch of its own out in the water"
+    }
   },
   "relations": [
     {

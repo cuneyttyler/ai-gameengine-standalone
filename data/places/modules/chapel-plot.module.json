@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "The castle's chapel.",
   "buildTypes": [
-    "castle"
+    "castle",
+    "settlement"
   ],
   "classes": [
     "Civic"

@@ -40,6 +40,18 @@
       ],
       "min": 1,
       "max": 400
+    },
+    "extent": {
+      "type": "enum",
+      "values": [
+        "small",
+        "normal",
+        "big",
+        "huge"
+      ],
+      "default": "normal",
+      "ask": true,
+      "description": "How big it is in the real world (a plan cell is 2 m): small = a churchyard plot (16 x 16 m); normal = a village burial ground (24 x 30 m); big = 40 x 50 m; huge = a town cemetery's field of graves (80 x 100 m). The plan's size follows it."
     }
   },
   "quality": {
@@ -120,6 +132,24 @@
       "default": 8,
       "layer": "prop",
       "why": "graves in neat rows and columns, a path's width between them so mourners can reach each one"
+    }
+  },
+  "realSize": {
+    "small": {
+      "w": 16,
+      "h": 16
+    },
+    "normal": {
+      "w": 24,
+      "h": 30
+    },
+    "big": {
+      "w": 40,
+      "h": 50
+    },
+    "huge": {
+      "w": 80,
+      "h": 100
     }
   }
 }

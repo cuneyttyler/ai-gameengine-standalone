@@ -24,6 +24,10 @@ struct Project;
 // showing its first idle frame facing the camera, animated by the humanoid animator, about two cells tall. Saved at
 // `prefabPath` ("prefabs/<name>.prefab"); `displayName` empty = the sheet's name. Returns why not, or "" when made.
 // The editor's Make NPC / Make player and the AI's prefab.createCharacter both make them this way.
+// A character sheet on an entity (its sprite's first idle frame facing the camera, its Animator playing the sheet with
+// the humanoid animator, facing south). Why not, or "".
+std::string ApplyCharacterSheet(Registry& registry, Entity entity, const Project& project, const std::string& sheetPath,
+                                float tileHeight = 32.0f);
 std::string CreateCharacterPrefab(PrefabLibrary& prefabs, const Project& project, const std::string& sheetPath,
                                   const std::string& prefabPath, bool npc, const std::string& displayName,
                                   float tileHeight);

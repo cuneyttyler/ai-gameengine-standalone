@@ -88,13 +88,7 @@ bool ReplaceCopy(CommandContext& context, Entity old, const std::string& to, con
 
 } // namespace
 
-std::string CreateCharacterPrefab(PrefabLibrary& prefabs, const Project& project, const std::string& sheetPath,
-                                  const std::string& prefabPath, bool npc, const std::string& displayName,
-                                  float tileHeight) {
-    if (sheetPath.rfind("assets/", 0) != 0 || sheetPath.find("..") != std::string::npos ||
-        sheetPath.size() < 10 || sheetPath.substr(sheetPath.size() - 10) != ".anim.json") {
-        return "not a character sheet path: " + sheetPath + " (assets/characters/<name>/<name>.character.anim.json)";
-    }
+std::string ApplyCharacterSheet(Registry& registry, Entity e, const Project& project, const std::string& sheetPath, float tileHeight) {
     std::ifstream in(project.Resolve(sheetPath));
     if (!in) return "no character sheet " + sheetPath;
     nlohmann::json json = nlohmann::json::parse(in, nullptr, false);
@@ -107,32 +101,45 @@ std::string CreateCharacterPrefab(PrefabLibrary& prefabs, const Project& project
         if (!picture || picture->width == 0) return "its picture " + sheet->texture + " can't be read";
         tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
     }
-    // Its first frame facing the camera, until it plays.
     const AnimClip* idle = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
     bool flip = false;
     const auto* frames = idle ? idle->FramesFor("s", &flip) : nullptr;
     if (frames == nullptr || frames->empty()) return sheetPath + " has no frames";
     const AnimFrame frame = frames->front();
+    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+    // Its first frame facing the camera, until it plays; tinted as it was made (no placeholder's red).
+    auto& sprite = registry.get_or_emplace<Sprite>(e);
+    sprite.texture = sheet->texture;
+    sprite.u0 = frame.x / tw, sprite.u1 = (frame.x + frame.w) / tw, sprite.v0 = frame.y / th, sprite.v1 = (frame.y + frame.h) / th;
+    if (flip) std::swap(sprite.u0, sprite.u1);
+    sprite.r = sprite.g = sprite.b = 1.0f;
+    sprite.height = std::max(48.0f, tileHeight * 2.0f); // about two cells tall
+    sprite.width = sprite.height * frame.w / std::max(1.0f, frame.h);
+    auto& animator = registry.emplace_or_replace<Animator>(e);
+    animator.sheet = sheetPath;
+    animator.animator = "humanoid";
+    auto& facing = registry.emplace_or_replace<Facing>(e); // facing the camera (south on screen)
+    facing.x = topDown ? 0.0f : 0.7071f, facing.y = topDown ? 1.0f : 0.7071f;
+    return {};
+}
+
+std::string CreateCharacterPrefab(PrefabLibrary& prefabs, const Project& project, const std::string& sheetPath,
+                                  const std::string& prefabPath, bool npc, const std::string& displayName,
+                                  float tileHeight) {
+    if (sheetPath.rfind("assets/", 0) != 0 || sheetPath.find("..") != std::string::npos ||
+        sheetPath.size() < 10 || sheetPath.substr(sheetPath.size() - 10) != ".anim.json") {
+        return "not a character sheet path: " + sheetPath + " (assets/characters/<name>/<name>.character.anim.json)";
+    }
+    std::string error;
     std::string name = displayName;
     if (name.empty()) {
         name = std::filesystem::path(sheetPath).filename().string();
         if (const size_t at = name.find(".character"); at != std::string::npos) name.resize(at);
     }
-    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
     Registry scratch;
     const Entity e = npc ? CreateNpc(scratch, 0.0f, 0.0f) : CreatePlayer(scratch, 0.0f, 0.0f);
     scratch.get_or_emplace<Name>(e).value = name;
-    auto& sprite = scratch.get_or_emplace<Sprite>(e);
-    sprite.texture = sheet->texture;
-    sprite.u0 = frame.x / tw, sprite.u1 = (frame.x + frame.w) / tw, sprite.v0 = frame.y / th, sprite.v1 = (frame.y + frame.h) / th;
-    if (flip) std::swap(sprite.u0, sprite.u1);
-    sprite.height = std::max(48.0f, tileHeight * 2.0f); // about two cells tall
-    sprite.width = sprite.height * frame.w / std::max(1.0f, frame.h);
-    auto& animator = scratch.emplace_or_replace<Animator>(e);
-    animator.sheet = sheetPath;
-    animator.animator = "humanoid";
-    auto& facing = scratch.emplace_or_replace<Facing>(e); // facing the camera (south on screen)
-    facing.x = topDown ? 0.0f : 0.7071f, facing.y = topDown ? 1.0f : 0.7071f;
+    if (std::string why = ApplyCharacterSheet(scratch, e, project, sheetPath, tileHeight); !why.empty()) return why;
     if (!prefabs.SaveAsPrefab(scratch, e, prefabPath, &error)) return error.empty() ? "the prefab wasn't made" : error;
     prefabs.Refresh();
     return {};
@@ -537,6 +544,57 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail("can't write " + path);
             }
             out << ToString(args[1]);
+            return {};
+        });
+
+    // The AI Planner's placements (development_plan.md 34.11): one character's or prop's decision recorded and locked (Replace
+    // Characters keeps it). The entity itself is moved with the scene's own commands; this says where it belongs and why.
+    r.Command("placement.set", "Records where a planned character or story prop belongs in planner/placements.json and locks it, "
+                               "so Replace Characters keeps it. Move the entity (and its start-<slug> or quest marker) in its scene "
+                               "yourself as well. patch: {home?, work? (building ids or null), spot?: {scene, building? | marker? | "
+                               "x, y, inside?}, whereabouts?: [...], why?}.")
+        .Param("kind", FieldType::String, "character or prop.")
+        .Param("id", FieldType::String, "Its id in the placements: character/<slug>, or <quest>/<alias> for a prop.")
+        .Param("patch", FieldType::String, "The change, as JSON text.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::filesystem::path file = context.project->root / "planner" / "placements.json";
+            std::ifstream in(file, std::ios::binary);
+            nlohmann::json p = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+            in.close();
+            if (!p.is_object()) return Fail("this project has no placements yet (AI Planner ▸ Build ▸ Placements: Replace Characters)");
+            const nlohmann::json patch = nlohmann::json::parse(ToString(args[2]), nullptr, false);
+            if (!patch.is_object()) return Fail("patch must be a JSON object");
+            const std::string list = ToString(args[0]) == "prop" ? "props" : "characters", id = ToString(args[1]);
+            nlohmann::json* e = nullptr;
+            for (auto& x : p[list]) {
+                if (x.value("id", "") == id) e = &x;
+            }
+            if (!e) return Fail("no placement for " + id + " (read them with the placements tool)");
+            auto building = [&](const std::string& b) {
+                for (const auto& x : p.value("buildings", nlohmann::json::array())) {
+                    if (x.value("id", "") == b) return true;
+                }
+                return false;
+            };
+            for (const char* k : {"home", "work"}) {
+                if (!patch.contains(k)) continue;
+                const bool named = patch[k].is_string() && !patch[k].get<std::string>().empty();
+                if (named && !building(patch[k].get<std::string>())) return Fail("no building " + patch[k].get<std::string>());
+                (*e)[k] = named ? patch[k] : nlohmann::json();
+            }
+            if (patch.contains("spot") && patch["spot"].is_object()) {
+                nlohmann::json spot = (*e).value("spot", nlohmann::json::object());
+                for (const auto& [k, v] : patch["spot"].items()) spot[k] = v;
+                if (spot.contains("building") && spot["building"].is_string() && !building(spot["building"].get<std::string>())) return Fail("no building " + spot["building"].get<std::string>());
+                (*e)["spot"] = spot;
+                if (spot.contains("scene")) (*e)["scene"] = spot["scene"];
+            }
+            if (patch.contains("whereabouts") && patch["whereabouts"].is_array()) (*e)["whereabouts"] = patch["whereabouts"];
+            if (patch.contains("why") && patch["why"].is_string()) (*e)["why"] = patch["why"];
+            (*e)["locked"] = patch.value("locked", true);
+            (*e)["by"] = "ai-panel";
+            std::ofstream(file, std::ios::binary) << p.dump(1);
             return {};
         });
 

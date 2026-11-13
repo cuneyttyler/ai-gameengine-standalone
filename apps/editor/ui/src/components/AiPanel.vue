@@ -506,6 +506,11 @@ function askAsChange(entry: BuildEntry): void {
   sendToHost({ type: 'ai:send', text: entry.query, asChange: true })
 }
 
+// Kept here: the request to the panel's own AI, marked so it isn't sent on again.
+function doItHere(entry: RouteEntry): void {
+  sendToHost({ type: 'ai:send', text: `${entry.request}\n(Do it here: in the AI panel, with your own operations, tools and tasks.)`, asChange: true })
+}
+
 function openRoute(entry: RouteEntry): void {
   editorState.prefill = { panel: entry.panel, text: entry.request }
   showPanel(entry.panel)
@@ -800,12 +805,13 @@ const examples = [
         </div>
 
         <div v-else-if="entry.kind === 'route'" class="split route">
-          <div class="summary">This is {{ entry.panel === 'build' ? "the Build panel's" : "the Planner's" }} work</div>
+          <div class="summary">This reads like {{ entry.panel === 'build' ? "the Build panel's" : "the Planner's" }} work</div>
           <div v-if="entry.reason" class="notes">{{ entry.reason }}</div>
           <div class="build-buttons">
             <button class="primary" :title="entry.request" @click="openRoute(entry)">
               {{ entry.panel === 'build' ? 'Open the Build panel with it' : 'Open the Planner with it' }}
             </button>
+            <button :disabled="!canSend" title="Have the AI panel do it itself" @click="doItHere(entry)">Do it here in the AI panel</button>
           </div>
         </div>
 
@@ -1035,7 +1041,10 @@ const examples = [
         </div>
       </template>
 
-      <div v-if="editorState.ai.busy" class="thinking">Thinking…</div>
+      <div v-if="editorState.ai.busy" class="thinking">
+        Thinking…
+        <button class="stop" title="Stop what the AI is doing; nothing is changed" @click="sendToHost({ type: 'ai:stop' })">Stop</button>
+      </div>
     </div>
 
     <div class="composer">
@@ -1563,8 +1572,14 @@ h2 {
   word-break: break-word;
 }
 .thinking {
-  opacity: 0.6;
   font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.thinking .stop {
+  font-style: normal;
 }
 .composer {
   border-top: 1px solid #2a2a3a;

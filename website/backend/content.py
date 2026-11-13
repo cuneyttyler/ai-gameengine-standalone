@@ -114,14 +114,16 @@ CONTENT = {
             {"n": 9, "name": "Validate", "group": "Design",
              "text": "Does it all fit together? Story rules, cross-document checks, an event map and an AI critic produce a "
                      "report with fixes. With no errors left, the design becomes the baseline."},
-            {"n": 10, "name": "Build places", "group": "Build",
-             "text": "Each place goes through the Builder, automatically or waiting for you at each step."},
-            {"n": 11, "name": "Populate", "group": "Build",
-             "text": "Characters go to their homes, enemies are created, dialogue and behaviour attached, and quest items "
-                     "placed in the built world."},
-            {"n": 12, "name": "Write & playtest", "group": "Build",
-             "text": "Dialogue is written last, when every scene, voice and quest is fixed. Then an automated playtest: "
-                     "every scene loads, every gateway leads somewhere, every objective can be reached."},
+            {"n": 10, "name": "Requirements & places", "group": "Build",
+             "text": "First the requirements, from the design alone: everything the game must have, each with how to tell "
+                     "it's done. Then each place goes through the Builder, automatically or waiting for you at each step."},
+            {"n": 11, "name": "Build tabs", "group": "Build",
+             "text": "The Build page is the implementation, one tab after another, each to the requirements: Characters "
+                     "(art and animations), Props & objects, Quests, Placements, Behaviour (packages, routines, dialogue), "
+                     "Scenes (triggers, cutscenes, small scenes), Systems and Visuals."},
+            {"n": 12, "name": "Validate & playtest", "group": "Build",
+             "text": "Every requirement checked against the built game, then an automated playtest: every scene loads, "
+                     "every gateway leads somewhere, every objective can be reached."},
             {"n": 13, "name": "Result", "group": "Build",
              "text": "The game's page: what you asked for and what was made, its places, quests and checks, and Play from "
                      "the start."},
@@ -340,5 +342,47 @@ CONTENT = {
         ],
         "note": "The beta is a work in progress: expect rough edges, and tell us about them. Your link is personal: "
                 "please don't share it.",
+        # Goals: what each part of the beta aims at, the things we want testers to find good, or tell us aren't.
+        "goals": [
+            {"area": "Manual development", "sub": "Panels, Viewport, Scenes, Inspector, Components, Scripting",
+             "items": [
+                 "A complete editor without the AI: everything the AI makes can be made, and changed, by hand.",
+                 "Panels you can dock and arrange, and a viewport for top-down and isometric scenes with tile layers, "
+                 "buildings, paths and markers.",
+                 "Scenes and prefabs built from components, each field edited in the Inspector, with Undo for every change.",
+                 "Gameplay from records and components: items, inventory, combat, quests, dialogue, character AI.",
+                 "Lua scripting where components stop, and Play mode to try the game at once.",
+                 "Export a game that runs on its own.",
+             ]},
+            {"area": "AI panel", "sub": "Changes and answers, in words",
+             "items": [
+                 "Any change to a project asked for in words: scenes, prefabs, records, scripts, story.",
+                 "Changes made on a working copy and shown for review before they're applied, with Undo after.",
+                 "Answers about the editor from its own documentation.",
+                 "Your choice of model and provider, with your own keys, and an off switch that leaves the editor whole.",
+             ]},
+            {"area": "Builder: Paint", "sub": "A place painted whole",
+             "items": [
+                 "A place from a description, laid out and planned first, then painted as one picture.",
+                 "Where one can walk, and what a character goes behind, marked on the painting.",
+                 "Doors, chests, items and characters with art of their own, so they can open, move and be picked up.",
+                 "The look of the hand-painted areas of the classic isometric RPGs.",
+             ]},
+            {"area": "Builder: Assembled", "sub": "A place put together piece by piece",
+             "items": [
+                 "Villages, towns, castles, dungeons, caves, camps and farmland from a description.",
+                 "Each building, tree and prop with art of its own, every piece movable and editable.",
+                 "Art matched across the place: one style, one light, sizes that fit the grid.",
+                 "The layout and the plan revised in words: zones moved, grown or swapped, buildings added, the rest kept "
+                 "exactly as it was.",
+             ]},
+            {"area": "AI Planner", "sub": "A whole game from a brief",
+             "items": [
+                 "A game designed from a short description: concept, story, characters, quests, places and systems.",
+                 "Each stage shown for you to check and change before the next one.",
+                 "The design built: every place made, characters placed, quests bound, the game's files written.",
+                 "A playtest of the result, so a planned game is one that can be played through.",
+             ]},
+        ],
     },
 }

@@ -76,6 +76,12 @@ void ActorRoster::Enter(Registry& registry, const std::string& scene, const Spaw
     for (auto& [key, entry] : entries_) {
         if (!entry.alive || entry.scene != scene || present.contains(key) || entry.prefab.empty()) continue;
         float x = entry.x, y = entry.y;
+        if (!std::isfinite(x) && !entry.marker.empty()) {
+            // Sent here by the story: at the marker it was sent to.
+            for (auto [m, mk, w] : registry.view<Marker, WorldTransform2D>().each()) {
+                if (mk.name == entry.marker) x = w.x, y = w.y;
+            }
+        }
         if (!std::isfinite(x)) {
             // Arriving: at the scene's first marker (its routine walks it on from there).
             x = y = NAN;
@@ -94,6 +100,27 @@ void ActorRoster::Enter(Registry& registry, const std::string& scene, const Spaw
     }
 }
 
+void ActorRoster::Apply(const std::string& op, const std::string& key, const nlohmann::json& args) {
+    if (key.empty()) return;
+    auto& entry = entries_[key];
+    if (op == "move_actor") {
+        if (const std::string scene = args.value("scene", std::string()); !scene.empty()) {
+            entry.scene = scene;
+            entry.x = entry.y = NAN;
+        }
+        entry.marker = args.value("marker", std::string());
+        if (const std::string prefab = args.value("prefab", std::string()); !prefab.empty()) entry.prefab = prefab;
+        // A planned character's own prefab (the AI Planner saves each as prefabs/characters/<slug>.prefab).
+        if (entry.prefab.empty()) entry.prefab = "prefabs/characters/" + key.substr(key.rfind('/') + 1) + ".prefab";
+    } else if (op == "hide_actor" || op == "show_actor") {
+        entry.hidden = op == "hide_actor";
+    } else if (op == "set_hostile") {
+        entry.team = "Enemy";
+    } else if (op == "set_friendly") {
+        entry.team = "Neutral";
+    }
+}
+
 void ActorRoster::OnDeath(Registry& registry, Entity entity) {
     if (const auto* actor = registry.valid(entity) ? registry.try_get<Actor>(entity) : nullptr; actor && !actor->key.empty()) {
         entries_[actor->key].alive = false;
@@ -104,6 +131,9 @@ nlohmann::json ActorRoster::ToJson() const {
     nlohmann::json out = nlohmann::json::object();
     for (const auto& [key, e] : entries_) {
         nlohmann::json j = {{"scene", e.scene}, {"alive", e.alive}, {"prefab", e.prefab}, {"health", e.health}};
+        if (e.hidden) j["hidden"] = true;
+        if (!e.team.empty()) j["team"] = e.team;
+        if (!e.marker.empty()) j["marker"] = e.marker;
         if (std::isfinite(e.x)) {
             j["x"] = e.x;
             j["y"] = e.y;
@@ -122,6 +152,9 @@ void ActorRoster::FromJson(const nlohmann::json& json) {
         e.alive = j.value("alive", true);
         e.prefab = j.value("prefab", std::string());
         e.health = j.value("health", -1.0f);
+        e.hidden = j.value("hidden", false);
+        e.team = j.value("team", std::string());
+        e.marker = j.value("marker", std::string());
         if (j.contains("x")) {
             e.x = j.value("x", 0.0f);
             e.y = j.value("y", 0.0f);

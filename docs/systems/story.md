@@ -232,6 +232,21 @@ unless `once` is off (remembered in saves as the flag `cutscene:<id>`). `length`
 the running time when it should outlast its last key. Scripts hear `cutscene_started`
 and `cutscene_ended`. The timeline editor comes with Phase 18.
 
+## Small scenes: ambient cutscenes
+
+A cutscene with `"ambient": true` is a **small scene**: two villagers trading rumours in the square, the smith cursing the
+cold, the elder reading a name at the record board. It plays round the player, who keeps control: no letterbox, its
+camera, screen and audio keys skipped, its lines said over the speakers' heads (speech bubbles), its people walking
+(round what's in the way), turning, playing clips (`animate` with `clip`), its story effects run. Its cast's packages
+wait (`SceneHeld`) until it's over, then they go on from where they are. One plays at a time, beside any cutscene; a
+new run or a loaded game clears it. What starts one is a Reaction with trigger `player-near` where it plays, its quest
+stage and time of day as conditions, `do: play_cutscene`. The AI Planner writes them (Life ▸ Small scenes, casual or
+about a quest active then) and Build ▸ Scenes (was Small scenes) makes each (`cutscenes/small-<id>.json` and its triggers).
+
+A quest can start with the game: `"atStart": true` (Project ▸ Story ▸ Quests ▸ Starts with the game): its first stage
+begins on a new run's first step (not a loaded game). Every open objective of the shown stage has its marker on the
+ground under its target.
+
 ## Routines: `schedules/<id>.json`
 
 A day for an NPC. Each entry lasts until the next one starts, and the last runs past

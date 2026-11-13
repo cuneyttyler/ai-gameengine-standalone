@@ -22,7 +22,7 @@ class GameSession;
 // UI (Phase 17) makes them customisable documents. The game is paused while one is open.
 class PlayWindows {
 public:
-    enum class Kind { None, Inventory, Shop, Journal, Spellbook, Achievements, Crafting };
+    enum class Kind { None, Inventory, Shop, Journal, Spellbook, Achievements, Crafting, Character, Controls, Map };
 
     // The game they act for (the item in hand, recipes). Without one: an inventory that only uses and equips.
     void SetSession(GameSession* session) { session_ = session; }
@@ -41,10 +41,18 @@ public:
     void OpenJournal(Entity player, const StoryState& story, const StoryLibrary& library);
     // The spellbook (19): known abilities; picking one puts it in the first quick slot.
     void OpenSpellbook(Entity player);
+    void OpenControls(Entity player, const InputMap& map);          // every action and its keys (32.7)
+    void OpenCharacter(Registry& registry, Entity player);           // level, attributes, resistances, equipment (32.7)
+    // The map (32.7): the scene's picture (`image`, "" when it has none), its ways to other places, and the objective.
+    void OpenMap(Registry& registry, Entity player, const std::string& image, const std::string& objective);
+    // Where the player is on the map's picture (0..1 across and down; < 0: not shown).
+    void SetMapMarker(float x, float y) { mapMarker_ = {x, y}; }
     // The game's achievements (24): AchievementSystem::View().
     void OpenAchievements(Entity player, const nlohmann::json& view);
     void Close() { kind_ = Kind::None; }
     Kind Open() const { return kind_; }
+    // The screen (ui/screens.json) the open window is shown with: inventory, shop, journal, map, character... ("": none).
+    std::string Screen() const;
 
     // Menu input for this frame ("menu" context; inventory or Esc closes).
     void HandleInput(Registry& registry, const InputState& input);
@@ -64,6 +72,7 @@ private:
         std::string action; // equip:<item>, use:<item>, unequip:<slot>, buy:<item>, sell:<item>, close
         std::string label;
         bool enabled = true;
+        std::string icon, detail, group; // the window's columns (an item's icon, a price; a heading)
     };
     std::vector<Line> Lines(Registry& registry) const;
 
@@ -80,7 +89,10 @@ private:
     struct JournalQuest {
         std::string label; // "The hunt", "The hunt (done)"
         std::string body;  // its journal lines and open objectives
+        std::string detail, group; // its state; the heading it's under (Active, Done; a context's name)
     };
+    std::string mapImage_;
+    std::pair<float, float> mapMarker_{-1.0f, -1.0f};
     std::vector<JournalQuest> journal_;
 };
 

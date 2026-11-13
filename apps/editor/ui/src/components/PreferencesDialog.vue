@@ -4,20 +4,22 @@
 // and what it does.
 import { computed, nextTick, ref, watch } from 'vue'
 import { editorState, setAiEnabled } from '../editorState'
-import { sendToHost } from '../ipc'
+import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
 import { prefs, requestPrefs, setPref } from '../prefs'
+import { BUILD_METHODS, normalBuildMethod } from '../buildMethods'
 import { projectState } from '../projects'
 import SearchSelect from './SearchSelect.vue'
 
 const backdrop = ref<HTMLElement | null>(null)
 
-type Page = 'general' | 'viewport' | 'ai' | 'art' | 'new' | 'keyboard'
+type Page = 'general' | 'viewport' | 'ai' | 'art' | 'beta' | 'new' | 'keyboard'
 const PAGES: { id: Page; label: string; hint: string }[] = [
   { id: 'general', label: 'General', hint: 'launch, interface, recovery' },
   { id: 'viewport', label: 'Viewport', hint: 'grid, zoom' },
   { id: 'ai', label: 'AI', hint: 'the model, how its changes apply' },
   { id: 'art', label: 'Art and painting', hint: 'who draws and paints' },
+  { id: 'beta', label: 'Beta Settings', hint: 'models in use, API keys' },
   { id: 'new', label: 'New projects', hint: 'what they start with' },
   { id: 'keyboard', label: 'Keyboard', hint: 'shortcuts' },
 ]
@@ -83,6 +85,96 @@ watch(
   },
 )
 const noKey = (which: string): string => (editorState.ai.available[which as keyof typeof editorState.ai.available] === false ? ' (no key)' : '')
+
+// Beta Settings: every job the app gives a model, with its provider and model and whether its key is set; and the
+// API keys, kept encrypted for this Windows user (engine/ai_bridge/ApiKeys) and given to the AI service when it starts.
+interface KeyRow {
+  env: string
+  provider: string
+  uses: string
+  url: string
+  set: boolean
+  tail?: string
+  inEnv: string
+}
+const keys = ref<KeyRow[]>([])
+const editingKey = ref('')
+const keyValue = ref('')
+const betaExpires = ref('') // this beta build's last day ('' in a build that isn't a beta)
+onHostMessage((message) => {
+  if (message.type === 'beta:keys') {
+    keys.value = (message.keys as KeyRow[]) ?? []
+    betaExpires.value = (message.expires as string) ?? ''
+  }
+})
+// Asked each time the page is shown (switched to, or Preferences opened on it).
+watch(
+  () => [page.value, projectState.showPreferences] as const,
+  ([p, open]) => {
+    if (p === 'beta' && open) sendToHost({ type: 'beta:keysRequest' })
+  },
+  { immediate: true },
+)
+function keyOf(provider: string): string {
+  const p = provider.toLowerCase()
+  if (p === 'auto' || p.startsWith('mistral')) return 'MISTRAL_API_KEY'
+  if (p.startsWith('claude') || p.startsWith('anthropic')) return 'ANTHROPIC_API_KEY'
+  if (p.startsWith('openrouter')) return 'OPENROUTER_API_KEY'
+  if (p.startsWith('bfl') || p.startsWith('flux')) return 'BFL_API_KEY'
+  if (p.startsWith('pixellab')) return 'PIXELLAB_API_KEY'
+  if (p.startsWith('autosprite')) return 'AUTO_SPRITE_API_KEY'
+  return ''
+}
+function hasKey(env: string): boolean {
+  const k = keys.value.find((r) => r.env === env)
+  return !!k && (k.set || !!k.inEnv)
+}
+interface Job {
+  job: string
+  kind: string
+  provider: string
+  model: string
+  page: Page
+}
+const jobs = computed<Job[]>(() => {
+  const ai = editorState.ai
+  const own = (which: string, app: string) => ai.project[which] || app
+  const head = (s: string) => s.split(':')[0] ?? s // bfl:flux-3-image → bfl
+  const writer = own('provider', ai.provider)
+  const checkProvider = ai.checkProvider === 'auto' ? 'mistral' : ai.checkProvider
+  const visionProvider = ai.visionProvider === 'auto' ? (writer === 'claude' ? 'claude' : 'mistral') : ai.visionProvider
+  const art = own('art', ai.artProvider)
+  return [
+    { job: 'Writing (the AI panel, builds, the Planner)', kind: 'text', provider: writer, model: own('model', ai.model) || 'its default', page: 'ai' },
+    { job: 'Canon check', kind: 'text', provider: checkProvider,
+      model: ai.checkInUse || ai.checkModel || (checkProvider === 'mistral' ? 'mistral-medium-latest' : 'its default'), page: 'ai' },
+    { job: 'Vision (looking at art, maps, doors)', kind: 'vision', provider: visionProvider,
+      model: ai.visionInUse || ai.visionModel || (visionProvider === 'mistral' ? 'mistral-large-4' : visionProvider === 'claude' ? 'the writing model' : 'its default'), page: 'ai' },
+    { job: "Help search (the AI panel's answers)", kind: 'embeddings', provider: 'mistral', model: 'mistral-embed (keywords alone without it)', page: 'ai' },
+    { job: 'Prefab art', kind: 'image', provider: art === 'auto' ? (hasKey('MISTRAL_API_KEY') ? 'mistral' : 'pixellab') : head(art), model: ai.art || art, page: 'art' },
+    { job: 'Backgrounds', kind: 'image', provider: 'bfl', model: own('background', ai.backgroundProvider).replace(/^bfl:/, ''), page: 'art' },
+    { job: 'Painting places (Paint method)', kind: 'image', provider: 'bfl', model: String(prefs.paintModel ?? 'flux-3-image'), page: 'art' },
+    { job: 'Humanoid animation', kind: 'animation', provider: head(own('animate', ai.animateProvider)), model: own('animate', ai.animateProvider), page: 'art' },
+    { job: 'Non-humanoid animation', kind: 'animation', provider: head(own('objectAnimate', ai.objectAnimateProvider)),
+      model: own('objectAnimate', ai.objectAnimateProvider), page: 'art' },
+  ]
+})
+function providerName(provider: string): string {
+  return keys.value.find((k) => k.env === keyOf(provider))?.provider ?? provider
+}
+function startKey(env: string): void {
+  editingKey.value = env
+  keyValue.value = ''
+}
+function saveKey(): void {
+  if (!keyValue.value.trim()) return
+  sendToHost({ type: 'beta:setKey', env: editingKey.value, value: keyValue.value.trim() })
+  editingKey.value = ''
+  keyValue.value = ''
+}
+function removeKey(env: string): void {
+  sendToHost({ type: 'beta:removeKey', env })
+}
 
 function close(): void {
   if (backdrop.value) untrackOverlay(backdrop.value)
@@ -273,7 +365,8 @@ function close(): void {
               <div class="field">
                 <label>API keys</label>
                 <div class="control">
-                  <p class="desc">In ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, PIXELLAB_API_KEY, BFL_API_KEY). They never leave this computer except to that service.</p>
+                  <p class="desc">Set in Beta Settings (kept encrypted for your Windows user). They never leave this computer except to that provider.</p>
+                  <button class="small" @click="page = 'beta'">Beta Settings…</button>
                 </div>
               </div>
             </section>
@@ -318,8 +411,6 @@ function close(): void {
                 <div class="control">
                   <select :value="editorState.ai.backgroundProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setBackgroundProvider', provider: ($event.target as HTMLSelectElement).value })">
                     <option value="bfl:flux-3-image">BFL FLUX.3 Image (keeps the map best){{ noKey('bfl') }}</option>
-                    <option value="bfl:flux-2-max">BFL FLUX.2 max (as good, slower){{ noKey('bfl') }}</option>
-                    <option value="bfl:flux-2-pro">BFL FLUX.2 pro{{ noKey('bfl') }}</option>
                     <option value="bfl:flux-2-klein-4b">BFL FLUX.2 klein (fast, loose){{ noKey('bfl') }}</option>
                   </select>
                   <p v-if="editorState.ai.backgroundError" class="error">{{ editorState.ai.backgroundError }}</p>
@@ -365,14 +456,62 @@ function close(): void {
                   <select :value="prefs.paintModel" @change="setPref('paintModel', ($event.target as HTMLSelectElement).value)">
                     <option value="flux-3-image">FLUX-3-Image (keeps the layout best)</option>
                     <option value="flux-2-klein-4b">FLUX-2-Klein-4b (fast, a rough draft)</option>
-                    <option value="flux-2-pro">FLUX-2-Pro</option>
-                    <option value="flux-2-max">FLUX-2-Max</option>
-                    <option value="flux-3-to-pro">FLUX-3-Image-to-Pro</option>
-                    <option value="flux-3-to-klein">FLUX-3-Image-to-Klein</option>
                   </select>
                   <p class="desc">Who paints a place whole for the Paint build method, when the project doesn't say. Dungeons are always painted with FLUX-3-Image (the others lose their rooms and walls).</p>
                 </div>
               </div>
+            </section>
+          </template>
+
+          <!-- Beta Settings -->
+          <template v-else-if="page === 'beta'">
+            <h4>Beta Settings</h4>
+            <p class="muted">The models this app uses, and your keys for them. The beta comes without keys: each provider is paid
+              for with your own account.</p>
+            <p v-if="betaExpires" class="override">This beta build works until <b>{{ betaExpires }}</b>. After that, download the new
+              one from aige-dev.com/beta: your projects and keys are kept.</p>
+            <section class="group">
+              <h5>Models in use</h5>
+              <table class="jobs">
+                <thead><tr><th>For</th><th>Kind</th><th>Provider</th><th>Model</th><th>Key</th><th></th></tr></thead>
+                <tbody>
+                  <tr v-for="j in jobs" :key="j.job">
+                    <td>{{ j.job }}</td>
+                    <td class="dim">{{ j.kind }}</td>
+                    <td>{{ providerName(j.provider) }}</td>
+                    <td class="model">{{ j.model }}</td>
+                    <td :class="hasKey(keyOf(j.provider)) ? 'ok' : 'error'">{{ hasKey(keyOf(j.provider)) ? '✓' : 'no key' }}</td>
+                    <td><button class="small" title="Choose another provider or model" @click="page = j.page">Change</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <p class="desc">A project can choose its own (Project Settings ▸ AI): this list shows what the open project uses.</p>
+            </section>
+            <section class="group">
+              <h5>API keys</h5>
+              <p v-if="!keys.length" class="desc">Asking the editor for the keys… <button class="small" @click="sendToHost({ type: 'beta:keysRequest' })">Ask again</button></p>
+              <div v-for="k in keys" :key="k.env" class="field">
+                <label>{{ k.provider }}</label>
+                <div class="control">
+                  <div v-if="editingKey === k.env" class="row">
+                    <input v-model="keyValue" type="password" autocomplete="off" spellcheck="false" :placeholder="k.env"
+                           @keydown.enter.prevent="saveKey" @keydown.esc.stop="editingKey = ''" />
+                    <button class="primary" :disabled="!keyValue.trim()" @click="saveKey">Save</button>
+                    <button @click="editingKey = ''">Cancel</button>
+                  </div>
+                  <div v-else class="row">
+                    <span v-if="k.set" class="ok">Set ••••{{ k.tail }}</span>
+                    <span v-else-if="k.inEnv" class="dim">From {{ k.inEnv }}</span>
+                    <span v-else class="dim">Not set</span>
+                    <button class="small" @click="startKey(k.env)">{{ k.set ? 'Change' : 'Set API Key' }}</button>
+                    <button v-if="k.set" class="small" @click="removeKey(k.env)">Remove</button>
+                    <button class="small link" :title="k.url" @click="sendToHost({ type: 'web:open', url: k.url })">Get a key</button>
+                  </div>
+                  <p class="desc">For {{ k.uses }}.</p>
+                </div>
+              </div>
+              <p class="desc">Kept on this computer, encrypted for your Windows user, and sent only to that provider. Setting or removing
+                a key starts the AI again with it. A key set here is used over one in the system's environment.</p>
             </section>
           </template>
 
@@ -384,10 +523,8 @@ function close(): void {
               <div class="field">
                 <label>Build method</label>
                 <div class="control">
-                  <label class="row"><input type="radio" name="pref-method" :checked="prefs.defaultBuildMethod === 'Paint'" @change="setPref('defaultBuildMethod', 'Paint')" />
-                    Paint: each place painted whole, then marked by you</label>
-                  <label class="row"><input type="radio" name="pref-method" :checked="prefs.defaultBuildMethod === 'Assembled'" @change="setPref('defaultBuildMethod', 'Assembled')" />
-                    Assembled: each piece's art put together over a painted background</label>
+                  <label v-for="m in BUILD_METHODS" :key="m.id" class="row" :title="m.title"><input type="radio" name="pref-method" :checked="normalBuildMethod(prefs.defaultBuildMethod) === m.id" @change="setPref('defaultBuildMethod', m.id)" />
+                    {{ m.label }}: {{ m.short }}</label>
                   <p class="desc">What File ▸ New Project starts with (it can be changed there, and later in Project Settings ▸ Places).</p>
                 </div>
               </div>
@@ -415,6 +552,40 @@ function close(): void {
 </template>
 
 <style scoped>
+.jobs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.jobs th {
+  text-align: left;
+  font-weight: 600;
+  opacity: 0.7;
+  padding: 3px 6px;
+  border-bottom: 1px solid #333;
+}
+.jobs td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #262636;
+  vertical-align: top;
+}
+.jobs .model {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+  word-break: break-all;
+}
+.ok {
+  color: #86efac;
+}
+.dim {
+  opacity: 0.65;
+}
+.link {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  padding: 0 2px;
+}
 .override {
   margin: 4px 0 0;
   padding: 4px 6px;

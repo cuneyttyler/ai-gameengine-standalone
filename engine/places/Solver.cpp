@@ -354,6 +354,7 @@ private:
     int AddRegion(const std::string& id, const std::string& node, const std::string& statement, int parent, std::vector<int> cells,
                   const std::string& module = {});
     int AddObject(Object o);
+    void Gateway(const json& s); // a way into another place (late): where it suits, a trail to the road
     bool Free(int cell, int container, bool solid) const;
     std::vector<int> AStar(int from, int to, const std::function<double(int)>& cost);
     std::vector<int> AStarIn(int from, int to, const std::function<double(int)>& cost, int x0, int y0, int x1, int y1);
@@ -784,6 +785,199 @@ uint8_t RankOf(const std::string& cls) {
     if (cls == "street") return 3;
     if (cls == "lane") return 2;
     return 1;
+}
+
+void Solver::Gateway(const json& s) {
+    const json fp = s.value("footprint", json::object());
+    // Inside a dungeon or a building (stairs down, a portal, a trapdoor): on a room's floor, small enough for a room.
+    const bool inside = s.value("inside", false);
+    const int w = std::max(1, inside ? std::min(2, fp.value("w", 3)) : fp.value("w", 3)), h = std::max(1, inside ? std::min(2, fp.value("h", 3)) : fp.value("h", 3));
+    const bool outside = s.value("outside", true);
+    // Distance fields (4-way steps): from the land it suits (the mountains it stands at the foot of, the forest it's in),
+    // and from the place it's near (its land).
+    auto field = [&](const std::function<bool(int)>& from) {
+        std::vector<int> d(static_cast<size_t>(W) * H, 1 << 20);
+        std::deque<int> todo;
+        for (int c = 0; c < W * H; ++c) {
+            if (from(c)) d[c] = 0, todo.push_back(c);
+        }
+        if (todo.empty()) return std::vector<int>();
+        while (!todo.empty()) {
+            const int c = todo.front();
+            todo.pop_front();
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = c % W + dx, ny = c / W + dy;
+                if (!In(nx, ny) || d[Cell(nx, ny)] <= d[c] + 1) continue;
+                d[Cell(nx, ny)] = d[c] + 1;
+                todo.push_back(Cell(nx, ny));
+            }
+        }
+        return d;
+    };
+    std::set<std::string> suits;
+    for (const auto& m : s.value("suits", json::array())) {
+        if (m.is_string()) suits.insert(m.get<std::string>());
+    }
+    // A region's module, or an ancestor's: what a cell is part of.
+    auto partOf = [&](int c, const std::function<bool(const Region&)>& is) {
+        for (int r = owner_[c]; r >= 0; r = regions_[r].parent) {
+            if (is(regions_[r])) return true;
+        }
+        return false;
+    };
+    const std::vector<int> bySuit = suits.empty() ? std::vector<int>() : field([&](int c) {
+        return partOf(c, [&](const Region& r) { return suits.contains(r.module); });
+    });
+    const int nearIndex = s.contains("near") ? RegionIndex(s.value("near", "")) : -1;
+    const std::vector<int> byNear = nearIndex < 0 ? std::vector<int>() : field([&](int c) {
+        return partOf(c, [&](const Region& r) { return &r == &regions_[nearIndex]; });
+    });
+    auto settled = [&](int c) {
+        return partOf(c, [&](const Region& r) {
+            const ModuleDef* m = r.module.empty() ? nullptr : ontology_.Module(r.module);
+            return r.module == "heartland" || (m && m->compile.is_object() && m->compile.value("nested", false));
+        });
+    };
+    // A room it may stand in (inside): the deepest part a cell is in is a room (a parcel of a level or a floor).
+    auto inRoom = [&](int c) {
+        const int r = owner_[c];
+        if (r < 0 || regions_[r].parent < 0) return false;
+        const ModuleDef* m = regions_[r].module.empty() ? nullptr : ontology_.Module(regions_[r].module);
+        return m && m->level == PlaceLevel::Parcel;
+    };
+    auto standable = [&](int c) {
+        if (inside && !inRoom(c)) return false;
+        if (water_[c] || solid_[c] || road_[c] || occ_[kBuilding][c] || occ_[kProp][c]) return false;
+        if (!openWater_.empty() && (openWater_[c] || shore_[c])) return false;
+        if (partOf(c, [&](const Region& r) { return r.module == "mountains"; })) return false; // at their foot, not on them
+        if (outside && settled(c)) return false; // out in the land, not in a place's streets
+        return true;
+    };
+    // Inside: the room its words name ("in the altar room", "the deepest chamber"), else as far as it can be from the
+    // way in (stairs down are deep in).
+    std::vector<int> byRoom, fromEntrance;
+    if (inside) {
+        std::string at = s.value("at", "");
+        std::transform(at.begin(), at.end(), at.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        std::set<int> named;
+        for (int r = 0; r < static_cast<int>(regions_.size()); ++r) {
+            const ModuleDef* m = regions_[r].module.empty() ? nullptr : ontology_.Module(regions_[r].module);
+            if (m == nullptr || m->level != PlaceLevel::Parcel || at.empty()) continue;
+            std::string id = m->id, name = m->name;
+            std::replace(id.begin(), id.end(), '-', ' ');
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            for (const std::string& word : {id, name}) {
+                const std::string core = word.size() > 5 && word.ends_with(" room") ? word.substr(0, word.size() - 5) : word;
+                if (!core.empty() && at.find(core) != std::string::npos) named.insert(r);
+            }
+        }
+        // Stairs (or a ladder, a well) with nothing named: a stairs room, if the place has one.
+        if (named.empty() && s.value("role", "").find("stairs") != std::string::npos) {
+            for (int r = 0; r < static_cast<int>(regions_.size()); ++r) {
+                if (regions_[r].module.find("stairs") != std::string::npos) named.insert(r);
+            }
+        }
+        if (!named.empty()) byRoom = field([&](int c) { return owner_[c] >= 0 && named.contains(owner_[c]); });
+        fromEntrance = field([&](int c) {
+            const int r = owner_[c];
+            return r >= 0 && regions_[r].module.find("entrance") != std::string::npos;
+        });
+    }
+    Rng rng = StreamFor(s);
+    const int step = inside ? 1 : std::max(1, static_cast<int>(std::sqrt(static_cast<double>(W) * H) / 240));
+    double best = -1e18;
+    int bx = -1, by = -1;
+    // First right by the land it suits (a cave at the hills' foot), as near its place as that allows; only if there's
+    // no such spot, a balance of the two.
+    for (int strict = (bySuit.empty() ? 0 : 1); strict >= 0 && bx < 0; --strict) {
+    for (int y = 1; y + h < H - 1; y += step) {
+        for (int x = 1; x + w < W - 1; x += step) {
+            bool ok = true;
+            for (int yy = y; yy < y + h && ok; ++yy) {
+                for (int xx = x; xx < x + w && ok; ++xx) ok = standable(Cell(xx, yy));
+            }
+            if (!ok) continue;
+            const int c = Cell(x + w / 2, y + h / 2);
+            if (inside) {
+                double v = 0.01 * rng.Unit();
+                if (!byRoom.empty()) v -= 5.0 * byRoom[c];                     // in the room it names
+                else if (!fromEntrance.empty()) v += 0.5 * std::min(fromEntrance[c], 400); // deep in, far from the way in
+                if (v > best) best = v, bx = x, by = y;
+                continue;
+            }
+            if (strict) {
+                if (bySuit[c] > 4 + std::max(w, h) || (!byNear.empty() && (byNear[c] < 15 || byNear[c] > 450))) continue; // by its land (within reach of its place), nearest it
+                const double v = (byNear.empty() ? 0.0 : -byNear[c]) + 0.01 * rng.Unit();
+                if (v > best) best = v, bx = x, by = y;
+                continue;
+            }
+            double v = 0.01 * rng.Unit();
+            // By the land it suits: within a few cells of it (at the foot of the hills, in the forest).
+            if (!bySuit.empty()) v -= 0.25 * std::max(0, bySuit[c] - 2);
+            // Near its place: out of its streets, a walk away (about 20 to 120 cells).
+            if (!byNear.empty()) {
+                const int d = byNear[c];
+                v -= d < 20 ? 2.0 * (20 - d) : d > 120 ? 1.0 * (d - 120) : 0.0; // its place first, then the land it suits
+            }
+            if (v > best) best = v, bx = x, by = y;
+        }
+    }
+    }
+    if (bx < 0) {
+        Problem("S-UNSAT", s, "no room for the gateway " + s.value("id", std::string()));
+        return;
+    }
+    Object o;
+    o.id = s.value("id", "");
+    o.statement = o.id;
+    o.node = s.value("node", "");
+    o.slot = s.value("role", "gateway");
+    o.x = bx, o.y = by, o.w = w, o.h = h;
+    o.facing = 's';
+    o.layer = kProp;
+    o.primary = true;
+    const int self = AddObject(o) + 1;
+    instancesOf_[o.id] = 1;
+    // Its trail: from in front of it to the nearest road (a river crossed by a bridge, never along the water).
+    const int front = Cell(std::min(W - 1, bx + w / 2), std::min(H - 1, by + h));
+    int target = -1;
+    {
+        std::vector<uint8_t> seen(static_cast<size_t>(W) * H, 0);
+        std::deque<int> todo = {front};
+        seen[front] = 1;
+        while (!todo.empty() && target < 0) {
+            const int c = todo.front();
+            todo.pop_front();
+            if (road_[c] && c != front) target = c;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = c % W + dx, ny = c / W + dy;
+                if (!In(nx, ny) || seen[Cell(nx, ny)] || (!openWater_.empty() && openWater_[Cell(nx, ny)])) continue;
+                seen[Cell(nx, ny)] = 1;
+                todo.push_back(Cell(nx, ny));
+            }
+        }
+    }
+    if (target < 0 || inside) return; // inside: its room is reached by the rooms' own doors
+    auto cost = [&](int c) -> double {
+        if (occ_[kBuilding][c] || solid_[c] || (!openWater_.empty() && openWater_[c]) || occ_[kProp][c] == self) {
+            return std::numeric_limits<double>::infinity();
+        }
+        if (water_[c]) return 25.0;
+        if (road_[c]) return 0.3;
+        if (!shore_.empty() && shore_[c]) return 15.0;
+        return 1.0;
+    };
+    const auto cells = AStar(front, target, cost);
+    if (cells.empty()) return;
+    MarkRoad(cells, 1, RankOf("trail"), -1);
+    PathResult p;
+    p.id = o.id + "/trail";
+    p.node = o.node;
+    p.cls = "trail";
+    p.terrain = "dirt";
+    p.width = 1;
+    p.cells = cells;
+    paths_.push_back(p);
 }
 
 void Solver::Path(const json& s) {
@@ -1244,6 +1438,7 @@ void Solver::Partition(const json& s, int region) {
         bool claim = false;   // that middle is its before anything grows (a village's land: its site must fit)
         double claimRadius = 0; // how far round its seed (the compiler's, from its sites' size)
         double apart = 0;       // how far from the other places, middle to middle (the root's spacing; 0: as far as it can)
+        std::set<std::string> along; // a band along these zones' edge (a coast along the sea): not seeded, built once they're grown
         int seed = -1;
         std::vector<int> cells;
         std::array<int, 4> box{-1, -1, -1, -1}; // drawn by the user (x0, y0, x1, y1): it takes that land, exactly
@@ -1266,6 +1461,9 @@ void Solver::Partition(const json& s, int region) {
             zone.claim = edge.value("claim", false);
             zone.claimRadius = edge.value("claimRadius", 0.0);
             zone.apart = edge.value("apart", 0.0);
+            for (const auto& m : edge.value("along", json::array())) {
+                if (m.is_string()) zone.along.insert(m.get<std::string>());
+            }
         }
         zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
         zone.prefers = z.value("prefers", json::object());
@@ -1756,7 +1954,7 @@ void Solver::Partition(const json& s, int region) {
     };
     // The land first (a world's): its places and the padding between them wait for the open land that's left.
     auto padding = [&](const Zone& z) { return !z.module.empty() && ontology_.IsA(z.module, "Padding"); };
-    auto waits = [&](const Zone& z) { return landFirst && (z.claim || padding(z)); };
+    auto waits = [&](const Zone& z) { return (landFirst && (z.claim || padding(z))) || !z.along.empty(); };
     for (size_t k : order) {
         if (!waits(zones[k])) seedOne(k);
     }
@@ -1888,6 +2086,47 @@ void Solver::Partition(const json& s, int region) {
     }
     };
     grow();
+    // A band along the water's edge (a coast along the sea): the free land within its width of the zones it runs along,
+    // as wide as its share needs over that shore, its inner edge wobbling; never a patch of its own out in the water.
+    for (size_t k = 0; k < zones.size(); ++k) {
+        Zone& z = zones[k];
+        if (z.along.empty() || z.box[0] >= 0) continue;
+        std::vector<int> d(static_cast<size_t>(W) * H, 1 << 20);
+        std::deque<int> todo;
+        // Along the sea or the ocean where there is one; a lake's shore only when there isn't.
+        bool open = false;
+        for (size_t j = 0; j < zones.size(); ++j) {
+            open = open || (j != k && z.along.contains(zones[j].module) && (zones[j].module == "sea" || zones[j].module == "ocean") && !zones[j].cells.empty());
+        }
+        for (size_t j = 0; j < zones.size(); ++j) {
+            if (j == k || !z.along.contains(zones[j].module)) continue;
+            if (open && zones[j].module != "sea" && zones[j].module != "ocean") continue;
+            for (int c : zones[j].cells) d[c] = 0, todo.push_back(c);
+        }
+        if (todo.empty()) continue; // none of its water here: it isn't laid
+        while (!todo.empty()) {
+            const int c = todo.front();
+            todo.pop_front();
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = c % W + dx, ny = c / W + dy;
+                if (!In(nx, ny) || d[Cell(nx, ny)] <= d[c] + 1) continue;
+                d[Cell(nx, ny)] = d[c] + 1;
+                todo.push_back(Cell(nx, ny));
+            }
+        }
+        int shore = 0;
+        for (int c : available) shore += taken[c] < 0 && d[c] == 1;
+        const double width = std::clamp(z.quota / std::max(1, shore), 3.0, 30.0);
+        const double wobble = std::max(8.0, width * 2.0);
+        for (int c : available) {
+            if (taken[c] >= 0 || claimed[c] || d[c] == 0) continue;
+            const double reach = width * (1.0 + 0.45 * OrganicNoise(c % W, c / W, wobble, static_cast<uint32_t>(k * 7919 + 71 + seed_ * 2654435761u)));
+            if (d[c] > reach) continue;
+            taken[c] = static_cast<int>(k);
+            z.cells.push_back(c);
+        }
+        if (!z.cells.empty()) z.seed = z.cells[z.cells.size() / 2];
+    }
     if (landFirst) {
         // The places, on the open land the land left: each one's whole square on it (no sea, coast, mountain or forest under
         // it), off the world's edge, as far as it can be from the places already set (farthest first: they spread over the
@@ -1949,11 +2188,17 @@ void Solver::Partition(const json& s, int region) {
         std::map<std::string, std::vector<int>> nearField;
         auto fieldOf = [&](const std::string& id) -> const std::vector<int>* {
             const auto it = zoneIndex.find(id);
-            if (it == zoneIndex.end() || zones[it->second].claim || zones[it->second].cells.empty()) return nullptr;
-            if (auto f = nearField.find(id); f != nearField.end()) return &f->second;
+            // (A place it's near is the land it has taken so far: measured again each time, as it grows.)
+            if (it == zoneIndex.end() || zones[it->second].cells.empty()) return nullptr;
+            if (auto f = nearField.find(id); f != nearField.end() && !zones[it->second].claim) return &f->second;
             std::vector<int> field(W * H, 1 << 20);
             std::deque<int> todo;
             for (int c : zones[it->second].cells) field[c] = 0, todo.push_back(c);
+            // A water's shore (the coast along it) is part of it: a harbour by the sea stands at the beach.
+            for (const auto& other : zones) {
+                if (!other.along.contains(zones[it->second].module)) continue;
+                for (int c : other.cells) field[c] = 0, todo.push_back(c);
+            }
             while (!todo.empty()) {
                 const int c = todo.front();
                 todo.pop_front();
@@ -1975,12 +2220,23 @@ void Solver::Partition(const json& s, int region) {
             }
             return out;
         };
+        // Near another place (small villages round a big one): placed after it, within the spacing of it.
+        auto nearPlace = [&](const Zone& z) {
+            for (const auto& r : z.rel) {
+                const auto it = zoneIndex.find(r.value("to", ""));
+                if (it != zoneIndex.end() && zones[it->second].claim) return true;
+            }
+            return false;
+        };
         std::vector<size_t> places;
         for (size_t k : order) {
             if (zones[k].claim && zones[k].box[0] < 0) places.push_back(k);
         }
         // Those bound to the land (a harbour) first: the others spread round them.
-        std::stable_sort(places.begin(), places.end(), [&](size_t a, size_t b) { return nearTargets(zones[a]).size() > nearTargets(zones[b]).size(); });
+        std::stable_sort(places.begin(), places.end(), [&](size_t a, size_t b) {
+            if (nearPlace(zones[a]) != nearPlace(zones[b])) return !nearPlace(zones[a]); // the places others are near, first
+            return nearTargets(zones[a]).size() > nearTargets(zones[b]).size();
+        });
         const double sideMin = std::max(1, std::min(parent.x1 - parent.x0, parent.y1 - parent.y0));
         const int step = std::max(1, static_cast<int>(sideMin / 160));
         for (size_t k : places) {
@@ -2002,7 +2258,8 @@ void Solver::Partition(const json& s, int region) {
                         bool reached = true;
                         for (const auto* f : targets) {
                             reachCost += (*f)[c];
-                            reached = reached && (*f)[c] <= halfSq + 6;
+                            // (Near a place: within the spacing of its land; near the land: at its edge.)
+                            reached = reached && (*f)[c] <= (nearPlace(z) ? std::max(halfSq + 6.0, z.apart) : halfSq + 6.0);
                         }
                         if (relax == 0 && !reached) continue;
                         if (!squareLand(x, y, halfSq)) continue;
@@ -5088,6 +5345,10 @@ SolvedLayout Solver::Run() {
         if (s->value("op", "") == "connect") Connect(*s, index);
         else if (s->value("op", "") == "path") Path(*s);
         else if (s->value("op", "") == "relief") Relief(*s);
+    }
+    // The gateways last: the land, the places and every road are there (each its trail to the nearest).
+    for (const auto& [s, index] : late_) {
+        if (s->value("op", "") == "gateway") Gateway(*s);
     }
     late_.clear();
     lateRunning_ = false;

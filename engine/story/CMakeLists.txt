@@ -10,6 +10,6 @@ add_library(aige_story STATIC
     StoryRules.cpp
 )
 target_include_directories(aige_story PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_story PUBLIC nlohmann_json::nlohmann_json aige_world)
+target_link_libraries(aige_story PUBLIC aige_install nlohmann_json::nlohmann_json aige_world)
 target_compile_definitions(aige_story PRIVATE AIGE_STORY_DATA_DIR="${CMAKE_SOURCE_DIR}/data/story")
 target_compile_features(aige_story PUBLIC cxx_std_20)

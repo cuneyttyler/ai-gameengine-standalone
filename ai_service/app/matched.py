@@ -713,7 +713,7 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
                 made |= set(result["named"])
                 steps.append({"sheet": name, "pieces": [p["key"] for p in group], "items": result["items"], "named": list(result["named"]),
                               "prompt": result["prompt"]})
-        # The fix: what no sheet gave, and what the check finds wrong, on one more round of sheets. Every piece not yet
+        # The fix: what no sheet gave, on one more round of sheets. The check (the vision model) looks at every piece not yet
         # checked is (checked.json: the pieces that passed, whichever run made them), not only this run's.
         checked_path = folder / "checked.json"
         try:
@@ -743,8 +743,10 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         for p in every:
             if p["key"] in wrong and p["key"] not in painted_now and (folder / "pieces" / f"{p['slug']}.png").exists():
                 kept_before[p["slug"]] = (folder / "pieces" / f"{p['slug']}.png").read_bytes()
-        again = [p for p in every if not p.get("kit") and (p["key"] not in made or p["key"] in wrong)]
-        # Up to three rounds: what is still not made (or found wrong) is painted again, each time anew.
+        # What the check finds wrong is kept as painted, its finding reported ("said" above): no paid repaint on its own.
+        # Only what no sheet gave at all is painted again.
+        again = [p for p in every if not p.get("kit") and p["key"] not in made]
+        # Up to three rounds: what is still not made is painted again, each time anew.
         fixed, repainted = 0, set()
         for round_ in range(3):
             if not again:
@@ -963,20 +965,12 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
         made |= {p["key"] for p, ok in zip(again, second) if ok}
         tries.update({p["key"]: 2 for p in again})
     track.done("paint", label=f"Painted {len(made)} of {len(pieces)} pieces" + (f" ({len(again)} painted twice)" if again else ""))
-    # 3. One look by the vision model; what's wrong painted once more (if it wasn't already), told why.
-    redo: dict[str, str] = {}
+    # 3. One look by the vision model: what it finds wrong is kept as painted and reported (no paid repaint on its own).
     have = [p for p in pieces if p["key"] in made]
     found, _, said = check_all(writer, folder, have)
-    for i in found:
-        if tries.get(have[i]["key"], 1) < 2:
-            redo[have[i]["key"]] = said[i]
-    fixed = 0
-    if redo:
-        by_key = {p["key"]: p for p in pieces}
-        with ThreadPoolExecutor(4) as pool:
-            fixed = sum(pool.map(lambda k: paint(by_key[k], 2, redo[k]), list(redo)))
+    findings = {have[i]["key"]: said.get(i, "") for i in found}
     return {"made": made, "step": {"painted": sorted(made), "missing": sorted(p["key"] for p in pieces if p["key"] not in made),
-                                   "repainted": sorted(redo), "fixed": fixed, "words": words}}
+                                   "visionFindings": findings, "words": words}}
 
 
 STOREYS_TASK = """How many storeys does this building have? Count only full storeys of WALL below the eaves (where the roof

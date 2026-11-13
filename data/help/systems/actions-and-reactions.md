@@ -68,7 +68,7 @@ An entity with a **Reaction** (the `Action` component in files) does something w
 uses it:
 
 - `trigger`: `input` (its `action` pressed within `range`), `event` (its `event` sent), `timer` (`seconds` after it
-  appears), `touch` (walked onto), `near` (someone comes within range; `awayAnimation` when all have gone).
+  appears), `touch` (walked onto), `near` (someone comes within range; `awayAnimation` when all have gone), `player-near` (the player alone comes within range: what starts a small scene).
 - Requirements: `requires` (items the user must carry: `hoe, seeds*2`), `requiresFlag`, `accepts` (one of these items
   must be in the player's hand: a key, a lockpick), `if` (conditions).
 - What happens: `takes` and `gives` items (`wheat*3, gold*5`), `userAnimation` and `animation` clips, `effect` and

@@ -1,4 +1,5 @@
 #include "ui/Documents.h"
+#include "install/InstallPath.h"
 #include "ui/UiDesign.h"
 
 #include <RmlUi/Core.h>
@@ -21,7 +22,7 @@ namespace fs = std::filesystem;
 
 std::filesystem::path EngineUiDir() {
 #ifdef AIGE_UI_DATA_DIR
-    return fs::path(AIGE_UI_DATA_DIR);
+    return InstalledOr(fs::path(AIGE_UI_DATA_DIR), "data/ui"); // next to the program when packaged
 #else
     return fs::path("data") / "ui";
 #endif
@@ -433,8 +434,14 @@ struct Renderer : Rml::RenderInterface {
         std::string name = source;
         if (!image) {
             if (auto file = Files().Find(source); file && images) {
-                image = images(file->generic_string());
-                name = file->generic_string();
+                // One of the project's (its ui/art/...): by its path in the project, as the project's loader takes it.
+                std::error_code ec;
+                const fs::path projectRoot = Files().roots.empty() ? fs::path() : Files().roots.front().parent_path();
+                const fs::path relative = projectRoot.empty() ? fs::path() : fs::relative(*file, projectRoot, ec);
+                const bool inProject = !ec && !relative.empty() && relative.begin()->string() != "..";
+                name = inProject ? relative.generic_string() : file->generic_string();
+                image = images(name);
+                if (!image && inProject) image = images(file->generic_string());
             }
         }
         if (!image || image->width == 0) return 0;
@@ -469,6 +476,8 @@ int g_instances = 0;
 struct MenuItemModel {
     Rml::String label;
     bool enabled = true;
+    Rml::String icon, detail, group;
+    bool heading = false; // the first of its group: its group's name shown above it
 };
 struct ItemModel {
     Rml::String id, name, icon;
@@ -499,7 +508,8 @@ struct DocumentUi::Impl {
 
     // The models' data.
     struct {
-        Rml::String screen, title, subtitle, body, footer;
+        Rml::String screen, title, subtitle, body, footer, image;
+        float markerX = -1.0f, markerY = -1.0f;
         Rml::Vector<MenuItemModel> items;
         int highlighted = 0;
         bool dim = true;
@@ -511,7 +521,7 @@ struct DocumentUi::Impl {
     } dialogue;
     HudData hud;
     Rml::Vector<ItemModel> items;
-    Rml::Vector<OverheadModel> bubbles, labels, numbers;
+    Rml::Vector<OverheadModel> bubbles, labels, numbers, markers;
     int tick = 0; // counted each HUD update: a designed screen's conditions are asked again
     struct {
         Rml::Vector<NoteModel> toast, feed, banner, alert;
@@ -538,6 +548,12 @@ struct DocumentUi::Impl {
             for (const auto& [name, value] : overrides.items()) tokens[name] = value;
         }
         for (const auto& [name, value] : accessible.items()) tokens[name] = value; // the player's options win
+        // What a theme may set beyond colours and sizes (32.7): its font (a .ttf it loads), a picture behind its panels.
+        if (!tokens.contains("font-family")) tokens["font-family"] = "sans";
+        if (!tokens.contains("panel-decorator")) tokens["panel-decorator"] = "none";
+        for (const auto& font : theme.value("fonts", nlohmann::json::array())) {
+            if (font.is_string()) FontEngine().LoadFontFace(font.get<std::string>(), false, Rml::Style::FontWeight::Auto);
+        }
         Files().tokens = tokens;
     }
 
@@ -585,9 +601,16 @@ struct DocumentUi::Impl {
             if (auto item = c.RegisterStruct<MenuItemModel>()) {
                 item.RegisterMember("label", &MenuItemModel::label);
                 item.RegisterMember("enabled", &MenuItemModel::enabled);
+                item.RegisterMember("icon", &MenuItemModel::icon);
+                item.RegisterMember("detail", &MenuItemModel::detail);
+                item.RegisterMember("group", &MenuItemModel::group);
+                item.RegisterMember("heading", &MenuItemModel::heading);
             }
             c.RegisterArray<Rml::Vector<MenuItemModel>>();
             c.Bind("screen", &menu.screen);
+            c.Bind("image", &menu.image);
+            c.Bind("marker_x", &menu.markerX);
+            c.Bind("marker_y", &menu.markerY);
             c.Bind("title", &menu.title);
             c.Bind("subtitle", &menu.subtitle);
             c.Bind("body", &menu.body);
@@ -663,6 +686,7 @@ struct DocumentUi::Impl {
             }
             c.RegisterArray<Rml::Vector<OverheadModel>>();
             c.Bind("bubbles", &bubbles);
+            c.Bind("markers", &markers);
             c.Bind("labels", &labels);
             c.Bind("numbers", &numbers);
             c.Bind("tick", &tick);
@@ -758,6 +782,12 @@ void DocumentUi::ShowScreen(const std::string& id, bool visible) {
 
 bool DocumentUi::IsShown(const std::string& id) const { return impl_->customShown.contains(id); }
 
+bool DocumentUi::CloseShown() {
+    const std::set<std::string> shown = impl_->customShown;
+    for (const auto& id : shown) ShowScreen(id, false);
+    return !shown.empty();
+}
+
 void DocumentUi::SetViewport(int width, int height) {
     if (!impl_->context || width <= 0 || height <= 0) return;
     if (width == impl_->width && height == impl_->height) return;
@@ -839,8 +869,14 @@ void DocumentUi::SetMenu(const std::optional<MenuView>& view, const std::string&
     m.footer = view->footer;
     m.highlighted = view->highlighted;
     m.dim = view->dimBackground;
+    m.image = view->image;
+    m.markerX = view->markerX * 100.0f, m.markerY = view->markerY * 100.0f; // percent
     m.items.clear();
-    for (const auto& item : view->items) m.items.push_back({item.label, item.enabled});
+    for (const auto& item : view->items) {
+        MenuItemModel model{item.label, item.enabled, item.icon, item.detail, item.group, false};
+        model.heading = !item.group.empty() && (m.items.empty() || m.items.back().group != item.group);
+        m.items.push_back(model);
+    }
     impl_->menuModel.DirtyAllVariables();
     impl_->Show(wanted, true);
 }
@@ -861,9 +897,15 @@ void DocumentUi::SetDialogue(const std::optional<DialogueView>& view) {
     impl_->Show(impl_->DocumentFor("dialogue"), view.has_value());
 }
 
-void PlaceOverhead(HudData& hud, const std::function<void(float, float, float&, float&)>& toViewport) {
-    for (auto* list : {&hud.bubbles, &hud.labels, &hud.numbers}) {
+void PlaceOverhead(HudData& hud, const std::function<void(float, float, float&, float&)>& toViewport, float width, float height) {
+    for (auto* list : {&hud.bubbles, &hud.labels, &hud.numbers, &hud.markers}) {
         for (auto& o : *list) toViewport(o.x, o.y, o.x, o.y);
+    }
+    if (width <= 0.0f || height <= 0.0f) return;
+    const float margin = 36.0f;
+    for (auto& m : hud.markers) {
+        const float x = std::clamp(m.x, margin, width - margin), y = std::clamp(m.y, margin, height - margin);
+        if (x != m.x || y != m.y) m.kind = "edge", m.x = x, m.y = y;
     }
 }
 
@@ -879,6 +921,7 @@ void DocumentUi::SetHud(const HudData& hud) {
     copy(hud.bubbles, impl_->bubbles);
     copy(hud.labels, impl_->labels);
     copy(hud.numbers, impl_->numbers);
+    copy(hud.markers, impl_->markers);
     ++impl_->tick;
     impl_->hudModel.DirtyAllVariables();
     impl_->menuModel.DirtyVariable("tick");

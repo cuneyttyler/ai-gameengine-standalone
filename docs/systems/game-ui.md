@@ -288,8 +288,11 @@ Text shown over people and things in the world, on the HUD document, its look ma
   `Barks` in files), the `say` effect, a Character Rule's `says`, Lua `say(text)` (`bark` still works). Project
   Settings ▸ UI ▸ **speech**: `bubble`, `subtitle` (the old line at the bottom) or `both`; **speechSeconds**. One bubble
   per speaker; a new line replaces its last. The event `say` is sent (it was `bark`).
-- **Labels**: the `Label` component `{text, within, height}`: always over its thing, or only while the player is
-  `within` cells; **labels** turns them off.
+- **Labels**: the `Label` component `{text, within, height, type}`: always over its thing, or only while the player is
+  `within` cells; **labels** turns them off. Its `type` gives it its look: `name` (a person's or thing's, the plain
+  highlight text), `place` (a building, a street: larger, capitals, underlined), `sign` ("Shop open": on a panel),
+  `status` ("Ripe": small, green, italic), `quest` (gold, framed), `danger` (white on red). The entry's `kind` is the
+  type; hud.rml and the designer's Labels element style each (the designer's colours by label type override them).
 - **Floating numbers**: hits (`damage`) and pickups' heals (`heal`) over who took them (**damageNumbers**), items
   gained over the player, "+3 Wheat" (`item`, **itemNumbers**). They rise 36 px and fade over 1.2 s.
 
@@ -340,6 +343,9 @@ they customise.
 
 ## 17. How the Planner designs the UI
 
+As built (2026-11-10): `ai-planner.md` §5.8 — every panel designed in full (layout, components, look, images, RCSS) and
+made by Build ▸ Visuals as an RML document of its own; the HUD marks every open objective on the ground under its target.
+
 From the Brief's Visuals tab and the systems that are on (`ai-planner.md` §5.8):
 1. **Theme:** the library theme closest to the art style and tone (its tags against the
    Brief's), or a generated one; token overrides from the project's palette.
@@ -379,7 +385,7 @@ From the Brief's Visuals tab and the systems that are on (`ai-planner.md` §5.8)
   screen uses. **Customise** in the UI tab copies a document into the project and points the
   manifest at it.
 - **Themes:** seven built-in token sets (`data/ui/themes`: stone, parchment, iron, arcane,
-  scifi-glass, minimal, pixel); `ui/theme.json` picks one and overrides tokens. 9-slice frames,
+  scifi-glass, minimal, pixel, clear: panels with no background or border); `ui/theme.json` picks one and overrides tokens. 9-slice frames,
   icon sets and sounds per theme are later work.
 - **Notifications:** toast (one at a time), feed (coalesced by key), banner and alert channels;
   the game's own notices go to them by kind, and `ui/notifications.json` (else the engine's)

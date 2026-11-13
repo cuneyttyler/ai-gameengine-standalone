@@ -106,6 +106,7 @@ private:
     void FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQueryFn& axes);
     void CaptureCurrentScene();
     ActorRoster::SpawnFn ActorSpawner();
+    void ApplyActorStates(); // the roster's hidden and hostile actors, as a scene starts (32.5)
     void ApplyWorld(const std::string& scene);
     void TravelIfAsked();
     void LoadNotificationRules();

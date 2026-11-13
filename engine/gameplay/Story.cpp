@@ -15,10 +15,14 @@ namespace {
 const std::set<std::string> kEffectOps = {"set_flag",   "clear_flag", "start_quest", "complete_quest", "complete_objective",
                                           "fail_quest", "set_stage",  "set_var",     "add_var",        "give_item",
                                           "take_item",  "give_gold",  "give_xp",     "reputation",     "play_cutscene",
-                                          "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event"};
+                                          "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event",
+                                          "move_actor", "hide_actor", "show_actor", "set_hostile", "set_friendly",
+                                          "follow_player", "stop_following", "spawn", "give_to"};
 // Effects only the game can carry out (StoryState::TakeWorldEffects).
 const std::set<std::string> kWorldOps = {"give_item", "take_item", "give_gold", "give_xp", "reputation", "play_cutscene",
-                                         "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event"};
+                                         "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event",
+                                         "move_actor", "hide_actor", "show_actor", "set_hostile", "set_friendly",
+                                         "follow_player", "stop_following", "spawn", "give_to"};
 const std::set<std::string> kObjectiveTypes = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine",
                                                "have", "survive", "defend", "escort"};
 const std::set<std::string> kQuestStates = {"inactive", "active", "completed", "failed"};
@@ -80,12 +84,15 @@ std::vector<StoryEffect> EffectsFromJson(const nlohmann::json& list) {
                 break;
             }
         }
+        // Said as "name" (as small scenes' triggers were written): taken the same.
+        if (effect.name.empty() && item.contains("name") && item["name"].is_string()) effect.name = item["name"].get<std::string>();
         effect.objective = item.value("objective", "");
         effect.who = item.value("who", "");
         effect.stage = item.value("stage", 0);
         if (item.contains("value")) effect.value = item["value"];
         else if (item.contains("count")) effect.value = item["count"];
         else if (item.contains("amount")) effect.value = item["amount"];
+        effect.args = item;
         effects.push_back(std::move(effect));
     }
     return effects;
@@ -105,8 +112,12 @@ nlohmann::json EffectsToJson(const std::vector<StoryEffect>& effects) {
                           : e.op == "send_event"                         ? "event"
                           : e.op == "give_gold" || e.op == "give_xp"     ? nullptr
                                                                          : "quest";
-        nlohmann::json item = {{"op", e.op}};
-        if (key) item[key] = e.name;
+        // (What it was written with is kept: the ops whose keys aren't these.)
+        nlohmann::json item = e.args.is_object() ? e.args : nlohmann::json::object();
+        item["op"] = e.op;
+        static const std::set<std::string> ownKeys = {"move_actor", "hide_actor", "show_actor", "set_hostile", "set_friendly",
+                                                      "follow_player", "stop_following", "spawn", "give_to"};
+        if (key && !e.name.empty() && !ownKeys.contains(e.op)) item[key] = e.name;
         if (!e.objective.empty()) item["objective"] = e.objective;
         if (!e.who.empty()) item["who"] = e.who;
         if (e.op == "set_stage") item["stage"] = e.stage;
@@ -280,6 +291,7 @@ std::optional<Quest> QuestFromJson(const nlohmann::json& json, const std::string
     quest.name = json.value("name", "");
     quest.description = json.value("description", "");
     quest.giver = json.value("giver", "");
+    quest.atStart = json.value("atStart", false);
     quest.staged = staged;
     if (staged) {
         for (const auto& s : json["stages"]) {
@@ -328,6 +340,7 @@ std::optional<Quest> QuestFromJson(const nlohmann::json& json, const std::string
 
 nlohmann::json QuestToJson(const Quest& quest) {
     nlohmann::json json = {{"name", quest.name}, {"description", quest.description}, {"giver", quest.giver}};
+    if (quest.atStart) json["atStart"] = true;
     if (quest.staged) {
         nlohmann::json stages = nlohmann::json::array();
         for (const auto& s : quest.stages) {
@@ -448,6 +461,18 @@ void CheckEffects(std::vector<std::string>& problems, const std::string& where, 
         }
         bool questOp = effect.op.find("quest") != std::string::npos || effect.op == "complete_objective" ||
                        effect.op == "set_stage";
+        // The story moving characters (development_plan.md 32.5): whom, and what spawn makes and where.
+        static const std::set<std::string> actorOps = {"move_actor", "hide_actor", "show_actor", "set_hostile", "set_friendly",
+                                                       "follow_player", "stop_following", "give_to"};
+        if (actorOps.contains(effect.op) || effect.op == "spawn") {
+            const nlohmann::json args = effect.args.is_object() ? effect.args : nlohmann::json::object();
+            if (effect.op == "spawn" && args.value("prefab", std::string()).empty()) problems.push_back(where + ": spawn needs a prefab");
+            if (effect.op == "move_actor" && args.value("scene", std::string()).empty() && args.value("marker", std::string()).empty()) {
+                problems.push_back(where + ": move_actor needs a scene or a marker");
+            }
+            if (effect.op == "give_to" && args.value("item", std::string()).empty()) problems.push_back(where + ": give_to needs an item");
+            continue;
+        }
         if (questOp) {
             const Quest* quest = findQuest(effect.name);
             if (quest == nullptr) {
@@ -1037,10 +1062,13 @@ void StoryState::OnReached(const std::string& marker, const StoryLibrary& librar
           library);
 }
 
-void StoryState::OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library) {
+void StoryState::OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library,
+                            const std::vector<std::string>& names) {
     Count("defeat",
           [&](const QuestObjective&, const std::string& target) {
-              return target == prefab || (!team.empty() && target == team) ? 1 : 0;
+              if (target.empty()) return 0;
+              if (target == prefab || (!team.empty() && target == team)) return 1;
+              return std::find(names.begin(), names.end(), target) != names.end() ? 1 : 0;
           },
           library);
 }

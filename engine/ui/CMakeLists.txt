@@ -26,6 +26,6 @@ add_library(aige_ui STATIC
     UiDesign.cpp
 )
 target_include_directories(aige_ui PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_ui PUBLIC aige_renderer2d nlohmann_json::nlohmann_json PRIVATE RmlUi::Core)
+target_link_libraries(aige_ui PUBLIC aige_install aige_renderer2d nlohmann_json::nlohmann_json PRIVATE RmlUi::Core)
 target_compile_definitions(aige_ui PRIVATE AIGE_UI_DATA_DIR="${CMAKE_SOURCE_DIR}/data/ui")
 target_compile_features(aige_ui PUBLIC cxx_std_20)

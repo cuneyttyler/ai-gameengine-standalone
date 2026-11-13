@@ -238,97 +238,9 @@ json AssetPlan(const Ontology& ontology, const Catalog& catalog, const json& bri
     return {{"rows", rows}, {"summary", {{"project", fromProject}, {"generate", toGenerate}}}};
 }
 
-json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* merge, const Catalog* catalog, bool isoGrid, int round) {
-    const BuildType* build = ontology.Build(brief.value("buildType", ""));
-    json window = {{"round", round}, {"buildType", brief.value("buildType", "")}, {"name", brief.value("name", "")}};
-    if (build == nullptr) {
-        window["problems"] = json::array({{{"where", "buildType"}, {"message", "unknown build type"}}});
-        return window;
-    }
-    window["buildTypeName"] = build->name;
-
-    // Size, with numbers.
-    json classes = json::array();
-    for (const auto& s : build->scale) {
-        classes.push_back({{"id", s.id}, {"buildings", {s.buildings.first, s.buildings.second}}, {"side", {s.side.first, s.side.second}}});
-    }
-    window["size"] = {{"class", BriefValue(brief, "scale.class")},
-                      {"buildings", BriefValue(brief, "scale.buildings.count")},
-                      {"area", BriefValue(brief, "scale.area.area")},
-                      {"unit", build->unit.label},
-                      {"classes", classes}};
-    // Layout, walls, features, style: the build type's Brief fields.
-    const json& fields = build->briefFields;
-    // One pattern or a mix: always shown as shares.
-    json shares = json::object();
-    const json layout = BriefValue(brief, "shape.layout");
-    if (layout.is_string()) shares[layout.get<std::string>()] = 1.0;
-    else if (layout.is_object()) shares = layout.contains("mix") ? layout["mix"] : layout;
-    window["layout"] = {{"value", shares}, {"options", fields.value("layout", json::array())},
-                        {"description", BriefValue(brief, "shape.description")}};
-    window["walled"] = {{"value", BriefValue(brief, "walled")}, {"options", fields.value("walled", json::array())}};
-    // The root's own settings (a dungeon's levels and goal, a building's floors and kind), as in the Build panel's choices.
-    json settings = json::array();
-    const json choices = BuildChoices(ontology); // named: its "types" are iterated by reference
-    for (const auto& t : choices["types"]) {
-        if (t.value("id", "") != build->id) continue;
-        for (auto f : t["fields"]) {
-            const std::string path = f.value("path", "");
-            if (path.rfind("root.", 0) != 0) continue;
-            f["value"] = BriefValue(brief, path);
-            settings.push_back(f);
-        }
-    }
-    window["settings"] = settings;
-    json features = json::array();
-    for (const auto& f : brief.value("features", json::array())) {
-        if (f.is_object()) features.push_back(f.value("module", ""));
-        else if (f.is_string()) features.push_back(f);
-    }
-    window["features"] = {{"value", features}, {"options", fields.value("features", json::array())}};
-    // An open world's places (its briefFields.places): each a section of its own, its name, type and size; the size
-    // shown as what it makes (its type's scale class for it and that class's buildings).
-    if (const json pf = fields.value("places", json()); pf.is_object()) {
-        json rows = json::array();
-        const json places = BriefValue(brief, "places");
-        if (places.is_object()) {
-            for (const auto& [key, p] : places.items()) {
-                if (!p.is_object()) continue;
-                json row = {{"id", key}, {"name", p.value("name", "")}, {"type", p.value("type", "settlement")},
-                            {"size", p.value("size", "small")}};
-                if (const BuildType* t = ontology.Build(row["type"].get<std::string>())) {
-                    if (auto it = t->sizes.find(row["size"].get<std::string>()); it != t->sizes.end()) {
-                        row["class"] = it->second;
-                        if (const ScaleClass* sc = t->Scale(it->second)) row["buildings"] = {sc->buildings.first, sc->buildings.second};
-                    }
-                    row["typeName"] = t->name;
-                }
-                rows.push_back(row);
-            }
-        }
-        json types = json::array();
-        for (const auto& id : pf.value("types", json::array())) {
-            const BuildType* t = id.is_string() ? ontology.Build(id.get<std::string>()) : nullptr;
-            types.push_back({{"id", id}, {"name", t ? t->name : id.get<std::string>()}});
-        }
-        window["places"] = {{"value", rows}, {"types", types}, {"sizes", pf.value("sizes", json::array())},
-                            {"description", pf.value("description", "")}};
-    }
-    json style = json::object();
-    const auto styleFields = fields.value("style", json::object());
-    for (const auto& [key, spec] : styleFields.items()) {
-        json options = spec;
-        if (spec.is_string()) {
-            options = json::array();
-            if (const auto* scheme = ontology.Scheme(spec.get<std::string>())) {
-                for (const auto& c : *scheme) options.push_back(c.id);
-            }
-        }
-        style[key] = {{"value", BriefValue(brief, "style." + key)}, {"options", options}};
-    }
-    style["tags"] = {{"value", BriefValue(brief, "style.tags")}};
-    window["style"] = style;
-
+// The components table's rows for a Brief (a place's, or one of an open world's places as its own sub-Brief): every
+// component its build type allows, those in the Brief first, each with its amount, what it holds and its settings.
+static json ComponentRows(const Ontology& ontology, const json& brief, const BuildType* build, const Catalog* catalog, bool isoGrid, int round) {
     // Components: every one the build type allows, those in the Brief first.
     json components = json::array();
     std::vector<std::string> order;
@@ -403,7 +315,117 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
         }
         components.push_back(row);
     }
-    window["components"] = components;
+    return components;
+}
+
+json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* merge, const Catalog* catalog, bool isoGrid, int round) {
+    const BuildType* build = ontology.Build(brief.value("buildType", ""));
+    json window = {{"round", round}, {"buildType", brief.value("buildType", "")}, {"name", brief.value("name", "")}};
+    if (build == nullptr) {
+        window["problems"] = json::array({{{"where", "buildType"}, {"message", "unknown build type"}}});
+        return window;
+    }
+    window["buildTypeName"] = build->name;
+
+    // Size, with numbers.
+    json classes = json::array();
+    for (const auto& s : build->scale) {
+        classes.push_back({{"id", s.id}, {"buildings", {s.buildings.first, s.buildings.second}}, {"side", {s.side.first, s.side.second}}});
+    }
+    window["size"] = {{"class", BriefValue(brief, "scale.class")},
+                      {"buildings", BriefValue(brief, "scale.buildings.count")},
+                      {"area", BriefValue(brief, "scale.area.area")},
+                      {"unit", build->unit.label},
+                      {"classes", classes}};
+    // Layout, walls, features, style: the build type's Brief fields.
+    const json& fields = build->briefFields;
+    // One pattern or a mix: always shown as shares.
+    json shares = json::object();
+    const json layout = BriefValue(brief, "shape.layout");
+    if (layout.is_string()) shares[layout.get<std::string>()] = 1.0;
+    else if (layout.is_object()) shares = layout.contains("mix") ? layout["mix"] : layout;
+    window["layout"] = {{"value", shares}, {"options", fields.value("layout", json::array())},
+                        {"description", BriefValue(brief, "shape.description")}};
+    window["walled"] = {{"value", BriefValue(brief, "walled")}, {"options", fields.value("walled", json::array())}};
+    // The root's own settings (a dungeon's levels and goal, a building's floors and kind), as in the Build panel's choices.
+    json settings = json::array();
+    const json choices = BuildChoices(ontology); // named: its "types" are iterated by reference
+    for (const auto& t : choices["types"]) {
+        if (t.value("id", "") != build->id) continue;
+        for (auto f : t["fields"]) {
+            const std::string path = f.value("path", "");
+            if (path.rfind("root.", 0) != 0) continue;
+            f["value"] = BriefValue(brief, path);
+            settings.push_back(f);
+        }
+    }
+    window["settings"] = settings;
+    json features = json::array();
+    for (const auto& f : brief.value("features", json::array())) {
+        if (f.is_object()) features.push_back(f.value("module", ""));
+        else if (f.is_string()) features.push_back(f);
+    }
+    window["features"] = {{"value", features}, {"options", fields.value("features", json::array())}};
+    // An open world's places (its briefFields.places): each a section of its own, its name, type and size; the size
+    // shown as what it makes (its type's scale class for it and that class's buildings).
+    if (const json pf = fields.value("places", json()); pf.is_object()) {
+        json rows = json::array();
+        const json places = BriefValue(brief, "places");
+        if (places.is_object()) {
+            for (const auto& [key, p] : places.items()) {
+                if (!p.is_object()) continue;
+                json row = {{"id", key}, {"name", p.value("name", "")}, {"type", p.value("type", "settlement")},
+                            {"size", p.value("size", "small")}};
+                if (const BuildType* t = ontology.Build(row["type"].get<std::string>())) {
+                    if (auto it = t->sizes.find(row["size"].get<std::string>()); it != t->sizes.end()) {
+                        row["class"] = it->second;
+                        if (const ScaleClass* sc = t->Scale(it->second)) row["buildings"] = {sc->buildings.first, sc->buildings.second};
+                    }
+                    row["typeName"] = t->name;
+                    // Its own configuration, as a single place's: its sub-Brief (its type, its size's class, the
+                    // components set for it), completed with its type's defaults; edited at places.<id>.components.
+                    json sub = {{"schema", "aige.brief/1"}, {"buildType", t->id}, {"name", row["name"]}};
+                    if (row.contains("class")) sub["scale"] = {{"class", row["class"]}};
+                    if (p.contains("components") && p["components"].is_object()) sub["components"] = p["components"];
+                    sub = CompleteBrief(ontology, sub);
+                    row["components"] = ComponentRows(ontology, sub, t, nullptr, isoGrid, round);
+                    if (p.contains("where")) row["where"] = p["where"];
+                }
+                rows.push_back(row);
+            }
+        }
+        json types = json::array();
+        for (const auto& id : pf.value("types", json::array())) {
+            const BuildType* t = id.is_string() ? ontology.Build(id.get<std::string>()) : nullptr;
+            types.push_back({{"id", id}, {"name", t ? t->name : id.get<std::string>()}});
+        }
+        window["places"] = {{"value", rows}, {"types", types}, {"sizes", pf.value("sizes", json::array())},
+                            {"description", pf.value("description", "")}};
+    }
+    // Its gateways (ways into other places: a dungeon's cave mouth, a crypt door), each its kind and where, in words.
+    if (const json gateways = BriefValue(brief, "gateways"); (gateways.is_array() && !gateways.empty()) || build->layout == "site") {
+        json kinds = json::array();
+        for (const auto& [id, role] : ontology.Roles()) {
+            if (role.broader == "gateway") kinds.push_back({{"id", id}, {"name", role.label}});
+        }
+        window["gateways"] = {{"value", gateways.is_array() ? gateways : json::array()}, {"kinds", kinds}};
+    }
+    json style = json::object();
+    const auto styleFields = fields.value("style", json::object());
+    for (const auto& [key, spec] : styleFields.items()) {
+        json options = spec;
+        if (spec.is_string()) {
+            options = json::array();
+            if (const auto* scheme = ontology.Scheme(spec.get<std::string>())) {
+                for (const auto& c : *scheme) options.push_back(c.id);
+            }
+        }
+        style[key] = {{"value", BriefValue(brief, "style." + key)}, {"options", options}};
+    }
+    style["tags"] = {{"value", BriefValue(brief, "style.tags")}};
+    window["style"] = style;
+
+    window["components"] = ComponentRows(ontology, brief, build, catalog, isoGrid, round);
 
     // What the drafts disagreed on or guessed.
     json marks = json::object();
@@ -474,6 +496,14 @@ void ApplyWindowEdit(const Ontology& ontology, json& brief, const std::string& p
 namespace {
 
 std::string Label(std::string id) {
+    // camelCase into words (settlementSize: Settlement size).
+    std::string spaced;
+    for (std::size_t i = 0; i < id.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(id[i]);
+        if (i > 0 && std::isupper(ch) && std::islower(static_cast<unsigned char>(id[i - 1]))) spaced += ' ', spaced += static_cast<char>(std::tolower(ch));
+        else spaced += id[i];
+    }
+    id = spaced;
     std::replace(id.begin(), id.end(), '-', ' ');
     if (!id.empty()) id[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(id[0])));
     return id;

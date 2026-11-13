@@ -14,7 +14,7 @@ const hints: Record<string, string> = {
 
 const hint = computed(() =>
   editorState.playing
-    ? 'Playing · WASD move · Space or click attack · Esc stop · changes revert on stop'
+    ? 'Playing · WASD move · Space or click attack · Esc closes a window · F5 stop · changes revert on stop'
     : `${hints[editorState.tool] ?? ''} · right-drag pan · wheel zoom · F frame`,
 )
 </script>

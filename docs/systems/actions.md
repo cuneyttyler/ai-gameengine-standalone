@@ -39,7 +39,7 @@ and merchants add. Both go through the same use (`Act(user, target)`), so anythi
 
 | Field | |
 |---|---|
-| `trigger` | `input` (its `action` pressed within `range` of it), `event` (its `event` emitted), `timer` (`seconds` after it appears), `touch` (walked onto) |
+| `trigger` | `input` (its `action` pressed within `range` of it), `event` (its `event` emitted), `timer` (`seconds` after it appears), `touch` (walked onto), `near` (anyone moving comes within `range`), `player-near` (the player alone comes within `range`: what starts a small scene) |
 | `action` | the input action (farm, interact, any of the project's) |
 | `event` | the event, for `trigger: event` |
 | `seconds` | for `trigger: timer` |

@@ -5,12 +5,15 @@
 #include "places/Brief.h"
 #include "places/Ontology.h"
 #include "places/PlaceValidate.h"
+#include "places/WorldSections.h"
 
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -122,9 +125,39 @@ public:
     // Reopens a build of the project (places/<id>/) where it was left; a step
     // that was waiting on the AI starts again. Returns why it can't, or "".
     std::string Open(const std::string& id);
-    // Whether the AI answer `requestId` is this build's.
-    bool Owns(int requestId) const { return pending_.contains(requestId); }
+    // Whether the AI answer `requestId` is this build's (or one of its sections' builds', a world's).
+    bool Owns(int requestId) const {
+        if (pending_.contains(requestId)) return true;
+        for (const auto& s : sectionBuilds_) {
+            if (s && s->Owns(requestId)) return true;
+        }
+        return false;
+    }
     void OnResponse(int requestId, const nlohmann::json& body);
+    bool Waiting() const { return !pending_.empty(); }
+
+    // An open world's sections (docs/places/tiling.md §5): once the world plan is approved, each section (each place,
+    // each forest) planned as a place of its own on the land the world gave it (a build of its own, driven here: its
+    // AI answers come through this build's OnResponse), then all put into the world: one plan to paint or assemble.
+    std::string PlanSections();
+    // The sections' builds driven on as far as they go without the AI; true when one moved.
+    bool DriveSections();
+    bool SectionsPlanned() const { return sectionsPlanned_; }
+    // The sections as they are now (each its build's plan, edited or not) put into the world again, without planning
+    // them again. Returns why it can't.
+    std::string PutSectionsIn();
+    // The section build `index`'s id (World ▸ Sections opens it), or "".
+    std::string SectionBuild(size_t index) const { return index < sectionBuilds_.size() && sectionBuilds_[index] ? sectionBuilds_[index]->Id() : ""; }
+    // A section's build: the world it's part of (its build id), or "".
+    std::string WorldOf() const { return section_ ? section_->world : ""; }
+    // This build is one section of a world: planned on its land (its ways in, the world's roads through it, its seed),
+    // as the world type says (no woods round it, no forests of its own).
+    void SetSection(const SectionJob& job) { section_ = job; }
+    // Painted freely: its painting's density, px across a cell (48 by default; lowered: fewer tiles and calls). Why not, or "".
+    std::string SetPaintDensity(int cellPx);
+    int PaintDensity() const { return paintCellPx_; }
+    // The story each section serves (a game plan's: {place key: story}), given to its build when it starts.
+    void SetSectionStories(const nlohmann::json& stories) { sectionStories_ = stories; }
 
     // A field changed in the window.
     void Edit(const std::string& path, const nlohmann::json& value);
@@ -419,6 +452,20 @@ private:
     bool makingInteriors_ = false; // the interiors (docs/places/interiors.md §7): asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
     std::string scope_ = "place";      // place or world (Scope)
+    int paintCellPx_ = 48;             // painted freely: px across a cell (SetPaintDensity; 48, or lowered for fewer calls)
+    // A section's (SetSection): its compile options and the world type's rules, on every compile.
+    void ForSection(CompileOptions& options, nlohmann::json& spec) const;
+    void MergeSections();
+    void ForgetSections(); // the world re-solved: its sections are of the plan before
+    nlohmann::json SectionsSession() const;
+    void RestoreSections(const nlohmann::json& saved);
+    std::optional<SectionJob> section_;
+    std::vector<SectionJob> sectionJobs_;                   // a world's sections (PlanSections)
+    std::vector<std::unique_ptr<PlaceBuild>> sectionBuilds_; // each one's build (null: it couldn't start)
+    nlohmann::json sectionErrors_ = nlohmann::json::object(); // section id -> why it failed
+    bool sectionsPlanned_ = false;
+    nlohmann::json sectionStories_ = nlohmann::json::object();
+    nlohmann::json worldPlan_; // the world's own plan, before its sections went in (world.solved.json)
     bool findingMarks_ = false;        // the vision model looking for what stands in a free painting
     bool fromPicture_ = false;   // StartFromPicture: no Layout, Plan or Paint
     std::string reference_;      // SetReference: the picture ④ Paint paints after, in the build's folder

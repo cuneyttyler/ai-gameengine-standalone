@@ -454,10 +454,13 @@ const std::map<std::string, AnimatorDef>& BuiltIns() {
     static const std::map<std::string, AnimatorDef> builtIns = [] {
         std::map<std::string, AnimatorDef> m;
         m["humanoid"] = Make("humanoid", nlohmann::json::parse(R"({
-            "states": [{"id": "idle"}, {"id": "walk"}, {"id": "attack", "exit": "end"}, {"id": "cast", "exit": "end"},
-                       {"id": "use", "exit": "end"}, {"id": "hurt", "exit": "end"}, {"id": "die"}],
+            "states": [{"id": "idle"}, {"id": "walk"}, {"id": "run"}, {"id": "climb"}, {"id": "attack", "exit": "end"},
+                       {"id": "cast", "exit": "end"}, {"id": "use", "exit": "end"}, {"id": "hurt", "exit": "end"}, {"id": "die"}],
             "transitions": [
                 {"from": "idle", "to": "walk", "if": "speed > 0.1"}, {"from": "walk", "to": "idle", "if": "speed <= 0.1"},
+                {"from": "walk", "to": "run", "if": "speed > 4.6"}, {"from": "run", "to": "walk", "if": "speed <= 4.6"},
+                {"from": "run", "to": "idle", "if": "speed <= 0.1"},
+                {"from": "*", "to": "climb", "if": "climbing", "priority": 1}, {"from": "climb", "to": "idle", "if": "!climbing"},
                 {"from": "*", "to": "attack", "if": "attacking", "priority": 1},
                 {"from": "*", "to": "cast", "if": "casting", "priority": 1},
                 {"from": "*", "to": "use", "if": "using", "priority": 1},
@@ -610,6 +613,8 @@ std::string ChooseClip(Registry& registry, Entity entity, const Animator& animat
             if (variant || plays) candidates.push_back(name);
         }
     }
+    // A sheet without a run or climb clip walks instead (32.6: those are drawn only when asked for).
+    if (candidates.empty() && (current.id == "run" || current.id == "climb") && sheet.Clip("walk")) return "walk";
     if (candidates.size() <= 1) return candidates.empty() ? current.clip : candidates.front();
     if (animator.pick == "weapon") {
         // The weapon's own clip or variant, else its class's clips; unarmed, the unarmed ones.
@@ -850,14 +855,28 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         else shown[{link.parent, link.slot}] = entity;
     }
     std::set<Entity> kept;
+    // What each one shows: its equipment by slot, and an item in its hand ("held", over its weapon).
+    std::map<Entity, std::vector<std::pair<std::string, std::string>>> showing;
     for (auto [owner, equipment] : registry.view<Equipment>(entt::exclude<Transient>).each()) {
         if (!equipment.show) continue;
         for (const auto& slot : EquipmentSlots()) {
             const std::string* id = EquipmentSlot(equipment, slot);
-            if (!id || id->empty()) continue;
+            if (id && !id->empty()) showing[owner].push_back({slot, *id});
+        }
+    }
+    for (auto [owner, hand] : registry.view<InHand>(entt::exclude<Transient>).each()) {
+        if (hand.item.empty()) continue;
+        auto& list = showing[owner];
+        list.erase(std::remove_if(list.begin(), list.end(), [](const auto& s) { return s.first == "weapon"; }), list.end());
+        list.push_back({"held", hand.item});
+    }
+    for (auto& [owner, list] : showing) {
+        for (const auto& [slot, idValue] : list) {
+            const std::string* id = &idValue;
             const Record* record = ActiveRecords().Find("item", *id);
             const nlohmann::json item = record ? record->resolved : nlohmann::json::object();
-            const std::string picture = item.value("sprite", "");
+            std::string picture = item.value("sprite", "");
+            if (picture.empty() && slot == "held") picture = item.value("icon", ""); // a thing held: its icon, small
             if (picture.empty()) continue;
             Entity made{entt::null};
             if (auto it = shown.find({owner, slot}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == *id) {
@@ -870,7 +889,7 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             }
             kept.insert(made);
             auto& attachment = registry.get_or_emplace<Attachment>(made);
-            static const std::map<std::string, std::string> kPoints = {{"weapon", "hand"}, {"offhand", "offhand"}, {"head", "head"},
+            static const std::map<std::string, std::string> kPoints = {{"weapon", "hand"}, {"held", "hand"}, {"offhand", "offhand"}, {"head", "head"},
                                                                        {"body", "body"}, {"hands", "hand"}, {"feet", "feet"},
                                                                        {"amulet", "neck"}, {"ring", "hand"}};
             // A record's empty fields are its defaults: by slot, auto.
@@ -881,6 +900,7 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             attachment.pivotY = grip.is_array() && grip.size() == 2 && grip[1].is_number() ? grip[1].get<float>() : 0.5f;
             attachment.pointing = item.value("pointing", 0.0f);
             attachment.size = item.value("size", 0.0f);
+            if (slot == "held" && item.value("sprite", "").empty() && attachment.size <= 0.0f) attachment.size = 16.0f; // an icon: hand-sized
             attachment.layer = item.value("layer", std::string());
             if (attachment.layer.empty()) attachment.layer = "auto";
             attachment.turn = item.value("turn", true);

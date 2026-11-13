@@ -160,16 +160,17 @@ Questions: why is the AI not working? AI says no model provider is configured; h
 ## Other common problems
 
 - **"Stop Play mode before asking for changes."**: stop playing (F5) first.
-- **"The AI kept asking to look things up without answering; ask again, more precisely."**: name the entity, file or place you mean.
+- **"Stopped: couldn't find what the step needs (searched for ...)"**: what it searched for isn't in the open scene or the project. Add it, open the scene it's in, or name the entity exactly.
+- **"Stopped: the AI kept looking things up (N rounds) without making the change"**: name the entity, file or place you mean.
 - **"The AI couldn't produce a valid change."**: its answer failed validation twice; the reasons are listed. Rephrase, or ask for less at once.
 - **A proposal says it's from before the editor restarted**: ask again.
-- **My request opened the Build panel or Planner**: that's routing (building a new place, designing a game). On a build card press **Ask as a change instead** if you meant a change.
+- **My request asked about the Build panel or Planner**: that's routing (building a brand-new place, designing a whole new game). Click **Do it here in the AI panel** if you meant a change; on a build card that's still reading the request, **Ask as a change instead** does the same. Naming a scene the project has ("in Bellwether") keeps a request in the AI panel.
 - **The script fails when the game runs**: press **Ask AI to fix** under the script check.
 - **Contradictions with the World Bible**: **Ask AI to fix**, or apply anyway if the canon should change (then edit the World Bible).
 
 ### Example: the AI keeps looking things up
 
-1. "Fix the broken thing in the forest" ends with "The AI kept asking to look things up without answering; ask again, more precisely."
+1. "Fix the broken thing in the forest" ends with "Stopped: couldn't find what the step needs (searched for find_entities name "broken"; ...)".
 2. Ask again, naming what you mean:
 
    > The bridge entity "Old Bridge" in the forest scene doesn't let the player cross; make it walkable

@@ -261,6 +261,8 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         std::string error;
         if (auto cutscene = LoadCutscene(project.root, id, &error)) {
             cutscenes.push_back({{"id", id}, {"name", cutscene->name}, {"seconds", cutscene->Length()}});
+        } else {
+            cutscenes.push_back({{"id", id}, {"error", error}}); // listed all the same: it can be fixed or deleted
         }
     }
 
@@ -336,6 +338,33 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
             std::ifstream buildIn(project.root / "planner" / "buildstate.json", std::ios::binary);
             const nlohmann::json build = buildIn ? nlohmann::json::parse(buildIn, nullptr, false) : nlohmann::json();
             if (build.is_object()) context["plan"]["build"] = {{"stage", build.value("stage", "")}, {"status", build.value("status", "")}};
+            // Its placements (34.11): who and what stands in the open scene and why (the placements tool for the rest).
+            std::ifstream placedIn(project.root / "planner" / "placements.json", std::ios::binary);
+            const nlohmann::json placed = placedIn ? nlohmann::json::parse(placedIn, nullptr, false) : nlohmann::json();
+            if (placed.is_object()) {
+                nlohmann::json here = nlohmann::json::array();
+                int total = 0;
+                for (const char* list : {"characters", "props"}) {
+                    for (const auto& e : placed.value(list, nlohmann::json::array())) {
+                        ++total;
+                        const nlohmann::json spot = e.value("spot", nlohmann::json::object());
+                        if (options.scene.empty() || spot.value("scene", "") != options.scene || here.size() >= 30) continue;
+                        nlohmann::json row = {{"id", e.value("id", "")}, {"name", e.value("name", "")}, {"cell", {spot.value("x", 0), spot.value("y", 0)}},
+                                              {"why", e.value("why", "")}, {"locked", e.value("locked", false)}};
+                        for (const char* k : {"building", "marker"}) {
+                            if (spot.contains(k)) row[k] = spot[k];
+                        }
+                        if (spot.value("inside", false)) row["inside"] = true;
+                        for (const char* k : {"home", "work"}) {
+                            if (e.contains(k) && e[k].is_string()) row[k] = e[k];
+                        }
+                        here.push_back(row);
+                    }
+                }
+                context["plan"]["placements"] = {{"inThisScene", here}, {"total", total},
+                                                 {"note", "where each planned character and story prop stands and is over time: the placements tool; "
+                                                          "a change recorded with placement.set (locked)"}};
+            }
         }
     }
     // The story knowledge graph (21): the ontology, the graph's nodes and scenes, its issues.

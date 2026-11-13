@@ -1,4 +1,5 @@
 #include "story/StoryOntology.h"
+#include "install/InstallPath.h"
 
 #include <algorithm>
 #include <fstream>
@@ -119,7 +120,7 @@ void Merge(StoryOntology& o, const std::filesystem::path& dir, std::string* erro
 } // namespace
 
 const StoryOntology& StoryOntology::Engine() {
-    static const StoryOntology engine = Load(AIGE_STORY_DATA_DIR);
+    static const StoryOntology engine = Load(InstalledOr(AIGE_STORY_DATA_DIR, "data/story")); // next to the program when packaged
     return engine;
 }
 

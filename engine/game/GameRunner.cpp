@@ -46,6 +46,8 @@ GameRunner::GameRunner(const Project& project, Registry& registry, LuaVM& lua, P
       world_(project),
       saves_(options_.saveDir) {
     session_ = std::make_unique<GameSession>(registry_, lua_, BootstrapIso(), project_.root);
+    // The story moving persistent characters (32.5): the roster remembers, for scenes not loaded and after travel.
+    session_->SetActorHook([this](const std::string& op, const std::string& key, const nlohmann::json& args) { actors_.Apply(op, key, args); });
     session_->SetSpawner([this](const std::string& prefab, float x, float y) {
         return prefabs_.Instantiate(registry_, prefab, x, y);
     });
@@ -59,6 +61,7 @@ GameRunner::GameRunner(const Project& project, Registry& registry, LuaVM& lua, P
     });
     GameManifest manifest = LoadGameManifest(project_.root);
     if (!options_.titleScreen) manifest.titleScreen = false;
+    session_->SetHudWidgets(manifest.hud);
     flow_.SetManifest(std::move(manifest));
     flow_.SetSlots(saves_.List());
     // The player's settings and the languages the game has (12.7).
@@ -150,10 +153,20 @@ void GameRunner::NewGame() {
     session_->OnSceneChanged();
     session_->SetScene(project_.Relative(start));
     actors_.Enter(registry_, project_.Relative(start), ActorSpawner());
+    ApplyActorStates();
     session_->SetClockMinutes(-1.0);
     session_->ResetClock();
     snapCamera_ = true;
     fade_ = 1.0;
+}
+
+// What the story did to the actors here (hidden, turned hostile or friendly), as the scene starts.
+void GameRunner::ApplyActorStates() {
+    std::vector<std::pair<Entity, const ActorEntry*>> present;
+    for (auto [entity, actor] : registry_.view<Actor>().each()) {
+        if (const ActorEntry* e = actors_.Find(actor.key); e && (e->hidden || !e->team.empty())) present.emplace_back(entity, e);
+    }
+    for (const auto& [entity, e] : present) session_->ApplyActorState(entity, e->hidden, e->team);
 }
 
 ActorRoster::SpawnFn GameRunner::ActorSpawner() {
@@ -208,6 +221,7 @@ bool GameRunner::LoadFrom(const std::string& slot) {
     ApplyWorld(scene);
     actors_.FromJson(save->value("actors", nlohmann::json::object()));
     actors_.Enter(registry_, scene, ActorSpawner());
+    ApplyActorStates();
     if (save->contains("player") && (*save)["player"].is_string()) ReplacePlayer(registry_, (*save)["player"].get<std::string>());
     session_->SetStory(&story_);
     session_->OnSceneChanged();
@@ -237,6 +251,7 @@ void GameRunner::TravelIfAsked() {
     prefabs_.SyncAll(registry_);
     ApplyWorld(travel->scene);
     actors_.Enter(registry_, travel->scene, ActorSpawner());
+    ApplyActorStates();
     session_->OnSceneChanged();
     session_->SetScene(travel->scene);
     snapCamera_ = true;
@@ -265,6 +280,9 @@ void GameRunner::HandleCommand(const GameFlow::Command& command) {
         case Kind::Resume: session_->ResetClock(); break;
         case Kind::Achievements:
             if (const auto player = FindPlayer(registry_)) windows_.OpenAchievements(*player, session_->Achievements().View());
+            break;
+        case Kind::Controls:
+            if (const auto player = FindPlayer(registry_)) windows_.OpenControls(*player, ActiveInputMap());
             break;
         case Kind::QuitToTitle:
             NewGame(); // the start scene behind the title again
@@ -374,6 +392,37 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
         if (session_->Input().Pressed("journal") && free && ActiveSettings().story.journal && session_->StoryLibraryInUse()) {
             windows_.OpenJournal(*player, session_->Story(), *session_->StoryLibraryInUse());
         }
+        if (session_->Input().Pressed("map") && free && windows_.Open() == PlayWindows::Kind::None) {
+            // The scene's picture (ui/maps/<scene>.png, the AI Planner's) and what to do now.
+            const std::string stem = std::filesystem::path(session_->Scene()).stem().string();
+            std::error_code ec;
+            const std::string image = std::filesystem::exists(project_.root / "ui" / "maps" / (stem + ".png"), ec) ? "../maps/" + stem + ".png" : "";
+            std::string objective;
+            if (session_->StoryLibraryInUse()) {
+                if (auto shown = session_->Story().CurrentObjective(*session_->StoryLibraryInUse())) objective = shown->text;
+            }
+            windows_.OpenMap(registry_, *player, image, objective);
+            // Where the player is on it (ui/maps/<scene>.json: the picture's cells, and the scene's offset from them).
+            std::ifstream metaIn(project_.root / "ui" / "maps" / (stem + ".json"), std::ios::binary);
+            const nlohmann::json meta = metaIn ? nlohmann::json::parse(metaIn, nullptr, false) : nlohmann::json();
+            if (const auto* w = registry_.try_get<WorldTransform2D>(*player); w && meta.is_object()) {
+                const nlohmann::json off = meta.value("offset", nlohmann::json::array({0, 0}));
+                const double cx = w->x - off[0].get<double>(), cy = w->y - off[1].get<double>();
+                double fx = -1, fy = -1;
+                if (meta.value("kind", "") == "iso") {
+                    // The painting's view (PaintView::Pixel), over its whole width and height.
+                    const nlohmann::json v = meta.value("view", nlohmann::json::object());
+                    const double x0 = v.value("x0", 0), y0 = v.value("y0", 0), y1 = v.value("y1", 1), tw = v.value("tw", 64.0),
+                                 th = v.value("th", 32.0), top = v.value("top", 0.0);
+                    const double px = (cx - x0 - (cy - y0)) * tw / 2 + (y1 - y0) * tw / 2, py = (cx - x0 + (cy - y0)) * th / 2 + top;
+                    fx = px / std::max(1.0, meta.value("width", 1.0)), fy = py / std::max(1.0, meta.value("height", 1.0));
+                } else {
+                    fx = (cx - meta.value("x0", 0.0)) / std::max(1.0, meta.value("w", 1.0));
+                    fy = (cy - meta.value("y0", 0.0)) / std::max(1.0, meta.value("h", 1.0));
+                }
+                if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) windows_.SetMapMarker(static_cast<float>(fx), static_cast<float>(fy));
+            }
+        }
         if (auto merchant = session_->TakeShopRequest()) {
             const auto* progression = registry_.try_get<Progression>(*player);
             windows_.OpenShop(registry_, *player, *merchant, session_->Day(), progression ? progression->level : 1, shopRng_);
@@ -429,8 +478,8 @@ void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float vi
         docs_->SetDialogue(view ? std::nullopt : session_->CurrentDialogueView());
         HudData hud = session_->MakeHud(viewportWidth, viewportHeight);
         hud.visible = hud.visible && !title && flow_.InPlay();
-        if (camera) PlaceOverhead(hud, [&](float x, float y, float& vx, float& vy) { camera->SceneToViewport(x, y, vx, vy); });
-        else hud.bubbles.clear(), hud.labels.clear(), hud.numbers.clear();
+        if (camera) PlaceOverhead(hud, [&](float x, float y, float& vx, float& vy) { camera->SceneToViewport(x, y, vx, vy); }, viewportWidth, viewportHeight);
+        else hud.bubbles.clear(), hud.labels.clear(), hud.numbers.clear(), hud.markers.clear();
         docs_->SetHud(hud);
         docs_->Render(out);
     } else {
@@ -441,15 +490,7 @@ void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float vi
 }
 
 std::string GameRunner::MenuScreen() const {
-    switch (windows_.Open()) {
-        case PlayWindows::Kind::Inventory: return "inventory";
-        case PlayWindows::Kind::Crafting: return "inventory";
-        case PlayWindows::Kind::Shop: return "shop";
-        case PlayWindows::Kind::Journal: return "journal";
-        case PlayWindows::Kind::Spellbook: return "spellbook";
-        case PlayWindows::Kind::Achievements: return "journal";
-        default: break;
-    }
+    if (const std::string window = windows_.Screen(); !window.empty()) return window;
     switch (flow_.Current()) {
         case GameFlow::State::Title: return "title";
         case GameFlow::State::Paused: return "pause";
@@ -497,6 +538,7 @@ void GameRunner::EnableDocuments(DocumentUi::ImageLoader images) {
     });
     session_->SetDocumentHud(true);
     session_->SetScreenHook([this](const std::string& id, int open) {
+        if (open == -2) return docs_->CloseShown();
         if (open < 0) return docs_->IsShown(id);
         docs_->ShowScreen(id, open == 1);
         return true;

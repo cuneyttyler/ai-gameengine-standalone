@@ -51,7 +51,12 @@ paints only the ground). Dungeons and buildings' insides are still painted from 
 
 Since no building plan says where the buildings are, ⑤ Mark is filled in by looking at the painting: the land's water
 and solid ground from the plan, and each building, tower, wall, stall or well the vision model finds becomes an
-occluder with its footprint blocked. Check and adjust them as usual; **Pre-fill** looks again.
+occluder with its footprint blocked. Check and adjust them as usual; **Pre-fill** looks again. The interiors table
+(⑥ Assets) counts only the buildings found in the painting (houses, shops, halls, barns, mills…), not the plan's
+numbers, nor walls, towers, gates, stalls or wells, nor an occluder you hid.
+
+The block-out keeps the main roads and every district's streets (a ward's, a section's in an open world); the plots'
+lanes and yards are left to the painter.
 
 ### Example: a large village painted freely
 
@@ -59,7 +64,8 @@ occluder with its footprint blocked. Check and adjust them as usual; **Pre-fill*
 2. At ③ Plan the land is shown, and beside **Paint →**: *Painting: 31 calls*.
 3. ④ Paint composes the village on the land (about 105 houses, workshops, a temple, an inn, as the plan counted), then
    sharpens it in 30 tiles. The fields are left as bare soil.
-4. ⑤ Mark opens with the houses and the church found as occluders and their footprints blocked: fix the few it missed.
+4. The painting stays on ④ Paint to look over (paint again with notes, or compare it with its plan). **⑤ Mark →** has
+   the houses and the church found as occluders and their footprints blocked: fix the few it missed.
 
 Questions: why are there no buildings in the block-out? how does the painter know how many houses to paint? why are the fields empty? how are occluders found without a plan?
 
@@ -91,12 +97,19 @@ undo and redo; **Save** (Ctrl+S); it also saves itself every minute and when you
 
 If you repaint the picture later, the step says the marks are stale: check the occluder regions again.
 
+### Marking again after it's built
+
+A painted place that's built (the Result page, or reopened from Your builds) has **Mark again** beside Finish: ⑤ Mark
+opens on its marks; change the occluders or the walkable cells and press **Update the scene**. The marks are saved and
+the place is built into the scene again with them (its interiors kept; nothing else in the scene is touched).
+
 Questions: how do I fix where the player can walk in a painted scene? what are the marks? why does Mark say stale?
 
 ## Marking walkable cells
 
 Choose the **Walkable** layer. Tools:
 - **Brush**: paints cells blocked; **Alt** or the right button makes them walkable;
+- **Eraser** (**E**): paints cells walkable again, erasing what's blocked; **Alt** or the right button blocks instead;
 - **Rectangle**: a rectangle of cells;
 - **Fill**: an area of cells of the same kind.
 

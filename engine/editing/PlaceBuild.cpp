@@ -18,6 +18,7 @@
 #include "places/Where.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -200,6 +201,7 @@ int RemoveBuilds(const fs::path& projectRoot, const std::string& keep) {
         if (id.empty() || id == keep || id.find_first_of("/\\.") != std::string::npos) continue;
         const fs::path folder = projectRoot / "places" / id;
         if (!fs::exists(folder / "request.json", ec)) continue; // only a build's folder
+        if (ReadJson(folder / "session.json").value("section", json()).is_object()) continue; // a world's section: its world's
         if (fs::remove_all(folder, ec) > 0 && !ec) ++removed;
     }
     return removed;
@@ -440,7 +442,10 @@ void PlaceBuild::Save() const {
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
                                           {"method", method_},
+                                          {"paintCellPx", paintCellPx_},
                                           {"scope", scope_},
+                                          {"sections", SectionsSession()},
+                                          {"section", section_ ? SectionJobJson(*section_) : json()},
                                           {"fromPicture", fromPicture_},
                                           {"reference", reference_},
                                           {"models", {{"art", artModel_}, {"background", backgroundModel_}}},
@@ -519,8 +524,7 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
             }
         }
     }
-    method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
-    if (method_ != "Paint") method_ = "Assembled";
+    method_ = NormalBuildMethod(host_.buildMethod ? host_.buildMethod() : "Assembled");
     fromPicture_ = false;
     reference_.clear();
     // Choices without words: a request in words made from them.
@@ -620,7 +624,9 @@ std::string PlaceBuild::StartFromBrief(const std::string& words, const json& bri
         return "the Brief names no build type the engine knows";
     }
     choices_ = json::object();
-    method_ = host_.buildMethod && host_.buildMethod() == "Paint" ? "Paint" : "Assembled";
+    method_ = NormalBuildMethod(host_.buildMethod ? host_.buildMethod() : "Assembled");
+    // A world (an open-world game's map, tiling.md §3) is planned as one: its sections after the Plan.
+    scope_ = host_.ontology().Build(brief.value("buildType", ""))->scope == "world" ? "world" : "place";
     fromPicture_ = false;
     reference_.clear();
     query_ = words.empty() ? brief.value("name", brief.value("buildType", "")) : words;
@@ -679,6 +685,14 @@ void PlaceBuild::InterpretWithoutAi(const std::string& why) {
 }
 
 void PlaceBuild::OnResponse(int requestId, const json& body) {
+    // A section's answer (a world's): to its build, which then goes on as far as it can.
+    for (auto& section : sectionBuilds_) {
+        if (!section || !section->Owns(requestId)) continue;
+        section->OnResponse(requestId, body);
+        DriveSections();
+        Save();
+        return;
+    }
     // An AI answer of an odd shape must not throw out of the build (the editor, the game build):
     // it's noted, and the build goes back to where it was.
     const auto asked = pending_.find(requestId);
@@ -795,11 +809,12 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
     if (what.kind == "interiors") {
         makingInteriors_ = false;
         Log({{"step", "interiors made"}, {"answer", body}});
-        const int paired = PairInteriorMarks(solved_, Folder(), &host_.ontology());
+        const int paired = PairInteriorMarks(MarkSolved(), Folder(), &host_.ontology());
         if (body.value("ok", false)) {
             status_ = std::to_string(paired) + " buildings with interiors.";
             // The vision model's look at each building's place: none there, or one well past its outline.
-            for (const auto& [id, check] : body.value("checks", json::object()).items()) {
+            const json checks = body.value("checks", json::object()); // held: items() only refers to it
+            for (const auto& [id, check] : checks.items()) {
                 if (check.contains("building") && !check.value("building", true)) {
                     Notice("No building was seen where " + id + " should be in the painting: it has no interior (check it in ⑤ Mark).");
                 } else if (check.value("outside", 0.0) > 0.25) {
@@ -1923,6 +1938,7 @@ bool PlaceBuild::LayoutFrozen() const {
 }
 
 void PlaceBuild::LayoutZones() {
+    ForgetSections();
     const Ontology& ontology = host_.ontology();
     for (auto& note : TidySpec(ontology, spec_)) tidied_.push_back(std::move(note));
     // The zones alone: no parcels yet, so each takes the land the plan gives it.
@@ -1977,7 +1993,19 @@ void PlaceBuild::LayoutZones() {
     for (int k = 0; k < (fresh ? 4 : 1); ++k) {
         CompileOptions o = options;
         o.seed = options.seed + static_cast<uint64_t>(k) * 7919;
-        const json ir = CompileSpec(ontology, zones, o);
+        ForSection(o, zones);
+        json ir = CompileSpec(ontology, zones, o);
+        // An open world's layout: its places, forests and water alone; its roads (the main road, the links between its
+        // places, the roads out, the gateways' trails) are laid at ③ Plan.
+        if (scope_ == "world" && ir.contains("statements")) {
+            json kept = json::array();
+            for (const auto& st : ir["statements"]) {
+                const std::string op = st.value("op", "");
+                if ((op == "path" && st.value("class", "") != "river") || op == "connect" || op == "gateway") continue;
+                kept.push_back(st);
+            }
+            ir["statements"] = kept;
+        }
         if (k == 0) WriteJson(Folder() / "zones.ir.json", ir);
         const json solved = SolveLayout(ontology, ir).document;
         const json quality = LayoutQuality(spec_, solved);
@@ -2040,6 +2068,7 @@ json PlaceBuild::NetworkGrid() {
     options.seed = Fnv1a(id_);
     options.side = BriefSide();
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
+    ForSection(options, spec);
     const json ir = CompileSpec(ontology, spec, options);
     bool partition = false;
     for (const auto& st : ir.value("statements", json::array())) partition = partition || (st.value("op", "") == "partition" && st.value("id", "") == "site/zones");
@@ -2522,12 +2551,13 @@ std::string PlaceBuild::Approve() {
     Log({{"step", "approved"}});
     if (!solved_.is_object()) Solve();
     stage_ = "planned";
-    Review(); // the AI checks the map; without the AI, the layout stands as solved
+    if (!section_) Review(); // the AI checks the map; without the AI, the layout stands as solved (a world's section: the world is checked whole)
     Save();
     return {};
 }
 
 void PlaceBuild::Solve() {
+    ForgetSections(); // the world planned again: its sections go with the plan they were cut from
     const Ontology& ontology = host_.ontology();
     CompileOptions options;
     options.seed = Fnv1a(id_);
@@ -2566,6 +2596,7 @@ void PlaceBuild::Solve() {
         ++rounds;
         const auto roundScale = options.zoneScale;
         const auto t0 = std::chrono::steady_clock::now();
+        ForSection(options, spec_);
         ir = CompileSpec(ontology, spec_, options);
         // The plan's arrangement (what each kind is for, its size, where it stands and faces: docs/dungeon.md §0).
         ApplyArrangement(ontology, ir, spec_.value("arrangement", json::object()));
@@ -2817,6 +2848,12 @@ void PlaceBuild::RenderMap() {
         if (m == nullptr) continue;
         const int n = ++seen[m->id];
         image.names[c.value("id", "")] = m->name + (total[m->id] > 1 ? " " + std::to_string(n) : "");
+        // An open world's place: by its name (Ashford), not its land's module (Heartland 3).
+        for (const auto& site : c.value("children", json::array())) {
+            if (const std::string name = site.value("quality", json::object()).value("name", ""); site.value("module", "") == "site" && !name.empty()) {
+                image.names[c.value("id", "")] = name;
+            }
+        }
     }
     std::function<void(const json&)> walk = [&](const json& node) {
         image.modules[node.value("id", "")] = node.value("module", "");
@@ -3974,6 +4011,7 @@ void PlaceBuild::SolveParts(const std::set<std::string>& parts, const std::strin
     options.fixedSide = true;
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
     options.zoneScale = fitScale_;
+    ForSection(options, spec_);
     json ir = CompileSpec(ontology, spec_, options);
     ApplyArrangement(ontology, ir, spec_.value("arrangement", json::object()));
     SolveOptions solve;
@@ -4557,8 +4595,10 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
                     }
                 }
             }
-            // It passed, but the model named no role (or a broader one): it's the slot's, for the catalog.
-            if (fills && !checking && !isWanted(seen) && !wanted.empty()) newAssets_.back()["fields"]["roles"] = wanted.front();
+            // It passed, but the model named no role (or a broader one): it's the slot's, for the catalog. One drawn for the
+            // slot is the slot's even when the check finds fault (kept as drawn, the finding reported; no redraw on its own).
+            const bool madeForIt = s.need.value("action", "") == "generate";
+            if ((fills || madeForIt) && !checking && !isWanted(seen) && !wanted.empty()) newAssets_.back()["fields"]["roles"] = wanted.front();
             // The verdict on this one, shown under its picture.
             for (auto& m : s.made) {
                 if (m.value("path", "") == path) {
@@ -4592,15 +4632,18 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
                 reasons += (reasons.empty() ? "" : "; ") + std::string("it looks like ") + (seen.empty() ? a.value("kind", "something else") : seen) +
                            ", not a " + s.need.value("title", role);
         }
-        if (!body.value("ok", false)) reasons = FirstError(body);
-        // A generated one that didn't pass: again, with the reasons (3 tries at most).
-        if (!passed && s.need.value("action", "") == "generate" && s.attempts < 3) {
-            s.reasons = reasons;
+        const bool drawn = body.value("ok", false);
+        if (!drawn) reasons = FirstError(body);
+        // A generated one the vision check didn't pass is kept as it is, its finding reported (no paid redraw on its own:
+        // the user draws it again from the panel, the reasons going with it). Only nothing drawn is asked for again.
+        if (!passed) s.reasons = reasons;
+        if (!passed && !drawn && s.need.value("action", "") == "generate" && s.attempts < 3) {
             if (SendArt(key)) {
                 status_ = "Making the art again for " + key + " (" + reasons + ")…";
                 return;
             }
         }
+        if (!passed && drawn && !reasons.empty()) Notice("The vision check of " + key + "'s art: " + reasons + ". Kept as drawn; draw it again from the panel if needed.");
         s.passed = passed;
         s.done = true;
     }
@@ -4727,7 +4770,8 @@ void PlaceBuild::FinishSourcing() {
         if (action == "web") t.web = true;
         else t.generate = true;
         for (const auto& m : s.made) {
-            if (m.value("ok", false)) t.approved.insert(m.value("path", "")); // made and passed: no need to look again
+            // Made for it: no need to look again (passed, or kept as drawn though the check found fault).
+            if (m.value("ok", false) || action == "generate") t.approved.insert(m.value("path", ""));
         }
     }
     for (const auto& [key, s] : sourcing_) sourced_[key] = s; // kept for Refine
@@ -4931,7 +4975,7 @@ std::string PlaceBuild::BackgroundDescription() const {
 }
 
 std::string PlaceBuild::MakeBackground() {
-    if (method_ == "Paint") return "a painted place has its painting for ground"; // painted-places.md: no background
+    if (IsPaintMethod(method_)) return "a painted place has its painting for ground"; // painted-places.md: no background
     if (!solved_.is_object() || !solved_.contains("terrain")) return "the plan isn't laid out";
     if (makingBackground_) return "already painting it";
     const json b = solved_["grid"].value("bounds", json::array({0, 0, 1, 1}));
@@ -4954,8 +4998,24 @@ std::string PlaceBuild::PaintModel() const {
 std::string PlaceBuild::Paint(const std::string& notes) {
     if (!solved_.is_object() || !solved_.contains("objects")) return "the plan isn't laid out";
     if (painting_) return "already painting it";
+    // A world is painted with its sections in (their streets, houses and squares): planned first.
+    if (scope_ == "world" && !sectionsPlanned_) return "plan the world's sections first (② World ▸ Sections)";
     const bool free = FreePaint();
-    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder(), 0, free);
+    if (stage_ == "layout") {
+        // Paint (Free) has no ③ Plan: its zones as laid out are what's painted (each zone's ground a colour, filled by
+        // the painter); the layout is its plan from here on.
+        if (!free || scope_ == "world") return "plan it first (③ Plan)";
+        stage_ = "planned";
+        WriteJson(Folder() / "layout.solved.json", solved_);
+        Log({{"step", "painted from the layout"}});
+    }
+    const auto box = OccupiedBounds(solved_);
+    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder(), free ? PlanFreePaint(box[2] - box[0], box[3] - box[1], paintCellPx_).width : 0, free);
+    // Paint (Free): each zone's ground coloured in the block-out, its colour said with the zone (TintZones).
+    std::map<std::string, std::string> zoneColour;
+    if (free) {
+        for (const auto& z : TintZones(solved_, &host_.ontology(), Folder())) zoneColour[z.value("id", "")] = z.value("colour", "");
+    }
     const json legend = [&] {
         std::ifstream in(Folder() / "blockout.legend.json", std::ios::binary);
         try {
@@ -4978,6 +5038,97 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"reference", reference_},
                        {"model", PaintModel()}};
     json send = body;
+    // The plan's parts (its zones), for the painter (both ways of painting): each zone's name, where it is in the picture,
+    // and its buildings, by kind and how many. A free painting composes the place by them; a block-out's painting knows
+    // what each area of coloured shapes is.
+    {
+        std::string root;
+        for (const auto& r : solved_.value("regions", json::array())) {
+            if (r.value("parent", json()).is_null()) root = r.value("id", "");
+        }
+        const json view = prepared.value("view", json());
+        const PaintView pv = PaintView::From(view);
+        const double span = (pv.x1 - pv.x0) + (pv.y1 - pv.y0), pw = std::max(1.0, span * pv.tw / 2), ph = std::max(1.0, span * pv.th / 2 + pv.top);
+        auto whereIn = [&](double cx, double cy) -> std::string {
+            if (!view.is_object()) return {};
+            const auto [px, py] = pv.Pixel(cx, cy);
+            const double fx = px / pw, fy = py / ph;
+            const char* row = fy < 0.36 ? "top" : fy > 0.64 ? "bottom" : "";
+            const char* col = fx < 0.36 ? "left" : fx > 0.64 ? "right" : "";
+            if (!*row && !*col) return "the centre";
+            if (!*row) return std::string("the ") + col;
+            if (!*col) return std::string("the ") + row;
+            return std::string("the ") + row + " " + col;
+        };
+        json zones = json::array();
+        for (const auto& r : solved_.value("regions", json::array())) {
+            if (root.empty() || r.value("parent", json()) != json(root) || r.value("module", "").empty()) continue;
+            const std::string id = r.value("id", "");
+            const ModuleDef* m = host_.ontology().Module(r.value("module", ""));
+            std::map<std::string, int> kinds;
+            for (const auto& o : solved_.value("objects", json::array())) {
+                const std::string oid = o.value("id", "");
+                if (o.value("layer", "") != "building" || !o.value("primary", true) || oid.rfind(id + "/", 0) != 0) continue;
+                std::string kind = o.value("slot", "building");
+                std::replace(kind.begin(), kind.end(), '-', ' ');
+                ++kinds[kind];
+            }
+            // Painted from its layout (Paint (Free): no ③ Plan, so nothing is built in it yet): how many buildings its plan
+            // gives it (its count field: a ward's plots), of the kinds the Brief set or its module's main parcel.
+            if (kinds.empty() && m) {
+                if (const json* node = SpecNode(spec_, id)) {
+                    const std::string field = CountField(*m);
+                    // A count as the plan gives it: n, [lo, hi], {"count": n} or {"count": [lo, hi]}: its middle.
+                    std::function<double(const json&)> middle = [&](const json& v) -> double {
+                        if (v.is_number()) return v.get<double>();
+                        if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) return (v[0].get<double>() + v[1].get<double>()) / 2;
+                        if (v.is_object() && v.contains("count")) return middle(v["count"]);
+                        return 0;
+                    };
+                    const int count = field.empty() ? 0 : static_cast<int>(std::lround(middle(node->value("quantity", json::object()).value(field, json()))));
+                    const json given = node->value("kinds", json::object());
+                    for (const auto& [k, n] : given.items()) {
+                        if (!n.is_number() || n.get<int>() <= 0) continue;
+                        std::string kind = k;
+                        for (const char* tail : {"-plot", "-yard", "-lot"}) {
+                            if (kind.size() > std::strlen(tail) && kind.ends_with(tail)) kind.resize(kind.size() - std::strlen(tail));
+                        }
+                        std::replace(kind.begin(), kind.end(), '-', ' ');
+                        kinds[kind] += n.get<int>();
+                    }
+                    int rest = count;
+                    for (const auto& [k, n] : kinds) rest -= n;
+                    if (rest > 0) {
+                        // The rest: of its module's likeliest parcel (a residential ward's houses).
+                        const ChildDef* best = nullptr;
+                        for (const ChildDef& c : m->children) {
+                            if (host_.ontology().Module(c.module) && host_.ontology().Module(c.module)->level == PlaceLevel::Parcel && (!best || c.weight > best->weight)) {
+                                best = &c;
+                            }
+                        }
+                        std::string kind = best ? best->module : "building";
+                        for (const char* tail : {"-plot", "-yard", "-lot"}) {
+                            if (kind.size() > std::strlen(tail) && kind.ends_with(tail)) kind.resize(kind.size() - std::strlen(tail));
+                        }
+                        std::replace(kind.begin(), kind.end(), '-', ' ');
+                        kinds[kind] += rest;
+                    }
+                }
+            }
+            json buildings = json::array();
+            for (const auto& [k, n] : kinds) buildings.push_back({{"kind", k}, {"count", n}});
+            const json b = r.value("bounds", json::array());
+            const std::string where = b.is_array() && b.size() == 4 ? whereIn(b[0].get<double>() + b[2].get<double>() / 2, b[1].get<double>() + b[3].get<double>() / 2) : "";
+            std::string name = m && !m->name.empty() ? m->name : r.value("module", "");
+            json zone = {{"name", name}, {"where", where}, {"buildings", buildings}};
+            if (const auto c = zoneColour.find(id); c != zoneColour.end()) {
+                zone["colour"] = c->second;
+                if (m) zone["description"] = m->description;
+            }
+            zones.push_back(zone);
+        }
+        if (!zones.empty()) send["zones"] = zones;
+    }
     if (free) {
         // What it's to be: its kind and size, each kind of building and how many (the plan's counts), and its design
         // (the request and the Brief's style), for the painter to compose on the land and decorate as it likes.
@@ -5007,7 +5158,7 @@ std::string PlaceBuild::Paint(const std::string& notes) {
     painting_ = true;
     if (free) {
         const auto bounds = OccupiedBounds(solved_);
-        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1], paintCellPx_);
         status_ = "Painting the place on its land: composed in one call, then " + std::to_string(plan.tiles) + " tiles (" + std::to_string(plan.calls) +
                   " calls)…";
         Log({{"step", "paint"}, {"notes", notes}, {"free", true}, {"calls", plan.calls}});
@@ -5025,9 +5176,11 @@ std::string PlaceBuild::Paint(const std::string& notes) {
 
 std::string PlaceBuild::PaintInteriors() {
     if (makingInteriors_) return {};
-    const json items = InteriorRequests(solved_, &host_.ontology(), Folder());
+    // Painted freely, the plan's buildings aren't in the painting: only those the vision model found there (MarkSolved,
+    // the land alone) have interiors.
+    const json items = InteriorRequests(MarkSolved(), &host_.ontology(), Folder());
     if (items.empty()) {
-        PairInteriorMarks(solved_, Folder(), &host_.ontology());
+        PairInteriorMarks(MarkSolved(), Folder(), &host_.ontology());
         return {};
     }
     const json story = story_.is_object() ? story_ : json::object();
@@ -5052,17 +5205,19 @@ void PlaceBuild::SetModels(const json& models) {
 }
 
 std::string PlaceBuild::SetMethod(const std::string& method) {
-    if (method != "Assembled" && method != "Paint") return "a build method is Assembled or Paint";
-    if (method == method_) return {};
+    if (method != "Assembled" && method != "Paint" && method != "PaintFree" && method != "PaintPlan") {
+        return "a build method is Assembled, Paint (Free) or Paint (by Plan)";
+    }
+    if (NormalBuildMethod(method) == method_) return {};
     if (stage_ == "building") return "not while it's being built";
-    method_ = method;
-    Log({{"step", "method"}, {"method", method}});
+    method_ = NormalBuildMethod(method);
+    Log({{"step", "method"}, {"method", method_}});
     Save();
     return {};
 }
 
 bool PlaceBuild::Painted() const {
-    if (method_ != "Paint") return false;
+    if (!IsPaintMethod(method_)) return false;
     const json p = LoadPainting(Folder());
     return p.is_object() && p.contains("paintedAt");
 }
@@ -5239,13 +5394,17 @@ std::string PlaceBuild::Open(const std::string& id) {
         variety_ = session.value("variety", "");
         if (const json m = session.value("models", json::object()); m.is_object()) {
             artModel_ = m.value("art", ""), backgroundModel_ = m.value("background", "");
+            // A background model no longer offered (FLUX.2 pro, max): the project's instead.
+            if (backgroundModel_ == "bfl:flux-2-pro" || backgroundModel_ == "bfl:flux-2-max") backgroundModel_.clear();
         }
         // Its method; a build from before methods: Paint if it was painted and not skipped, else Assembled.
         fromPicture_ = session.value("fromPicture", false);
         reference_ = session.value("reference", std::string());
         scope_ = session.value("scope", std::string()) == "world" ? "world" : "place";
+        paintCellPx_ = session.value("paintCellPx", kFreePaintCell);
+        if (const json sec = session.value("section", json()); sec.is_object()) section_ = SectionJobFrom(sec); // a world's section
         if (session.contains("method") && session["method"].is_string()) {
-            method_ = session["method"].get<std::string>();
+            method_ = NormalBuildMethod(session["method"].get<std::string>());
         } else {
             const bool skipped = session.value("paint", json::object()).value("skipped", false);
             method_ = !skipped && LoadPainting(folder).value("paintedAt", "") != "" ? "Paint" : "Assembled";
@@ -5363,8 +5522,182 @@ std::string PlaceBuild::Open(const std::string& id) {
             status_.clear();
         }
     }
+    RestoreSections(ReadJson(folder / "session.json").value("sections", json::object()));
+    DriveSections(); // a section that wasn't waiting on the AI goes on
     Save();
     return {};
+}
+
+// --- An open world's sections (docs/places/tiling.md §5) --------------------------------------------------
+
+void PlaceBuild::ForSection(CompileOptions& options, json& spec) const {
+    if (!section_) return;
+    // Its land as the world gave it: its square (not grown), what isn't its land, its ways in, the world's roads, its seed.
+    options.side = section_->side;
+    options.fixedSide = true;
+    options.outside = section_->options.outside;
+    options.entrances = section_->options.entrances;
+    options.roads = section_->options.roads;
+    options.seed = section_->options.seed;
+    ApplySectionSpec(*section_, spec);
+}
+
+json PlaceBuild::SectionsSession() const {
+    if (sectionJobs_.empty()) return json::object();
+    json builds = json::array();
+    for (const auto& b : sectionBuilds_) builds.push_back(b ? json(b->Id()) : json());
+    return {{"builds", builds}, {"planned", sectionsPlanned_}, {"errors", sectionErrors_}};
+}
+
+void PlaceBuild::RestoreSections(const json& saved) {
+    if (scope_ != "world" || !saved.is_object() || !saved.contains("builds")) return;
+    worldPlan_ = ReadJson(Folder() / "world.solved.json");
+    if (!worldPlan_.is_object()) return;
+    sectionJobs_ = WorldSectionJobs(host_.ontology(), brief_, spec_, worldPlan_);
+    for (auto& job : sectionJobs_) job.world = id_;
+    sectionBuilds_.clear();
+    sectionErrors_ = saved.value("errors", json::object());
+    sectionsPlanned_ = saved.value("planned", false);
+    const json builds = saved["builds"];
+    for (size_t i = 0; i < sectionJobs_.size(); ++i) {
+        std::unique_ptr<PlaceBuild> b;
+        if (i < builds.size() && builds[i].is_string()) {
+            Host h = host_;
+            h.layoutStep = false;
+            b = std::make_unique<PlaceBuild>(h);
+            b->SetSection(sectionJobs_[i]);
+            if (!b->Open(builds[i].get<std::string>()).empty()) b.reset();
+        }
+        sectionBuilds_.push_back(std::move(b));
+    }
+}
+
+std::string PlaceBuild::PlanSections() {
+    if (scope_ != "world") return "only an open world has sections";
+    if (!solved_.is_object() || (stage_ != "planned" && stage_ != "sourced" && stage_ != "built")) return "approve the world plan first";
+    if (!worldPlan_.is_object() || !sectionsPlanned_) worldPlan_ = solved_; // the world's own plan (not one with sections in)
+    WriteJson(Folder() / "world.solved.json", worldPlan_);
+    sectionJobs_ = WorldSectionJobs(host_.ontology(), brief_, spec_, worldPlan_);
+    if (sectionJobs_.empty()) return "the world plan has no places or forests to plan";
+    sectionBuilds_.clear();
+    sectionErrors_ = json::object();
+    sectionsPlanned_ = false;
+    for (auto& job : sectionJobs_) {
+        job.world = id_;
+        Host h = host_;
+        h.layoutStep = false; // planned at once: its zones and what's in them
+        auto b = std::make_unique<PlaceBuild>(h);
+        b->SetSection(job);
+        const std::string why = b->StartFromBrief(job.name.empty() ? job.kind : job.name, job.brief);
+        if (!why.empty()) {
+            sectionErrors_[job.id] = why;
+            b.reset();
+        } else if (sectionStories_.contains(job.place)) {
+            b->SetStory(sectionStories_[job.place]); // the story it serves (the plan's)
+        }
+        sectionBuilds_.push_back(std::move(b));
+    }
+    status_ = "Planning the world's " + std::to_string(sectionJobs_.size()) + " sections, one after another…";
+    Log({{"step", "sections"}, {"count", sectionJobs_.size()}});
+    DriveSections();
+    Save();
+    return {};
+}
+
+bool PlaceBuild::DriveSections() {
+    if (sectionJobs_.empty() || sectionsPlanned_) return false;
+    bool did = false;
+    size_t done = 0;
+    for (size_t i = 0; i < sectionBuilds_.size(); ++i) {
+        PlaceBuild* b = sectionBuilds_[i].get();
+        const std::string id = sectionJobs_[i].id;
+        if (b == nullptr || sectionErrors_.contains(id)) {
+            ++done;
+            continue;
+        }
+        // As the game build drives a place (GameBuild::DriveRow): confirmed, laid out, planned, approved; the checks by
+        // the vision model left to the world (it's checked whole).
+        try {
+            for (int step = 0; step < 12; ++step) {
+                const std::string stage = b->Stage();
+                std::string why;
+                if (stage == "request") why = b->Step("assets");
+                else if (stage == "assets") why = b->Confirm();
+                else if (stage == "layout") why = b->PlanFromLayout();
+                else if (stage == "plan") why = b->Approve();
+                else break; // planned (done) or waiting on the AI
+                if (!why.empty()) throw std::runtime_error(stage + ": " + why);
+                did = true;
+            }
+        } catch (const std::exception& e) {
+            sectionErrors_[id] = e.what();
+            Log({{"step", "section failed"}, {"section", id}, {"why", e.what()}});
+            ++done;
+            continue;
+        }
+        if (b->Stage() == "planned") {
+            ++done;
+            continue;
+        }
+        break; // one section at a time: this one waits on the AI
+    }
+    status_ = "Planning the world's sections: " + std::to_string(done) + " of " + std::to_string(sectionJobs_.size()) + " done.";
+    if (done == sectionJobs_.size()) MergeSections();
+    return did;
+}
+
+void PlaceBuild::ForgetSections() {
+    if (scope_ != "world" || sectionJobs_.empty()) return;
+    sectionJobs_.clear();
+    sectionBuilds_.clear();
+    sectionErrors_ = json::object();
+    sectionsPlanned_ = false;
+    worldPlan_ = json();
+}
+
+std::string PlaceBuild::SetPaintDensity(int cellPx) {
+    if (painting_) return "it's being painted";
+    if (std::find(std::begin(kFreePaintDensities), std::end(kFreePaintDensities), cellPx) == std::end(kFreePaintDensities)) {
+        return "a painting is 48, 32, 24, 18, 12, 8, 5 or 4 px a cell";
+    }
+    paintCellPx_ = cellPx;
+    Log({{"step", "paint density"}, {"cellPx", cellPx}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::PutSectionsIn() {
+    if (sectionJobs_.empty()) return "plan the sections first";
+    for (size_t i = 0; i < sectionBuilds_.size(); ++i) {
+        const PlaceBuild* s = sectionBuilds_[i].get();
+        if (s && s->Stage() != "planned" && !sectionErrors_.contains(sectionJobs_[i].id)) return sectionJobs_[i].name + " isn't planned yet";
+    }
+    MergeSections();
+    Save();
+    return {};
+}
+
+void PlaceBuild::MergeSections() {
+    json together = worldPlan_;
+    const json b = together["grid"]["bounds"];
+    const std::vector<std::string> ground = TerrainCells(worldPlan_, b[2].get<int>(), b[3].get<int>());
+    int put = 0;
+    for (size_t i = 0; i < sectionBuilds_.size(); ++i) {
+        const PlaceBuild* s = sectionBuilds_[i].get();
+        if (s == nullptr || !s->Solved().is_object() || s->Stage() != "planned") continue;
+        PutSection(together, s->Solved(), sectionJobs_[i], ground);
+        ++put;
+    }
+    FinishTogether(together);
+    solved_ = together;
+    sectionsPlanned_ = true;
+    if (stage_ == "sourced" || stage_ == "built") stage_ = "planned"; // its art and scene were the plan's before
+    WriteJson(Folder() / "layout.solved.json", solved_);
+    ++imageVersion_;
+    status_ = std::to_string(put) + " of " + std::to_string(sectionJobs_.size()) + " sections planned and put into the world" +
+              (sectionErrors_.empty() ? "." : " (" + std::to_string(sectionErrors_.size()) + " failed: see the World step).") +
+              " It's painted or assembled as one place.";
+    Log({{"step", "sections planned"}, {"put", put}, {"errors", sectionErrors_}});
 }
 
 void PlaceBuild::Cancel() {
@@ -5526,6 +5859,18 @@ json PlaceBuild::State() {
             }
             if (c.contains("at")) row["drawn"] = c["at"];
             if (c.contains("paint")) row["painted"] = true;
+            // An open world's place (its heartland, its site in it): its name, kind and class, as the section it becomes.
+            for (const auto& site : c.value("children", json::array())) {
+                const json q = site.value("quality", json::object());
+                if (site.value("module", "") != "site" || q.value("name", "").empty()) continue;
+                const BuildType* bt = ontology.Build(q.value("build-type", ""));
+                std::string cls = q.value("scale-class", "");
+                std::replace(cls.begin(), cls.end(), '-', ' ');
+                row["name"] = q.value("name", "");
+                row["section"] = {{"kind", q.value("build-type", "")}, {"class", q.value("scale-class", "")}};
+                row["description"] = (cls.empty() ? std::string() : cls + ", ") + (bt ? bt->name : q.value("build-type", "")) +
+                                     ": a section of the world, planned as a place of its own on this land";
+            }
             row["area"] = c.value("quantity", json::object()).value("area", json());
             // Room for what it's to hold: its count of parcels, each a typical lot with its share of the streets.
             if (const int needed = ZoneNeed(ontology, c); needed > 0) {
@@ -5600,14 +5945,42 @@ json PlaceBuild::State() {
         state["scope"] = type ? type->scope : scope_;
         if (type) state["buildType"] = type->id;
     }
+    // A world's section (opened from World ▸ Sections): its name and its world, to go back to.
+    if (section_) state["sectionOf"] = {{"name", section_->name}, {"kind", section_->kind}, {"world", section_->world}};
+    // A world's sections (② World): each one's place, kind, class, its build's step, and why it failed.
+    if (!sectionJobs_.empty()) {
+        json sections = json::array();
+        for (size_t i = 0; i < sectionJobs_.size(); ++i) {
+            const SectionJob& j = sectionJobs_[i];
+            const PlaceBuild* b = i < sectionBuilds_.size() ? sectionBuilds_[i].get() : nullptr;
+            json row = {{"id", j.id}, {"name", j.name}, {"kind", j.kind}, {"class", j.cls}, {"bounds", {j.x, j.y, j.side, j.side}},
+                        {"stage", b ? b->Stage() : "failed"}, {"build", b ? b->Id() : ""}};
+            if (sectionErrors_.contains(j.id)) row["error"] = sectionErrors_[j.id];
+            if (b && b->Stage() == "planned") {
+                int buildings = 0;
+                for (const auto& o : b->Solved().value("objects", json::array())) buildings += o.value("layer", "") == "building" && o.value("primary", false);
+                row["buildings"] = buildings;
+            }
+            sections.push_back(row);
+        }
+        state["sections"] = sections;
+        state["sectionsPlanned"] = sectionsPlanned_;
+    }
     state["paintModel"] = PaintModel();
+    // Paint (Free): painted from its zones at ② Layout, with no ③ Plan.
+    state["freePaint"] = FreePaint();
     // Painted freely: how big its painting is and how many calls it takes (shown before painting, on ③ Plan).
     if (FreePaint() && solved_.is_object() && solved_.contains("grid")) {
         const auto bounds = OccupiedBounds(solved_);
-        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
-        // (klein composes in two calls: strict, then its ground.)
+        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1], paintCellPx_);
+        // (klein composes in two calls: strict, then its ground.) Each density it may be painted at, with its calls.
+        json options = json::array();
+        for (const int px : kFreePaintDensities) {
+            const FreePaintPlan at = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1], px);
+            options.push_back({{"cellPx", px}, {"tiles", at.tiles}, {"calls", at.calls + (PaintModel() == "flux-2-klein-4b" ? 1 : 0)}});
+        }
         state["paintPlan"] = {{"calls", plan.calls + (PaintModel() == "flux-2-klein-4b" ? 1 : 0)}, {"tiles", plan.tiles}, {"width", plan.width},
-                              {"height", plan.height}, {"cellPx", kFreePaintCell}};
+                              {"height", plan.height}, {"cellPx", paintCellPx_}, {"options", options}};
     }
     state["paintFixed"] = brief_.value("buildType", "") == "dungeon"; // painted by FLUX-3-Image, whatever the project says
     state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint
@@ -5620,12 +5993,13 @@ json PlaceBuild::State() {
         json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}, {"makingInteriors", makingInteriors_}, {"findingMarks", findingMarks_}};
         if (FreePaint()) {
             const auto bounds = OccupiedBounds(solved_);
-            const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+            const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1], paintCellPx_);
             paint["free"] = true;
-            paint["plan"] = {{"calls", plan.calls}, {"tiles", plan.tiles}, {"width", plan.width}, {"height", plan.height}, {"cellPx", kFreePaintCell}};
+            paint["plan"] = {{"calls", plan.calls}, {"tiles", plan.tiles}, {"width", plan.width}, {"height", plan.height}, {"cellPx", paintCellPx_}};
         }
         // Each building type's interior (docs/places/interiors.md §1): the Assets step's choice.
-        state["interiors"] = InteriorChoices(solved_, &host_.ontology(), Folder());
+        // (painted freely: the buildings found in the painting, not the plan's: MarkSolved is the land alone)
+        state["interiors"] = InteriorChoices(MarkSolved(), &host_.ontology(), Folder());
         if (const json p = LoadPainting(Folder()); p.is_object()) {
             paint["size"] = p.value("size", json());
             paint["view"] = p.value("view", json());
@@ -5666,7 +6040,7 @@ json PlaceBuild::Card() const {
     else if (stage_ == "plan") text = "③ Plan: review the zones before building";
     else if (stage_ == "layout") text = "① Confirm and ② Layout: what's built and where it goes";
     else if (painting_) text = "④ Paint: painting the place from its plan…";
-    else if (stage_ == "planned" && method_ == "Paint" && !Painted()) text = "④ Paint: paint the place whole";
+    else if (stage_ == "planned" && IsPaintMethod(method_) && !Painted()) text = "④ Paint: paint the place whole";
     else if (stage_ == "planned" && Painted()) {
         const json m = MarksSummary(Folder());
         text = "⑤ Mark: " + std::to_string(m.value("occluders", 0)) + " occluders (" + std::to_string(m.value("edited", 0)) + " edited), " +
@@ -5681,7 +6055,13 @@ json PlaceBuild::Card() const {
     else if (stage_ == "built") text = "⑦ Result: " + status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
-    if (method_ != "Paint") {
+    if (FreePaint() && scope_ != "world") {
+        // Paint (Free) has no ③ Plan: Paint is ③, Mark ④, Assets ⑤, Result ⑥.
+        for (const auto& [from, to] : {std::pair<std::string, std::string>{"③", "②"}, {"④", "③"}, {"⑤", "④"}, {"⑥", "⑤"}, {"⑦", "⑥"}}) {
+            for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at + to.size())) text.replace(at, from.size(), to);
+        }
+    }
+    if (!IsPaintMethod(method_)) {
         // Assembled has no Paint and Mark: its Assets and Result are ④ and ⑤.
         for (const auto& [from, to] : {std::pair<std::string, std::string>{"⑥", "④"}, {"⑦", "⑤"}}) {
             for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at + to.size())) text.replace(at, from.size(), to);

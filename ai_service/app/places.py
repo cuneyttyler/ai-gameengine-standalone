@@ -58,7 +58,13 @@ BRIEF_SHAPE = """The Brief (schema aige.brief/1), as JSON:
     "root": {"relief": "<flat|gentle|hilly: the lie of the wild land>", "woods": "<none|few|some|dense: woods round the place>"},
     "features": [{"module": "<e.g. river>"}],
     "places": {"<p1, p2, ...>": {"name": "<its name>", "type": "<one of the world's place types>",
-                                 "size": "<small|medium|big|huge>"}} (an open world only: its settled places),
+                                 "size": "<small|medium|big|huge>",
+                                 "where": {"type": "<near|by|in>", "to": "<sea|lake|river|forest|mountains|hills|coast|p1...>"},
+                                 "components": {<as "components" below, for this place's own build type>}}}
+              (an open world only: its settled places),
+    "gateways": [{"to": "<the place it leads into: a dungeon, crypt, cave, mine, a tent's or a ship's inside>", "kind": "<one of context.gatewayKinds' ids>",
+                  "at": "<where, in words: in the hills north of the village>", "from": "<p1...: the place it's near, in an open world>"}]
+              (only when the request has a way into another place: "a cave leading to a dungeon in the hills"),
     "components": {
       "<component module id>": {"enabled": true, "count": [low, high] or n, "density": "<none|rare|some|common|abundant>",
                                 "assets": {"source": "auto", "variants": <1-4: how many different looks its things get, when the
@@ -91,7 +97,11 @@ village is a settlement, a port a harbour, a fort a castle) and its size (one of
 unless the request asks for bigger ones, e.g. "big towns" is big, "a great city" huge; root.settlementSize holds the
 size most of them have). As many as the request asks for ("five villages and a castle": six); if it gives no
 number, a handful (four to seven) of the kinds that fit the world. Forests, mountains, the sea and the land between
-are components, not places."""
+are components, not places. A place's "where" only when the request places it ("a fishing village by the sea": by
+sea; "a camp in the forest": in forest; "small villages round the big one": near p1); a harbour is by the sea unless
+the request says otherwise. A place's "components" only for what the request says about that place (the port's docks
+with 1 or 2 piers: {"docks": {"enabled": true, "params": {"piers": [1, 2]}}}; an inn alone on the road: its only
+building an inn), with its own build type's components and fields; leave it out otherwise."""
 
 
 @dataclass
@@ -381,7 +391,9 @@ ZONE_SHAPE = """One zone's parcels, as JSON:
   ],
   "rationale": "<one or two sentences>"
 }
-Group alike parcels into one template with "repeat" (28 cottages are one child, not 28). The repeats of the
+Group alike parcels into one template with "repeat" (28 cottages are one child, not 28). When the Brief's "layout" has
+this zone (its id), its "buildings" are its parcels: each type its template (house: a house plot; shop, smithy, inn...:
+their plots or buildings), its count the repeat, one for each "for" (the smith's forge), and its "features" stand in it. The repeats of the
 building parcels add up to the zone's plots (or, for other build types, the parcels of their unit, rooms or tents,
 add up to the zone's own count field). A dungeon level has one entrance room; the last level holds the goal (a
 boss arena, a treasure room); a floor of a building gets the rooms its kind needs (an inn: a tavern hall and a
@@ -406,7 +418,10 @@ what should be kept apart. Then:
 - say where each zone lies with relations ("rel"), only of these types: near, adjacent, along (a river, road or
   coast), far, north-of, south-of, east-of, west-of (of another child: a zone, the river, a road), in-north,
   in-south, in-east, in-west (to "site": a part of the whole map). "north-west of the river" is two relations.
-  Every direction in the "placement" sentence is also in "rel"."""
+  Every direction in the "placement" sentence is also in "rel".
+- the Brief's "layout", when it has one, is the game designer's: one zone for each of its zones (its id the zone's id, its
+  module the zone's kind), where it says (its "where.rel" as "rel", its "where.words" as "placement"), its area its "share"
+  of the place's area, its plots its buildings' count. Nothing it doesn't name unless a component needs it."""
 
 SKETCH_SHAPE = """
 And, because the site is given as a grid: "sketch": {"rows": [<16 strings of 16 characters, north at the top>],

@@ -60,9 +60,12 @@ struct FreePaintPlan {
     int tiles = 0;             // the tiles with land in them
     int calls = 0;             // the painter's calls: 1 to compose, and the tiles
 };
-FreePaintPlan PlanFreePaint(int across, int down);
+// `cellPx`: the painting's px across a cell (kFreePaintCell, or lowered: fewer tiles, fewer calls, less detail).
+FreePaintPlan PlanFreePaint(int across, int down, int cellPx = kFreePaintCell);
+// The densities a painting may be made at (px a cell), the default first.
+inline constexpr int kFreePaintDensities[] = {48, 32, 24, 18, 12, 8, 5, 4};
 
-// The plan's land alone (painted freely): its ground (the main roads and the world's roads kept, the plots' lanes, yards
+// The plan's land alone (painted freely): its ground (the main roads, the districts' streets and the world's roads kept, the plots' lanes, yards
 // and squares grass; fields kept, as bare soil), its water, and what grows on it; no buildings, fences, walls or things.
 nlohmann::json LandOnly(const nlohmann::json& solved);
 
@@ -71,6 +74,11 @@ nlohmann::json LandOnly(const nlohmann::json& solved);
 // the id map's order}); with `landOnly`, of the land alone (LandOnly) at kFreePaintCell. Returns painting.json.
 nlohmann::json PrepareBlockout(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder, int width = 0,
                                bool landOnly = false);
+// Paint (Free): the land block-out (PrepareBlockout's, landOnly) with each zone that builds coloured flat on its ground
+// (its roads, water and squares as they are), a colour no land has (orange, yellow, purple, red, white, pink), for the
+// painter to fill each colour with its zone freely. Writes blockout.png and painting.json's zones; returns them:
+// [{id, module, colour, rgb}].
+nlohmann::json TintZones(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder);
 
 // ⑤ Mark for a freely painted place: what the vision model found standing in the painting (buildings, walls, towers,
 // large things: [{box: [x, y, w, h] in its pixels, kind}]) as occluders (each its box) and their footprints blocked (the

@@ -66,7 +66,8 @@ The left column lists **folders** inside `assets/` ("All assets" first); click o
 - **Drag** cards (or every picked card) onto a folder to move them.
 - Right-click an asset: **Details**, **Make player** (generated character pictures), **Go to interior / Go to
   exterior** or **Generate interior**, **Rename…**, **Move to folder…**, **Show in Explorer**, **Keep in my library**,
-  **Delete…**.
+  **Show uses** (every scene, prefab and file that uses it; menus.md, "Search in Project and Show uses"), **Delete…**.
+  A prefab's right-click menu has **Show uses** too.
 - Rename and move rewrite every reference (scenes, prefabs, quests, scripts), so nothing breaks.
 - Deleting an asset deletes the file (and its `.meta` and `.gen.json`); prefabs that use it show a missing texture.
 - Right-click a folder: **Rename folder…** (everything in it moves, references follow), **Show in Explorer**, **Remove

@@ -98,7 +98,9 @@ Questions: can I check each step of a task? how do I make the task wait between 
 Built-in limits stop a runaway task:
 - **40 steps**: "Stopped after 40 steps without finishing" (or "with problems left to fix");
 - **the token budget**: the input tokens a task may use, 10 million by default. Change it in the AI panel's ⚙ settings: "A bigger task may use up to [N] million input tokens" (0.5 to 200). When used up: "Stopped: this task used its token budget (N input tokens)." What it did so far goes up for review.
-- **8 lookup rounds**: in a request or a task step the AI may ask to look things up up to 8 times; the last time it's told to answer with what it has. If it still only asks: "The AI kept asking to look things up without answering; ask again, more precisely."
+- **24 lookup rounds**: in a request or a task step the AI may ask to look things up up to 24 times; the last time it's told to answer with what it has.
+- **3 searches that find nothing**: once three searches (find_entities, find_assets, find_prefabs, search_world, what_is_at) have come back empty, the AI may search no more. It's told what it looked for isn't in the project and must make it, or answer with no change and say what's missing. Trying other spellings of the same thing doesn't get more lookups.
+- **Ending with an explanation**: if it still only asks, the request stops with "Stopped: couldn't find what the step needs (searched for ...)" or "Stopped: the AI kept looking things up (N rounds) ...". A Planner step fails with the same explanation, and isn't retried by itself: add what's missing (or name it in the request) and press **Build what's left** (the Requirements tab). A Planner step the AI answers with no change after searches that found nothing fails, with what it searched for and what it said; with no failed search, no change means it's already in place, and the step counts as done (the Planner's checks verify it).
 
 ### Example: give a big task more room
 
@@ -150,6 +152,23 @@ See also: ai-providers-and-keys.md for which provider makes characters, animatio
 The three that had a walk are left alone. Say "regenerate the walks" to have them drawn again too.
 
 Questions: can the AI make characters? why does it animate only four at a time? how do I give every villager a walk animation?
+
+## Adding, editing and removing
+
+The AI panel adds, edits, updates and removes what you name: one change for each thing, all shown for review first.
+
+- **Add**: a new cutscene, quest, dialogue, routine, UI file or record; a component, a character or thing in the scene, a prefab, an input action, a World Bible entry.
+- **Edit or update**: it reads the file first, then writes the whole file back with your change and everything else kept.
+- **Remove**: a cutscene, quest, dialogue, routine, UI file, script, prefab or animation (`delete_file`); a record; an entity or one of its components; a scene, an asset, a World Bible entry or an input action.
+- **"All"** means every one there is: "remove all cutscenes" lists every file in cutscenes/ and removes each.
+- **A cutscene goes with what starts it**: its triggers in the scenes, and the effects in quests, dialogue and prefabs that play it, are taken out too. The review lists the files that change. Anything else that's removed and still named elsewhere (a dialogue a character's Talk names, a script an entity runs) is listed under "Still named in …", so you can change those too.
+- **Undo** (Ctrl+Z, or Undo on the change) puts back every file it removed or changed.
+
+### Example: clearing out old cutscenes
+
+1. Type "remove all cutscenes".
+2. The review lists one Delete for each file in cutscenes/; one of them says "What starts it is taken away too … in: scenes/haunted-graveyard.aige, quests/q-main.json".
+3. Accept: the files are gone, and nothing in the scenes or quests tries to play them any more.
 
 ## Splitting a request into parts
 

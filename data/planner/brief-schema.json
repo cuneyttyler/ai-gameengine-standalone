@@ -50,6 +50,9 @@
       {"path": "placeKinds.interior", "label": "Interiors", "type": "int", "min": 0, "max": 60},
       {"path": "placeKinds.dungeon", "label": "Dungeons", "type": "int", "min": 0, "max": 20},
       {"path": "placeKinds.wilderness", "label": "Wilderness", "type": "int", "min": 0, "max": 20},
+      {"path": "world.spacing", "label": "World spacing", "type": "int", "min": 1, "max": 10},
+      {"path": "world.settlementSize", "label": "Settlement size", "type": "enum", "options": ["small", "medium", "big", "huge"]},
+      {"path": "world.landform", "label": "Landform", "type": "enum", "options": ["inland", "coastal", "island", "archipelago", "continent"]},
       {"path": "interiors", "label": "Interiors", "type": "enum", "options": ["none", "key", "most"]},
       {"path": "travel", "label": "Travel", "type": "enum", "options": ["walk", "walk+fast-travel", "world-map"]}
     ]},
@@ -59,6 +62,7 @@
       {"path": "systems.abilities.on", "label": "Abilities", "type": "bool"},
       {"path": "systems.abilities.magic", "label": "Magic", "type": "bool"},
       {"path": "systems.inventory.on", "label": "Inventory", "type": "bool"},
+      {"path": "items.variety", "label": "Item variety", "type": "enum", "options": ["low", "medium", "high"]},
       {"path": "systems.crafting.on", "label": "Crafting", "type": "bool"},
       {"path": "systems.economy.on", "label": "Economy", "type": "bool"},
       {"path": "systems.economy.currency", "label": "Currency", "type": "text"},
@@ -98,6 +102,9 @@
       {"path": "plan.autonomy.visuals", "label": "⑧ Visuals", "type": "enum", "options": ["confirm", "review", "auto"]},
       {"path": "plan.building", "label": "Building", "type": "enum", "options": ["manual", "automatic", "confirm-per-place"]},
       {"path": "plan.art.source", "label": "Art for the places", "type": "enum", "options": ["search", "generate", "library", "project", "auto"]},
+      {"path": "plan.art.characters", "label": "Art for the characters", "type": "enum", "options": ["all", "main", "none"]},
+      {"path": "plan.art.items", "label": "Art for the items", "type": "enum", "options": ["all", "none"]},
+      {"path": "plan.art.ui", "label": "Art for the interface", "type": "enum", "options": ["all", "none"]},
       {"path": "plan.art.webSearch", "label": "Search the web for free art", "type": "bool"},
       {"path": "plan.art.shareAlike", "label": "Allow share-alike licences (CC BY-SA)", "type": "bool"},
       {"path": "plan.budget.calls", "label": "Budget: AI calls (0: none)", "type": "int", "min": 0, "max": 100000}

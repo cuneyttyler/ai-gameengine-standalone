@@ -16,7 +16,8 @@ nlohmann::json GameManifest::ToJson() const {
             {"titleBackground", titleBackground}, {"titleMusic", titleMusic},
             {"combatMusic", combatMusic},
             {"autosave", autosave},        {"credits", credits},
-            {"genre", genre},              {"systems", systems}};
+            {"genre", genre},              {"systems", systems},
+            {"hud", hud},                  {"screens", screens}};
 }
 
 GameManifest GameManifest::FromJson(const nlohmann::json& json) {
@@ -32,6 +33,12 @@ GameManifest GameManifest::FromJson(const nlohmann::json& json) {
     m.credits = json.value("credits", "");
     m.genre = json.value("genre", "");
     if (json.contains("systems") && json["systems"].is_object()) m.systems = json["systems"];
+    for (const char* key : {"hud", "screens"}) {
+        auto& list = std::string(key) == "hud" ? m.hud : m.screens;
+        for (const auto& v : json.value(key, nlohmann::json::array())) {
+            if (v.is_string()) list.push_back(v.get<std::string>());
+        }
+    }
     return m;
 }
 
@@ -109,6 +116,7 @@ std::vector<GameFlow::Item> GameFlow::Items() const {
                                        {"settings", Tr("menu.settings", "Settings"), settings_ != nullptr}};
             // Only in games that have achievements (24).
             if (hasAchievements_) items.push_back({"achievements", Tr("menu.achievements", "Achievements")});
+            items.push_back({"controls", Tr("menu.controls", "Controls")}); // every action and its keys (32.7)
             items.push_back({"title", Tr("menu.quit_to_title", "Quit to title")});
             items.push_back({"quit", Tr("menu.quit_game", "Quit game")});
             return items;
@@ -286,6 +294,10 @@ GameFlow::Command GameFlow::Choose(int index) {
     if (id == "achievements") {
         Go(State::Playing);
         return {Command::Kind::Achievements};
+    }
+    if (id == "controls") {
+        Go(State::Playing);
+        return {Command::Kind::Controls};
     }
     if (id == "resume") {
         Go(State::Playing);

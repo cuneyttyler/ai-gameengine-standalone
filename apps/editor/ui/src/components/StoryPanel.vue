@@ -5,9 +5,11 @@
 // at a time as a draft and saves it back through the engine's own reader and
 // writer.
 import { sceneList } from '../scenes'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
+import { openContextMenu } from '../contextMenu'
+import { revealState, showUses } from '../projectSearch'
 import ConditionList, { type Condition } from './story/ConditionList.vue'
 import EffectList, { type Effect } from './story/EffectList.vue'
 
@@ -74,6 +76,7 @@ interface QuestContent {
   name: string
   description: string
   giver: string
+  atStart?: boolean // started when a new game starts
   objectives?: Objective[]
   stages: Stage[]
   aliases: Alias[]
@@ -116,6 +119,7 @@ const quest = reactive<QuestContent>({
   name: '',
   description: '',
   giver: '',
+  atStart: false,
   stages: [],
   aliases: [],
   rewards: {},
@@ -152,6 +156,30 @@ onHostMessage((message) => {
 
 onMounted(() => sendToHost({ type: 'story:request' }))
 
+// Opened from elsewhere (Search in project, Show uses): that file, once the lists know it.
+watch(
+  () => revealState.at,
+  () => {
+    const file = revealState.story
+    if (!file) return
+    revealState.story = ''
+    if ([...dialogues.value, ...quests.value, ...schedules.value].some((f) => f.file === file)) open(file)
+    else {
+      reselect = file
+      sendToHost({ type: 'story:request' })
+    }
+  },
+  { immediate: true },
+)
+
+// A row's right-click: open it, or what refers to it anywhere in the project.
+function rowMenu(file: string, kind: 'dialogue' | 'quest' | 'schedule', id: string, event: MouseEvent): void {
+  openContextMenu(event.clientX, event.clientY, [
+    { label: 'Open', action: () => open(file) },
+    { label: 'Show uses', action: () => showUses({ kind, path: file, id, label: file }) },
+  ])
+}
+
 const characters = computed(() => world.value.filter((e) => e.kind === 'character'))
 const questIds = computed(() => quests.value.map((q) => q.id))
 const folderOf = { dialogue: 'dialogue', quest: 'quests', schedule: 'schedules' } as const
@@ -182,6 +210,7 @@ function normalizeQuest(content: QuestContent): QuestContent {
     branches: st.branches ?? [],
   }))
   delete content.objectives
+  content.atStart ??= false
   content.aliases ??= []
   content.rewards ??= {}
   content.onComplete ??= []
@@ -209,6 +238,7 @@ function questFile(content: QuestContent): Record<string, unknown> {
         !st.ends,
     )
   const out: Record<string, unknown> = { name: copy.name, description: copy.description, giver: copy.giver }
+  if (copy.atStart) out.atStart = true
   if (plain) out.objectives = copy.stages.map((st) => st.objectives[0])
   else {
     out.stages = copy.stages
@@ -311,6 +341,7 @@ async function newQuest(): Promise<void> {
     name: '',
     description: '',
     giver: characters.value[0]?.key ?? '',
+    atStart: false,
     stages: [
       { index: 10, journal: '', objectives: [{ id: 'first', text: '', type: 'defeat', target: 'Enemy', count: 1 }], onEnter: [], branches: [] },
     ],
@@ -561,6 +592,7 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
         :class="{ active: kind === 'dialogue' && originalId === d.id }"
         :title="usedBy[d.file]?.length ? 'Talk on ' + usedBy[d.file]!.join(', ') : 'Not used by anything in the open scene'"
         @click="open(d.file)"
+        @contextmenu.prevent="rowMenu(d.file, 'dialogue', d.id, $event)"
       >
         <span class="name">{{ d.id }}</span>
         <span v-if="problemsFor(d.file).length" class="warn">⚠</span>
@@ -576,6 +608,7 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
         :class="{ active: kind === 'schedule' && originalId === r.id }"
         :title="usedBy[r.file]?.length ? 'Routine on ' + usedBy[r.file]!.join(', ') : 'Nobody in the open scene follows it'"
         @click="open(r.file)"
+        @contextmenu.prevent="rowMenu(r.file, 'schedule', r.id, $event)"
       >
         <span class="name">{{ r.content.name || r.id }}</span>
         <span v-if="problemsFor(r.file).length" class="warn">⚠</span>
@@ -588,7 +621,9 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
         :key="q.file"
         class="row"
         :class="{ active: kind === 'quest' && originalId === q.id }"
+        title="Right-click: Show uses"
         @click="open(q.file)"
+        @contextmenu.prevent="rowMenu(q.file, 'quest', q.id, $event)"
       >
         <span class="name">{{ q.content.name || q.id }}</span>
         <span v-if="problemsFor(q.file).length" class="warn">⚠</span>
@@ -824,6 +859,9 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
           <select v-model="quest.giver">
             <option v-for="c in characters" :key="c.key" :value="c.key">{{ c.name }}</option>
           </select>
+          <label class="inline check" title="Active from the moment a new game starts (not from a save): its first stage begins then, with no giver or event needed">
+            <input v-model="quest.atStart" type="checkbox" /> Starts with the game
+          </label>
         </div>
         <div class="form-row top">
           <label>Description</label>

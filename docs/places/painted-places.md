@@ -46,9 +46,9 @@ A build has a **build method** (Project Settings ▸ Places ▸ method, also ask
    |---|---|
    | FLUX-3-Image (default) | the block-out with the colour-key prompt and the counts (Phase 25: layout 9, fit 10) |
    | FLUX-2-Klein-4b | the block-out scaled to 4096 px as a "rough draft" with a short key (klein copies a flat input it's told about) |
-   | FLUX-2-Pro, FLUX-2-Max | the block-out with the colour-key prompt and the counts, prompt upsampling off (rich looks; Phase 25: may drift from the layout, swap kinds) |
-   | FLUX-3-Image-to-Klein | FLUX-3-Image, then klein repaints its look |
-   | FLUX-3-Image-to-Pro | FLUX-3-Image, then FLUX.2 pro refines it with the block-out beside it saying what each building is |
+
+   FLUX-2-Pro, FLUX-2-Max, FLUX-3-Image-to-Klein and FLUX-3-Image-to-Pro were removed (they drift from the layout); a
+   project or preference still naming one is painted by FLUX-3-Image (`EditorApp::ChosenAi`, `/places/paint`).
 
    Big places will be painted in tiles, as the background is (`background.md` §4–§7); not yet.
 3. The result is `painting.png`, scaled to the block-out's size so that pixels line up with the id map, and

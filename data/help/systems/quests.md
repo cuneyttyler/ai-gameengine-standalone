@@ -9,6 +9,8 @@ A quest is a file `quests/<id>.json`: a series of numbered **stages**, each with
 goes when its objectives are done. Open **Project ▸ Story**, press **+** next to **Quests**, and fill in:
 
 - **File** (`quests/<id>.json`), **Name**, **Given by** (a World Bible character), **Description**.
+- **Objective markers** (Project Settings ▸ Story): in play, every open objective of the current stage is marked on the ground under whoever or whatever it is (six people to talk to: six markers, each with their name and distance); one off screen is held at the screen's edge on its side.
+- **Starts with the game**: the quest is active from the moment a new game starts, its first stage begun, with no giver's dialogue or event needed (a game loaded from a save keeps its quests as they were saved). Saved as `"atStart": true`. The AI Planner's build ticks it on the main quest when nothing (no dialogue, script or cutscene) starts it, and keeps what you choose when it writes the quests again.
 - **Roles (aliases)**: named parts the quest refers to as `@name`.
 - **Stages**: each with objectives, branches, "then", and effects on reaching it.
 - **Rewards**: experience, gold, items, reputation.

@@ -10,6 +10,9 @@ import { trackOverlay, untrackOverlay } from '../overlay'
 const backdrop = ref<HTMLElement | null>(null)
 const from = ref('')
 const to = ref('')
+// What each list is narrowed to (by path), typed above it.
+const fromQuery = ref('')
+const toQuery = ref('')
 const orient = ref<'keep' | 'mirror' | 'none'>('keep')
 // Opened for one thing: it alone, or every copy of its prefab.
 const which = ref<'one' | 'all'>('all')
@@ -20,6 +23,8 @@ watch(
     if (open !== null) {
       from.value = open
       to.value = ''
+      fromQuery.value = ''
+      toQuery.value = ''
       orient.value = 'keep'
       which.value = editorState.replaceEntity !== null ? 'one' : 'all'
     }
@@ -38,6 +43,14 @@ function close(): void {
 const fromPrefab = computed(() => editorState.prefabs.find((p) => p.path === from.value))
 // Like for like: tiles for tiles, things for things.
 const choices = computed(() => editorState.prefabs.filter((p) => p.path !== from.value && (!fromPrefab.value || p.isTile === fromPrefab.value.isTile)))
+// Narrowed by its search (the words in any order); the one chosen stays in it.
+function narrowed(list: typeof editorState.prefabs, query: string, chosen: string): typeof editorState.prefabs {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return list
+  return list.filter((p) => p.path === chosen || words.every((w) => p.path.toLowerCase().includes(w)))
+}
+const fromChoices = computed(() => narrowed(editorState.prefabs, fromQuery.value, from.value))
+const toChoices = computed(() => narrowed(choices.value, toQuery.value, to.value))
 function replace(): void {
   if (!from.value || !to.value) return
   if (which.value === 'one' && editorState.replaceEntity !== null) sendToHost({ type: 'entity:replacePrefab', id: editorState.replaceEntity, prefab: to.value })
@@ -60,15 +73,21 @@ function replace(): void {
       <p class="muted">Every copy of the first becomes the second, where it was. One undo step.</p>
       <div class="grid">
         <label>Replace</label>
-        <select v-model="from">
-          <option value="">a prefab…</option>
-          <option v-for="p in editorState.prefabs" :key="p.path" :value="p.path">{{ p.path }}</option>
-        </select>
+        <div class="pick">
+          <input v-model="fromQuery" type="search" placeholder="Search prefabs…" spellcheck="false" />
+          <select v-model="from">
+            <option value="">a prefab… ({{ fromChoices.length }})</option>
+            <option v-for="p in fromChoices" :key="p.path" :value="p.path">{{ p.path }}</option>
+          </select>
+        </div>
         <label>With</label>
-        <select v-model="to">
-          <option value="">a prefab…</option>
-          <option v-for="p in choices" :key="p.path" :value="p.path">{{ p.path }}</option>
-        </select>
+        <div class="pick">
+          <input v-model="toQuery" type="search" placeholder="Search prefabs…" spellcheck="false" />
+          <select v-model="to">
+            <option value="">a prefab… ({{ toChoices.length }})</option>
+            <option v-for="p in toChoices" :key="p.path" :value="p.path">{{ p.path }}</option>
+          </select>
+        </div>
         <template v-if="editorState.replaceEntity !== null">
           <label>Which</label>
           <select v-model="which">
@@ -124,6 +143,15 @@ h3 {
 }
 .grid select {
   width: 100%;
+}
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pick input {
+  width: 100%;
+  box-sizing: border-box;
 }
 .actions {
   display: flex;

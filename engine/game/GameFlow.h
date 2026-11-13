@@ -26,6 +26,8 @@ struct GameManifest {
     std::string credits;          // shown by Credits (CREDITS.md is added after it)
     std::string genre;            // game-types.md id, for the AI
     nlohmann::json systems = nlohmann::json::object(); // which systems are on (engine-gaps.md §4.6)
+    std::vector<std::string> hud;     // the HUD's widgets (the AI Planner's ⑧; empty: all)
+    std::vector<std::string> screens; // the windows the game has (⑧; empty: all)
 
     nlohmann::json ToJson() const;
     static GameManifest FromJson(const nlohmann::json& json);
@@ -53,7 +55,7 @@ public:
     enum class State { Title, Playing, Paused, Load, Save, GameOver, Victory, Credits, Settings, Difficulty };
 
     struct Command {
-        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged, DifficultyChanged, Achievements } kind =
+        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged, DifficultyChanged, Achievements, Controls } kind =
             Kind::None;
         std::string slot;  // Load / Save
         std::string level; // NewGame (when chosen) / DifficultyChanged: a difficulty level's id

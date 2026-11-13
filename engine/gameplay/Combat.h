@@ -47,6 +47,11 @@ struct GameEvent {
 // else teams (IsHostile).
 bool AreHostile(Registry& registry, Entity attacker, Entity target);
 
+// Whether `actor` sets out to fight `target` on its own (noticing it, shooting at it, casting at it): hostile to it,
+// and when it's of the Neutral team only when it's turned on them (a faction member's disposition, its faction at war),
+// frenzied, or already fighting them (struck first). A neutral may be hit by anyone, but isn't everyone's enemy.
+bool WouldAttack(Registry& registry, Entity actor, Entity target);
+
 // Fires `attacker`'s RangedAttack toward (dirX, dirY) (13.6). The projectile, or
 // nullopt while on cooldown or without one.
 std::optional<Entity> TryRangedAttack(Registry& registry, Entity attacker, float dirX, float dirY);

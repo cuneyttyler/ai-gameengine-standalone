@@ -32,14 +32,26 @@ interface EntitySummary {
 
 const entities = ref<EntitySummary[]>([])
 
+// The search box: things whose name, kind or prefab has every word typed.
+const filter = ref('')
+const words = computed(() => filter.value.toLowerCase().split(/\s+/).filter(Boolean))
+function matches(e: EntitySummary): boolean {
+  if (!words.value.length) return true
+  const text = `${e.label} ${e.kind} ${e.prefab ?? ''}`.toLowerCase()
+  return words.value.every((w) => text.includes(w))
+}
+const shown = computed(() => entities.value.filter(matches))
+
 // Tiles vastly outnumber everything else, so they get their own group,
 // collapsed by default.
 const groups = computed(() => [
-  { name: 'Characters', items: entities.value.filter((e) => ['Player', 'Enemy', 'NPC', 'Scripted NPC'].includes(e.kind)) },
-  { name: 'Props', items: entities.value.filter((e) => ['Prop', 'Pickup', 'Decoration'].includes(e.kind)) },
-  { name: 'Tiles', items: entities.value.filter((e) => e.kind === 'Tile') },
+  { name: 'Characters', items: shown.value.filter((e) => ['Player', 'Enemy', 'NPC', 'Scripted NPC'].includes(e.kind)) },
+  { name: 'Props', items: shown.value.filter((e) => ['Prop', 'Pickup', 'Decoration'].includes(e.kind)) },
+  { name: 'Tiles', items: shown.value.filter((e) => e.kind === 'Tile') },
 ])
 const collapsed = reactive<Record<string, boolean>>({ Tiles: true })
+// While searching, every group with a match is open (its own collapsed state comes back after).
+const isCollapsed = (name: string) => !words.value.length && !!collapsed[name]
 
 onHostMessage((message) => {
   if (message.type === 'scene:update') {
@@ -60,7 +72,7 @@ watch(
       return
     }
     const group = groups.value.find((g) => g.items.some((e) => e.id === id))
-    if (group && collapsed[group.name]) {
+    if (group && isCollapsed(group.name)) {
       collapsed[group.name] = false
     }
     await nextTick()
@@ -107,6 +119,12 @@ onMounted(() => {
       {{ current.location.name }} <span class="muted">— {{ current.location.summary || current.location.key }}</span>
     </p>
     <div v-if="!openCollapsed" class="open-scene">
+    <div v-if="entities.length > 0" class="filter">
+      <input v-model="filter" type="search" spellcheck="false" placeholder="Find in the scene: name, kind, prefab"
+             title="Show only the things whose name, kind or prefab has every word (Esc clears)" @keydown.esc.stop="filter = ''" />
+      <span v-if="words.length" class="count">{{ shown.length }} / {{ entities.length }}</span>
+    </div>
+    <p v-if="entities.length > 0 && words.length && shown.length === 0" class="placeholder">Nothing in this scene matches.</p>
     <p v-if="entities.length === 0" class="placeholder">
       Empty scene. Paint its ground with a tile prefab from Assets ▸ Prefabs, place things, and connect it to other
       scenes with a Marker and a Gateway.
@@ -115,11 +133,11 @@ onMounted(() => {
       <template v-for="group in groups" :key="group.name">
         <div v-if="group.items.length > 0" class="group">
           <button class="group-header" @click="collapsed[group.name] = !collapsed[group.name]">
-            <span class="chevron">{{ collapsed[group.name] ? '▸' : '▾' }}</span>
+            <span class="chevron">{{ isCollapsed(group.name) ? '▸' : '▾' }}</span>
             {{ group.name }}
             <span class="count">{{ group.items.length }}</span>
           </button>
-          <ul v-if="!collapsed[group.name]" class="entity-list">
+          <ul v-if="!isCollapsed(group.name)" class="entity-list">
             <li
               v-for="entity in group.items"
               :key="entity.id"
@@ -241,6 +259,31 @@ h2 {
   padding-left: 10px;
   border-left: 1px solid #2a2a3a;
   margin: 0 0 4px 8px;
+}
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+.filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #ddd;
+  font: inherit;
+  font-size: 0.85em;
+}
+.filter input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+.filter .count {
+  margin-left: 0;
+  font-size: 0.8em;
 }
 .placeholder {
   opacity: 0.5;

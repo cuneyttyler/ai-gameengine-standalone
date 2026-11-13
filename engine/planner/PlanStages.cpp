@@ -10,9 +10,64 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <set>
+#include <sstream>
+#include <variant>
 
 namespace aige {
+
+namespace {
+
+// Removes the value at a record path ("use.heal", "modifiers[1].attribute", "kind"): the deepest key or list
+// element it names. False if the path names nothing there.
+bool EraseAtPath(nlohmann::json& root, const std::string& path) {
+    std::vector<std::variant<std::string, size_t>> steps;
+    std::string key;
+    for (size_t i = 0; i < path.size(); ++i) {
+        const char c = path[i];
+        if (c == '.') {
+            if (!key.empty()) steps.emplace_back(key), key.clear();
+        } else if (c == '[') {
+            if (!key.empty()) steps.emplace_back(key), key.clear();
+            const size_t close = path.find(']', i);
+            if (close == std::string::npos) return false;
+            try {
+                steps.emplace_back(static_cast<size_t>(std::stoul(path.substr(i + 1, close - i - 1))));
+            } catch (...) {
+                return false;
+            }
+            i = close;
+        } else {
+            key += c;
+        }
+    }
+    if (!key.empty()) steps.emplace_back(key);
+    if (steps.empty()) return false;
+    nlohmann::json* at = &root;
+    for (size_t i = 0; i + 1 < steps.size(); ++i) {
+        if (const auto* k = std::get_if<std::string>(&steps[i])) {
+            if (!at->is_object() || !at->contains(*k)) return false;
+            at = &(*at)[*k];
+        } else {
+            const size_t n = std::get<size_t>(steps[i]);
+            if (!at->is_array() || n >= at->size()) return false;
+            at = &(*at)[n];
+        }
+    }
+    if (const auto* k = std::get_if<std::string>(&steps.back())) {
+        if (!at->is_object() || !at->contains(*k)) return false;
+        at->erase(*k);
+    } else {
+        const size_t n = std::get<size_t>(steps.back());
+        if (!at->is_array() || n >= at->size()) return false;
+        at->erase(n);
+    }
+    return true;
+}
+
+} // namespace
 
 using json = nlohmann::json;
 
@@ -255,7 +310,9 @@ std::string GamePlan::PathFor(const Job& job) const {
         {"interpret", "/planner/concept"}, {"outline", "/planner/outline"}, {"act", "/planner/act"},
         {"scene", "/planner/scene"},       {"critic", "/planner/critic"},   {"character", "/planner/character"},
         {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"gameplay", "/planner/gameplay"}, {"system", "/planner/system"}, {"behaviour", "/planner/behaviour"}, {"systems", "/planner/systems"},
-        {"visuals", "/planner/visuals"},   {"review", "/planner/review"},   {"revise", "/planner/revise"}};
+        {"visuals", "/planner/visuals"},   {"review", "/planner/review"},   {"revise", "/planner/revise"},
+        {"timeline", "/planner/timeline"}, {"input", "/planner/input"}, {"objects", "/planner/objects"},
+        {"smallscenes", "/planner/smallscenes"}};
     auto it = paths.find(job.kind);
     return it == paths.end() ? "" : it->second;
 }
@@ -273,6 +330,11 @@ json GamePlan::RequestBody(const Job& job) {
     }
     std::vector<std::string> buildTypes = Strings(host_.catalog.value("buildTypes", json::array()));
     if (buildTypes.empty()) buildTypes = {"settlement", "interior", "dungeon", "wilderness"};
+    if (host_.places) {
+        // A world isn't a place among the others: it holds them (the outline's "world").
+        const Ontology& places = host_.places();
+        std::erase_if(buildTypes, [&](const std::string& t) { const BuildType* b = places.Build(t); return b && b->scope == "world"; });
+    }
 
     if (job.kind == "interpret") {
         // The user's choices with the request (the home page's): told as decided, kept exactly.
@@ -302,8 +364,15 @@ json GamePlan::RequestBody(const Job& job) {
             for (const auto& [b, at] : t->second.beats) beats.push_back({{"id", b}, {"at", at}});
             tmpl = {{"id", structure}, {"acts", acts}, {"beats", beats}, {"roles", t->second.roles}};
         }
+        // The gateways a place can be entered by (the ontology's gateway roles): a cave mouth, a tent, a portal, a ship...
+        json gatewayKinds = json::array();
+        if (host_.places) {
+            for (const auto& [rid, role] : host_.places().Roles()) {
+                if (role.broader == "gateway") gatewayKinds.push_back({{"id", rid}, {"name", role.label}});
+            }
+        }
         return {{"brief", brief}, {"template", tmpl}, {"vocab", Vocab(gso_, {"NarrativeRole", "GameplayRole", "Importance"})},
-                {"buildTypes", buildTypes}};
+                {"buildTypes", buildTypes}, {"gatewayKinds", gatewayKinds}};
     }
     if (job.kind == "act") {
         json act = json::object(), previous = json::array();
@@ -409,7 +478,9 @@ json GamePlan::RequestBody(const Job& job) {
         for (const auto* n : g.OfClass("Character", gso_)) {
             if (n->id != job.subject) others.push_back({{"id", n->id}, {"name", n->Text("name")}});
         }
-        return {{"brief", brief}, {"entry", entry}, {"scenes", scenes}, {"facts", g.Timeline(job.subject)}, {"cast", others},
+        const StoryNode* self = g.Find(job.subject);
+        const bool player = (entry.contains("player") && entry["player"] == true) || (self && self->cls == "PlayerCharacter");
+        return {{"brief", brief}, {"entry", entry}, {"player", player}, {"scenes", scenes}, {"facts", g.Timeline(job.subject)}, {"cast", others},
                 {"packageTemplates", host_.catalog.value("packageTemplates", json::array())},
                 {"vocab", Vocab(gso_, {"Trait", "Motivation", "RelationshipType", "GameplayRole"})}};
     }
@@ -479,13 +550,21 @@ json GamePlan::RequestBody(const Job& job) {
         json residents = json::array(), connections = json::array();
         for (const auto* e : g.In(job.subject, "locatedAt")) residents.push_back(e->s);
         for (const auto& e : g.edges) {
-            if (e.p == "connects" && (e.s == job.subject || e.o == job.subject)) connections.push_back({{"to", e.s == job.subject ? e.o : e.s}, {"kind", e.Text("kind")}});
+            if (e.p == "connects" && (e.s == job.subject || e.o == job.subject)) {
+                json c = {{"to", e.s == job.subject ? e.o : e.s}, {"kind", e.Text("kind")}};
+                // An open world's gateway (a cave mouth, stairs down): which way it's entered, its kind and where.
+                if (const json gw = e.fields.value("gateway", json()); gw.is_object()) c["gateway"] = gw, c["entered"] = e.o == job.subject ? "here" : "there";
+                connections.push_back(c);
+            }
             if (e.p == "inside" && e.s == job.subject) connections.push_back({{"to", e.o}, {"kind", "inside"}});
         }
         json interpret = json::object();
         if (host_.places) interpret = InterpretContext(host_.places(), kind);
-        return {{"brief", brief}, {"entry", entry}, {"kind", kind}, {"scenes", scenes}, {"anchors", anchors}, {"residents", residents},
-                {"connections", connections}, {"interpret", interpret}};
+        json out = {{"brief", brief}, {"entry", entry}, {"kind", kind}, {"scenes", scenes}, {"anchors", anchors}, {"residents", residents},
+                    {"connections", connections}, {"interpret", interpret}};
+        // A section of an open world: the world it's in (its spacing, its places' size, its landform).
+        if (n && n->Flag("section")) out["world"] = outline.value("world", json::object());
+        return out;
     }
     if (job.kind == "gameplay") {
         // What it's for: the Brief, its extent (Gameplay mechanics: an older plan's is medium), the cast, quests and places.
@@ -511,14 +590,45 @@ json GamePlan::RequestBody(const Job& job) {
     if (job.kind == "system" || job.kind == "behaviour") {
         // What's known of the game: its quests with their stages, its places, its systems as designed so far.
         json quests = json::array(), places = json::array(), systems = json::array(), people = json::array();
+        // The quests as designed (the build makes them from this: their stages, what each asks, the story scene it
+        // plays), and the story's scenes (where each happens, who's in it, what it needs, what happens): a system serves
+        // them, it doesn't design them again.
+        json scenes = json::array();
         for (const auto& doc : store_.List("quests")) {
             const json q = store_.Read(doc).value_or(json::object());
             json stages = json::array(), journal = json::array();
             for (const auto& s : q.value("stages", json::array())) {
-                stages.push_back(s.value("index", json()));
+                stages.push_back({{"index", s.value("index", json())}, {"journal", s.value("journal", json())},
+                                  {"objectives", s.value("objectives", json::array())}, {"scene", s.value("advancesScene", json())}});
                 journal.push_back(s.value("journal", json()));
             }
-            quests.push_back({{"id", q.value("id", json())}, {"name", q.value("name", json())}, {"giver", q.value("giver", json())}, {"stages", stages}, {"journal", journal}});
+            json aliases = json::array();
+            for (const auto& a : q.value("aliases", json::array())) {
+                if (!a.is_object()) continue;
+                json one = {{"id", a.value("id", json())}, {"kind", a.value("kind", json())}};
+                for (const char* k : {"fill", "in", "query"}) {
+                    if (a.contains(k)) one[k] = a[k];
+                }
+                aliases.push_back(one);
+            }
+            quests.push_back({{"id", q.value("id", json())}, {"name", q.value("name", json())}, {"giver", q.value("giver", json())},
+                              {"stages", stages}, {"journal", journal}, {"aliases", aliases}});
+        }
+        for (const auto& doc : store_.List("story/scenes")) {
+            const json s = store_.Read(doc).value_or(json::object());
+            if (!s.is_object()) continue;
+            const json card = s.value("card", json::object());
+            if (!card.is_object()) continue;
+            json who = json::array(), beats = json::array();
+            for (const auto& p : card.value("participants", json::array())) {
+                if (p.is_object()) who.push_back(p.value("who", json()));
+            }
+            for (const auto& b : s.value("beats", json::array())) {
+                if (b.is_object()) beats.push_back(b.value("text", json()));
+            }
+            scenes.push_back({{"id", doc.substr(doc.rfind('/') + 1)}, {"mode", card.value("mode", json())}, {"location", card.value("location", json())},
+                              {"goal", card.value("goal", json())}, {"cast", who}, {"needsParts", card.value("needsParts", json::array())},
+                              {"beats", beats}});
         }
         for (const auto& doc : store_.List("places")) places.push_back(store_.Read(doc).value_or(json::object()).value("name", json(PlanSlug(doc))));
         for (const auto& doc : store_.List("characters")) {
@@ -539,10 +649,10 @@ json GamePlan::RequestBody(const Job& job) {
             for (const auto& f : features) {
                 if (PlanSlug(Text(f, "id")) == PlanSlug(job.subject)) feature = f;
             }
-            return {{"brief", brief}, {"feature", feature}, {"systems", systems}, {"quests", quests}, {"places", places}, {"characters", people}};
+            return {{"brief", brief}, {"feature", feature}, {"systems", systems}, {"quests", quests}, {"scenes", scenes}, {"places", places}, {"characters", people}};
         }
         const json character = store_.Read("characters/" + PlanSlug(job.subject)).value_or(json::object());
-        return {{"brief", brief}, {"character", character}, {"systems", systems}, {"quests", quests}, {"places", places},
+        return {{"brief", brief}, {"character", character}, {"systems", systems}, {"quests", quests}, {"scenes", scenes}, {"places", places},
                 {"characters", people}, {"packageTemplates", host_.catalog.value("packageTemplates", json::array())},
                 {"engineEvents", json::array({"quest_started", "quest_completed", "quest_failed", "item_used", "item_combined", "crafted", "interact", "level_up"})}};
     }
@@ -555,7 +665,15 @@ json GamePlan::RequestBody(const Job& job) {
         json quests = json::array();
         for (const auto& doc : store_.List("quests")) {
             const json q = store_.Read(doc).value_or(json::object());
-            quests.push_back({{"id", q.value("id", "")}, {"level", q.value("level", json())}, {"rewards", q.value("rewards", json::array())}});
+            // The enemy classes its stages spawn (⑦ writes a class for each).
+            json spawns = json::array();
+            for (const auto& st : q.value("stages", json::array())) {
+                for (const auto& e : st.value("onEnter", json::array())) {
+                    if (e.value("op", "") == "spawn" && !e.value("class", "").empty()) spawns.push_back(e.value("class", ""));
+                }
+            }
+            quests.push_back({{"id", q.value("id", "")}, {"level", q.value("level", json())}, {"rewards", q.value("rewards", json::array())},
+                              {"spawns", spawns}});
         }
         return {{"brief", brief}, {"characters", characters}, {"quests", quests},
                 {"features", [&] {
@@ -564,11 +682,242 @@ json GamePlan::RequestBody(const Job& job) {
                      return out;
                  }()},
                 {"recordTypes", host_.catalog.value("recordTypes", json::object())},
-                {"abilities", host_.catalog.value("abilities", json::array())}, {"effects", host_.catalog.value("effects", json::array())}};
+                {"abilities", host_.catalog.value("abilities", json::array())}, {"effects", host_.catalog.value("effects", json::array())},
+                {"recordFormats", host_.catalog.value("recordFormats", json::object())},
+                {"effectDetails", host_.catalog.value("effectDetails", json::array())},
+                {"abilityDetails", host_.catalog.value("abilityDetails", json::array())},
+                {"itemVariety", [&] {
+                     const json v = BriefGet(brief, "items.variety");
+                     return v.is_string() ? v.get<std::string>() : std::string("medium");
+                 }()},
+                {"places", [&] {
+                     // Each place: its kind, its level band and whether enemies live there (for enemy classes and loot).
+                     json out = json::array();
+                     for (const auto& p : outline.value("places", json::array())) {
+                         out.push_back({{"id", p.value("id", "")}, {"kind", p.value("kind", "")}, {"line", p.value("line", "")}});
+                     }
+                     return out;
+                 }()}};
+    }
+    if (job.kind == "objects" || job.kind == "smallscenes") {
+        // ⑥c The whole story, the quests' stages, the cast (their routines, where the timeline has them) and the places
+        // (their anchors and the things the plan put in them); small scenes, the props & objects too.
+        json scenes = json::array(), questsIn = json::array(), people = json::array(), sites = json::array();
+        for (const auto& doc : store_.List("story/scenes")) {
+            const json s = store_.Read(doc).value_or(json::object());
+            json events = json::array();
+            for (const auto& e : s.value("events", json::array())) events.push_back(Text(e, "text"));
+            const json card = s.value("card", json::object());
+            scenes.push_back({{"id", Text(s, "id").empty() ? PlanSlug(doc) : Text(s, "id")}, {"place", Text(card, "location")},
+                              {"summary", Text(s, "summary")}, {"events", events}, {"outcome", Text(card, "outcome")}});
+        }
+        for (const auto& doc : store_.List("quests")) {
+            const json q = store_.Read(doc).value_or(json::object());
+            json stages = json::array();
+            for (const auto& s : q.value("stages", json::array())) stages.push_back({{"index", s.value("index", 0)}, {"journal", Text(s, "journal")}});
+            questsIn.push_back({{"id", Text(q, "id").empty() ? PlanSlug(doc) : Text(q, "id")}, {"name", Text(q, "name")}, {"stages", stages}});
+        }
+        for (const auto& c : outline.value("cast", json::array())) {
+            const json d = store_.Read("characters/" + PlanSlug(Text(c, "id"))).value_or(json::object());
+            people.push_back({{"id", Text(c, "id")}, {"name", Text(c, "name")}, {"player", c.value("player", false)}, {"home", Text(d, "home")},
+                              {"class", Text(d.value("gameplay", json::object()), "class")}, {"routine", d.value("routine", json())},
+                              {"line", Text(d, "line")}});
+        }
+        for (const auto& p : outline.value("places", json::array())) {
+            const json d = store_.Read("places/" + PlanSlug(Text(p, "id"))).value_or(json::object());
+            json anchors = json::array();
+            for (const auto& a : d.value("storyAnchors", json::array())) {
+                if (a.is_object()) anchors.push_back(Text(a, "id"));
+            }
+            sites.push_back({{"id", Text(p, "id")}, {"name", Text(p, "name")}, {"line", Text(p, "line")}, {"anchors", anchors},
+                             {"description", d.value("description", json())}});
+        }
+        json body = {{"brief", brief}, {"story", outline.value("story", json::object())}, {"scenes", scenes}, {"quests", questsIn},
+                     {"cast", people}, {"places", sites}, {"templates", host_.catalog.value("packageTemplates", json::array())}};
+        // Who is where at each stage (⑥b): who a small scene can have, a thing's users.
+        if (const auto t = store_.Read("timeline")) {
+            json where = json::array();
+            for (const auto& c : t->value("characters", json::array())) {
+                json changes = json::array();
+                for (const auto& ch : c.value("changes", json::array())) {
+                    changes.push_back({{"quest", ch.value("quest", json())}, {"stage", ch.value("stage", json())}, {"on", ch.value("on", json())},
+                                       {"place", ch.value("place", json())}, {"spot", ch.value("spot", json())}, {"does", ch.value("does", json())}});
+                }
+                const json st = c.value("start", json::object());
+                where.push_back({{"who", c.value("who", json())}, {"start", {{"place", st.value("place", json())}, {"spot", st.value("spot", json())},
+                                                                              {"does", st.value("does", json())}}}, {"changes", changes}});
+            }
+            body["timeline"] = where;
+        }
+        if (job.kind == "smallscenes") {
+            json things = json::array();
+            for (const auto& o : store_.Read("objects").value_or(json::object()).value("objects", json::array())) {
+                things.push_back({{"id", o.value("id", json())}, {"name", o.value("name", json())}, {"place", o.value("place", json())},
+                                  {"where", o.value("where", json())}, {"purpose", o.value("purpose", json())}});
+            }
+            body["objects"] = things;
+        }
+        return body;
+    }
+    if (job.kind == "input") {
+        // ⑦ Systems ▸ Input: the engine's controls, what the game has now (input.json), the keys the features ask for, the
+        // screens, and every action name the game's scripts and screens use.
+        json current = json::array(), planned = json::array(), used = json::array();
+        {
+            std::ifstream in(host_.projectRoot / "input.json", std::ios::binary);
+            const json j = in ? json::parse(in, nullptr, false) : json();
+            for (const auto& a : j.is_object() ? j.value("actions", json::array()) : json::array()) {
+                current.push_back({{"name", Text(a, "name")}, {"context", Text(a, "context")}, {"keys", a.value("keys", json::array())},
+                                   {"description", Text(a, "description")}});
+            }
+        }
+        for (const auto& doc : store_.List("systemdesigns")) {
+            const json d = store_.Read(doc).value_or(json::object());
+            for (const auto& a : d.value("actions", json::array())) planned.push_back({{"feature", PlanSlug(doc)}, {"action", a}});
+        }
+        std::set<std::string> names;
+        std::error_code ec;
+        for (const auto& f : std::filesystem::recursive_directory_iterator(host_.projectRoot / "scripts", ec)) {
+            if (!f.is_regular_file() || f.path().extension() != ".lua") continue;
+            std::ifstream in(f.path(), std::ios::binary);
+            std::ostringstream read;
+            read << in.rdbuf();
+            const std::string text = read.str();
+            for (const char* call : {"action_pressed(\"", "action_down(\"", "action_released(\""}) {
+                for (size_t at = text.find(call); at != std::string::npos; at = text.find(call, at + 1)) {
+                    const size_t from = at + std::string(call).size(), to = text.find('"', from);
+                    if (to != std::string::npos && to - from < 60) names.insert(text.substr(from, to - from));
+                }
+            }
+        }
+        for (const auto& f : std::filesystem::directory_iterator(host_.projectRoot / "ui" / "designs", ec)) {
+            std::ifstream in(f.path(), std::ios::binary);
+            std::ostringstream read;
+            read << in.rdbuf();
+            const std::string text = read.str();
+            const std::string press = "\"do\":\"press\",\"arg\":\"";
+            for (size_t at = text.find(press); at != std::string::npos; at = text.find(press, at + 1)) {
+                const size_t from = at + press.size(), to = text.find('"', from);
+                if (to != std::string::npos && to - from < 60) names.insert(text.substr(from, to - from));
+            }
+        }
+        for (const auto& n : names) used.push_back(n);
+        const json ui = store_.Read("ui").value_or(json::object());
+        json features = json::array();
+        for (const auto& f : store_.Read("gameplay").value_or(json::object()).value("features", json::array())) {
+            features.push_back({{"id", Text(f, "id")}, {"name", Text(f, "name")}, {"description", Text(f, "description")}});
+        }
+        return {{"brief", brief}, {"defaults", host_.catalog.value("inputDefaults", json::array())}, {"keyNames", host_.catalog.value("keyNames", json::array())},
+                {"current", current}, {"planned", planned}, {"used", used}, {"screens", ui.value("screens", json::array())}, {"features", features}};
+    }
+    if (job.kind == "timeline") {
+        // ⑥b The story (each written scene: where, who, what happens), the quests' stages, the characters (home, roles,
+        // packages, what they talk about) and the places (what's inside what, who stands or works in each).
+        json people = json::array(), sites = json::array(), questsIn = json::array(), scenes = json::array();
+        for (const auto& c : outline.value("cast", json::array())) {
+            const json d = store_.Read("characters/" + PlanSlug(Text(c, "id"))).value_or(json::object());
+            const json gameplay = d.value("gameplay", json::object()), behaviour = d.value("behaviour", json::object());
+            people.push_back({{"id", Text(c, "id")}, {"name", Text(c, "name")}, {"player", (c.contains("player") && c["player"] == true) || (d.contains("player") && d["player"] == true)},
+                              {"importance", Text(c, "importance")}, {"roles", gameplay.value("roles", json::array())},
+                              {"home", Text(d, "home")}, {"packages", behaviour.value("packages", json::array())},
+                              {"talksAbout", d.value("dialogue", json::object()).value("topics", json::array())},
+                              {"line", Text(d, "line").empty() ? Text(c, "line") : Text(d, "line")},
+                              {"class", Text(gameplay, "class")}, {"routine", d.value("routine", json())}});
+        }
+        for (const auto& p : outline.value("places", json::array())) {
+            const json d = store_.Read("places/" + PlanSlug(Text(p, "id"))).value_or(json::object());
+            json anchors = json::array();
+            // Each anchor and the scene it's set for (a gathering there lasts while that scene plays).
+            for (const auto& a : d.value("storyAnchors", json::array())) {
+                if (a.is_object()) {
+                    json one = {{"id", Text(a, "id").empty() ? Text(a, "name") : Text(a, "id")}};
+                    const json f = a.value("for", json::object());
+                    if (f.is_object() && !Text(f, "scene").empty()) one["for"] = Text(f, "scene");
+                    else if (f.is_object() && !Text(f, "quest").empty()) one["forQuest"] = Text(f, "quest");
+                    const json rel = a.value("relation", json::object());
+                    for (const char* k : {"at", "place", "location"}) {
+                        if (!one.contains("at") && rel.is_object() && !Text(rel, k).empty()) one["at"] = Text(rel, k);
+                    }
+                    anchors.push_back(one);
+                } else if (a.is_string()) {
+                    anchors.push_back({{"id", a}});
+                }
+            }
+            sites.push_back({{"id", Text(p, "id")}, {"name", Text(p, "name")}, {"kind", Text(p, "kind")}, {"inside", Text(p, "parent")},
+                             {"line", Text(p, "line")}, {"people", d.value("actors", json::array())}, {"anchors", anchors}});
+        }
+        for (const auto& doc : store_.List("quests")) {
+            const json q = store_.Read(doc).value_or(json::object());
+            json stages = json::array();
+            for (const auto& s : q.value("stages", json::array())) {
+                json asks = json::array();
+                for (const auto& o : s.value("objectives", json::array())) asks.push_back(Text(o, "action") + " " + Text(o, "target"));
+                stages.push_back({{"index", s.value("index", 0)}, {"journal", Text(s, "journal")}, {"playsScene", Text(s, "advancesScene")}, {"asks", asks}});
+            }
+            questsIn.push_back({{"id", Text(q, "id").empty() ? PlanSlug(doc) : Text(q, "id")}, {"name", Text(q, "name")}, {"giver", q.value("giver", json())}, {"stages", stages}});
+        }
+        for (const auto& doc : store_.List("story/scenes")) {
+            const json s = store_.Read(doc).value_or(json::object());
+            if (Text(s, "status") != "written") continue;
+            const json card = s.value("card", json::object());
+            json events = json::array();
+            for (const auto& e : s.value("events", json::array())) events.push_back(Text(e, "text"));
+            json who = json::array();
+            for (const auto& p : card.value("participants", json::array())) who.push_back(Text(p, "who"));
+            scenes.push_back({{"id", Text(s, "id").empty() ? PlanSlug(doc) : Text(s, "id")}, {"act", Text(s, "act")}, {"order", s.value("order", 0)}, {"place", Text(card, "location")},
+                              {"mode", Text(card, "mode")}, {"cast", who}, {"events", events}, {"outcome", Text(card, "outcome")}});
+        }
+        return {{"brief", brief}, {"cast", people}, {"places", sites}, {"quests", questsIn}, {"scenes", scenes},
+                {"templates", host_.catalog.value("packageTemplates", json::array())}};
     }
     if (job.kind == "visuals") {
+        // The fonts it may choose (32.7): the engine's (each with the games it suits), and the project's own
+        // (assets/fonts/*.ttf).
+        json fonts = host_.catalog.value("fonts", json::array());
+        std::error_code ec;
+        for (const auto& f : std::filesystem::directory_iterator(host_.projectRoot / "assets" / "fonts", ec)) {
+            if (f.path().extension() == ".ttf") fonts.push_back({{"name", f.path().stem().string()}, {"style", "the project's own"}});
+        }
         return {{"brief", brief}, {"themes", host_.catalog.value("themes", json::array())}, {"windows", PlanWindows()},
-                {"widgets", PlanHudWidgets()}, {"systems", store_.Read("systems").value_or(json::object()).value("summary", json())}};
+                {"widgets", PlanHudWidgets()}, {"systems", store_.Read("systems").value_or(json::object()).value("summary", json())},
+                {"fonts", fonts}, {"request", request_},
+                {"features", [&] {
+                     json out = json::array();
+                     for (const auto& f : store_.Read("gameplay").value_or(json::object()).value("features", json::array())) {
+                         out.push_back({{"name", Text(f, "name")}, {"description", Text(f, "description")}});
+                     }
+                     return out;
+                 }()},
+                {"controls", store_.Read("input").value_or(json::object()).value("actions", json::array())}};
+    }
+    if (job.kind == "revise" && job.subject.rfind("[step:", 0) == 0) {
+        // One step's revision: its documents, each in full (the AI first finds which the words are about, from the index).
+        const size_t close = job.subject.find(']');
+        const std::string step = job.subject.substr(6, close == std::string::npos ? 0 : close - 6);
+        const std::string words = close == std::string::npos ? job.subject : job.subject.substr(close + 1);
+        static const std::map<std::string, std::pair<std::vector<std::string>, std::vector<std::string>>> scopes = {
+            {"concept", {{}, {"brief"}}}, {"outline", {{}, {"outline"}}}, {"story", {{"story/acts", "story/scenes"}, {}}},
+            {"characters", {{"characters"}, {}}}, {"quests", {{"quests"}, {}}}, {"places", {{"places"}, {}}},
+            {"timeline", {{}, {"timeline"}}}, {"systems", {{"systemdesigns", "behaviours"}, {"gameplay", "systems", "input"}}},
+            {"objects", {{}, {"objects"}}}, {"smallscenes", {{}, {"smallscenes"}}}, {"cutscenes", {{}, {"timeline"}}},
+            {"visuals", {{}, {"ui"}}}};
+        json documents = json::object(), index = json::array();
+        auto add = [&](const std::string& doc) {
+            json d = store_.Read(doc).value_or(json());
+            if (!d.is_object()) return;
+            for (const char* k : {"inputs", "revision", "madeBy", "schema", "rationale"}) d.erase(k);
+            json fields = json::array();
+            for (auto& [k, v] : d.items()) fields.push_back(k);
+            index.push_back({{"doc", doc}, {"name", Text(d, "name").empty() ? Text(d, "subject") : Text(d, "name")}, {"fields", fields}});
+            documents[doc] = d;
+        };
+        if (const auto it = scopes.find(step); it != scopes.end()) {
+            for (const auto& folder : it->second.first) {
+                for (const auto& doc : store_.List(folder)) add(doc);
+            }
+            for (const auto& doc : it->second.second) add(doc);
+        }
+        return {{"instruction", words}, {"scope", step}, {"brief", brief}, {"documents", documents}, {"index", index}};
     }
     if (job.kind == "revise") {
         // The documents the words name, in full; an index of the rest.
@@ -752,6 +1101,49 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
         if (HasErrors(problems)) return ProblemTexts(problems);
         return HandleCharacter(job, c, rationale.empty() ? c.value("rationale", "") : rationale);
     }
+    if (job.kind == "objects" || job.kind == "smallscenes") {
+        // ⑥c Props & objects (each thing, its purpose, its uses and their Reactions) or small scenes (the little scenes
+        // that play round the player): the description Build makes them from.
+        const char* key = job.kind == "objects" ? "objects" : "scenes";
+        const json list = body.value(key, json());
+        if (!list.is_array()) return {std::string("the answer has no ") + key + " list"};
+        PlanDecision d;
+        d.stage = "world";
+        d.actor = "ai";
+        d.kind = job.kind == "objects" ? "design-objects" : "design-small-scenes";
+        d.subject = job.kind;
+        d.chosen = std::to_string(list.size()) + " " + key;
+        d.rationale = rationale;
+        std::vector<std::string> inputs = {"outline"};
+        for (const char* folder : {"story/scenes", "quests", "characters", "places"}) {
+            for (const auto& doc : store_.List(folder)) inputs.push_back(doc);
+        }
+        if (store_.Exists("timeline")) inputs.push_back("timeline");
+        if (job.kind == "smallscenes" && store_.Exists("objects")) inputs.push_back("objects");
+        store_.Write(job.kind, {{"schema", job.kind == "objects" ? "aige.objects/1" : "aige.small-scenes/1"}, {key, list}, {"rationale", rationale}},
+                     store_.Decide(d), inputs);
+        return {};
+    }
+    if (job.kind == "input") {
+        // ⑦ Systems ▸ Input: the game's controls, as a document (the build writes them into input.json).
+        const json input = body.value("input", json());
+        if (!input.is_object() || !input.value("actions", json()).is_array() || input["actions"].empty()) return {"the answer has no actions"};
+        PlanDecision d;
+        d.stage = "systems";
+        d.actor = "ai";
+        d.kind = "design-input";
+        d.subject = "input";
+        d.chosen = std::to_string(input["actions"].size()) + " actions";
+        d.rationale = rationale;
+        std::vector<std::string> inputs = {"gameplay"};
+        for (const auto& doc : store_.List("systemdesigns")) inputs.push_back(doc);
+        if (store_.Exists("ui")) inputs.push_back("ui");
+        json doc = input;
+        doc["schema"] = "aige.input-design/1";
+        doc["rationale"] = rationale;
+        store_.Write("input", doc, store_.Decide(d), inputs);
+        return {};
+    }
     if (job.kind == "quests" || job.kind == "quest") return HandleQuests(job, body.value("quests", json::array()), rationale);
     if (job.kind == "place") return HandlePlace(job, body.value("place", json::object()), rationale);
     if (job.kind == "gameplay") return HandleGameplay(job, body.value("gameplay", json::object()), rationale);
@@ -759,9 +1151,11 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
     if (job.kind == "behaviour") return HandleBehaviour(job, body.value("plan", json::object()), rationale);
     if (job.kind == "systems") return HandleSystems(job, body.value("systems", json::object()), rationale);
     if (job.kind == "visuals") return HandleVisuals(job, body.value("ui", json::object()), rationale);
+    if (job.kind == "timeline") return HandleTimeline(job, body.value("timeline", json()), rationale);
     if (job.kind == "revise") {
         int made = 0;
         std::vector<std::string> problems;
+        json decisions = json::array(); // the edits it made: what Revert takes back
         for (const auto& e : body.value("edits", json::array())) {
             const std::string doc = e.value("doc", ""), pointer = e.value("pointer", "");
             if (store_.Locked(doc)) {
@@ -771,12 +1165,41 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
             std::string reason = "AI revision: " + job.subject;
             if (e.contains("reason")) reason += " (" + e.value("reason", "") + ")";
             const std::string why = Edit(doc, pointer, e.value("value", json()), reason);
-            if (why.empty()) ++made;
+            if (why.empty()) ++made, decisions.push_back(lastEdit_);
             else problems.push_back(why);
         }
         // The AI's suggested fix for ⑨ with nothing it could apply: nothing changes (not a failed
         // step); words from the AI panel say so (sent back once).
         const bool suggestion = job.subject.rfind("Fix these validation findings", 0) == 0;
+        // A step's revision: what it found and changed, in that step's history.
+        if (job.subject.rfind("[step:", 0) == 0) {
+            const size_t close = job.subject.find(']');
+            const std::string step = job.subject.substr(6, close == std::string::npos ? 0 : close - 6);
+            json history = store_.Read("revisions").value_or(json::object());
+            if (history.is_object() && history[step].is_array()) {
+                for (auto& e : history[step]) {
+                    if (e.value("id", "") != job.id) continue;
+                    json edits = json::array();
+                    for (const auto& x : body.value("edits", json::array())) {
+                        edits.push_back({{"doc", x.value("doc", "")}, {"pointer", x.value("pointer", "")}, {"reason", x.value("reason", "")}});
+                    }
+                    e["targets"] = body.value("targets", json::array());
+                    e["edits"] = edits;
+                    e["decisions"] = decisions;
+                    e["rationale"] = rationale;
+                    e["made"] = made;
+                    e["status"] = made == 0 && !problems.empty() ? "failed" : "done";
+                    if (!problems.empty()) {
+                        std::string all;
+                        for (const auto& p : problems) all += (all.empty() ? "" : "; ") + p;
+                        e["error"] = all;
+                    }
+                }
+                history.erase("revision"), history.erase("inputs"), history.erase("madeBy");
+                store_.Write("revisions", history, std::string());
+            }
+            if (made == 0 && !problems.empty()) return {};
+        }
         if (made == 0 && !problems.empty() && !suggestion) return problems;
         // An edit that couldn't be applied (a small model's edit of its request, not of a
         // document: "no places") is dropped quietly, not a warning.
@@ -839,9 +1262,17 @@ std::vector<std::string> GamePlan::HandleOutline(Job&, const json& outline, cons
         if (counted != Brief()) store_.Touch("brief", counted, decision);
     }
     store_.Write("outline", doc, decision, {"brief"});
+    // A new outline starts the graph again.
+    StoryGraph g = SeedGraph(outline, decision);
+    g.revision = 1;
+    SaveGraph(g);
+    return {};
+}
+
+// The graph an outline seeds: the story, its acts and endings, the cast and their roles, the places
+// and the world graph (each one's World Bible stub written too).
+StoryGraph GamePlan::SeedGraph(const json& outline, const std::string& decision) {
     const json brief = Brief();
-    // The graph seeded: the story, its acts and endings, the cast and their roles, the places
-    // and the world graph. A new outline starts the graph again.
     StoryGraph g;
     const json story = outline.value("story", json::object());
     auto node = [&](const std::string& id, const std::string& cls, json fields) {
@@ -900,6 +1331,13 @@ std::vector<std::string> GamePlan::HandleOutline(Job&, const json& outline, cons
     for (const auto& p : outline.value("places", json::array())) {
         const std::string id = p.value("id", "");
         node(id, "Location", {{"name", p.value("name", PlanSlug(id))}, {"buildType", p.value("kind", "")}, {"summary", p.value("line", "")}});
+        // An open world's section (its outdoor places): its size and where it is in the world.
+        if (p.value("section", false)) {
+            StoryNode* n = g.Find(id);
+            n->fields["section"] = true;
+            if (p.contains("size") && p["size"].is_string()) n->fields["size"] = p["size"];
+            if (p.contains("where") && p["where"].is_object()) n->fields["where"] = p["where"];
+        }
         if (first) g.Find(id)->fields["start"] = true;
         first = false;
         WorldStub(id, p.value("name", ""), p.value("line", ""));
@@ -910,11 +1348,62 @@ std::vector<std::string> GamePlan::HandleOutline(Job&, const json& outline, cons
     for (const auto& c : outline.value("connections", json::array())) {
         json fields = {{"kind", c.value("kind", "road")}};
         if (c.contains("gate") && !c["gate"].is_null()) fields["gate"] = c["gate"].is_string() ? c["gate"] : json(c["gate"].dump());
+        // Its gateway (an open world's dungeon or interior entered from a section): what it is, and where, in words.
+        if (c.contains("gateway") && c["gateway"].is_object()) fields["gateway"] = c["gateway"];
         edge("connects", c.value("from", ""), c.value("to", ""), fields);
     }
-    g.revision = 1;
+    return g;
+}
+
+// The outline changed by hand (development_plan.md 32.11): what it seeds is brought into the graph without losing what
+// the later steps added to it (scenes, facts, homes). Its people, places, factions, acts and endings take the
+// outline's fields; new ones are added, removed ones go with their facts; its roles, memberships, nesting and
+// connections are the outline's again.
+void GamePlan::SyncOutline(const std::string& decision) {
+    const json outline = Outline();
+    if (!outline.is_object() || outline.empty()) return;
+    // The player's character as the outline names it now, in the Brief too (every later step reads it there).
+    for (const auto& c : outline.value("cast", json::array())) {
+        if (!c.value("player", false) || c.value("name", "").empty()) continue;
+        json brief = Brief();
+        if (!brief.contains("playerCharacter") || !brief["playerCharacter"].is_object()) brief["playerCharacter"] = json::object();
+        if (brief["playerCharacter"].value("name", "") != c.value("name", "")) {
+            brief["playerCharacter"]["name"] = c.value("name", "");
+            if (!c.value("line", "").empty()) brief["playerCharacter"]["description"] = c.value("line", "");
+            store_.Touch("brief", brief, decision);
+        }
+    }
+    const StoryGraph seed = SeedGraph(outline, decision);
+    StoryGraph g = Graph();
+    static const std::set<std::string> kSeeded = {"Character", "PlayerCharacter", "Location", "Faction", "Act", "Ending", "Storyline"};
+    std::set<std::string> keep;
+    for (const auto& n : seed.nodes) keep.insert(n.id);
+    std::vector<std::string> gone;
+    for (const auto& n : g.nodes) {
+        // What the outline had and has no more goes; what the story added later (a place or person a scene brought in:
+        // the family crypt s3-01 is set in, "stubFrom") isn't the outline's to remove.
+        if (kSeeded.contains(n.cls) && !keep.contains(n.id) && !n.fields.contains("stubFrom")) gone.push_back(n.id);
+    }
+    for (const auto& id : gone) g.RemoveNode(id);
+    for (const auto& n : seed.nodes) {
+        StoryNode& at = g.Upsert(n.id, n.cls);
+        at.cls = n.cls;
+        for (const auto& [k, v] : n.fields.items()) at.fields[k] = v;
+        if (n.cls == "Location" && !n.fields.contains("start")) at.fields.erase("start");
+        if (n.cls == "Location" && !n.fields.contains("section")) at.fields.erase("section");
+    }
+    // The outline's own relations again: roles, factions, nesting, connections.
+    static const std::set<std::string> kOutlineEdges = {"fills", "memberOf", "inside", "connects"};
+    std::vector<StoryEdge> kept;
+    for (auto& e : g.edges) {
+        const StoryNode* from = g.Find(e.s);
+        const bool outlineOwn = kOutlineEdges.contains(e.p) && from && kSeeded.contains(from->cls) && e.from.empty() && e.until.empty();
+        if (!outlineOwn) kept.push_back(std::move(e));
+    }
+    g.edges = std::move(kept);
+    for (const auto& e : seed.edges) g.edges.push_back(e);
+    ++g.revision;
     SaveGraph(g);
-    return {};
 }
 
 // --- ③ Story -------------------------------------------------------------------------------------
@@ -1023,11 +1512,13 @@ void GamePlan::UndoScene(const std::string& scene) {
         }
     }
     SaveGraph(g);
-    // Its quest stage leaves the main quest's skeleton.
+    // Its quest stage leaves the main quest's skeleton, unless ⑤ Quests has designed it (its objectives, its effects):
+    // that stage stays as it is, and the scene written again takes it back (its number, its objectives).
     if (auto q = store_.Read("quests/q-main")) {
         json stages = json::array();
         for (const auto& st : q->value("stages", json::array())) {
-            if (st.value("advancesScene", "") != scene) stages.push_back(st);
+            const bool designed = !st.value("objectives", json::array()).empty() || !st.value("onEnter", json::array()).empty();
+            if (st.value("advancesScene", "") != scene || designed) stages.push_back(st);
         }
         if (stages.size() != q->value("stages", json::array()).size()) {
             (*q)["stages"] = stages;
@@ -1335,14 +1826,23 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
                                                           {"name", Brief().value("title", "The main quest")}, {"stages", json::array()}});
         int last = 0;
         if (!q.contains("stages") || !q["stages"].is_array()) q["stages"] = json::array();
-        for (const auto& st : q["stages"]) {
+        json* own = nullptr; // the stage that already plays this scene (written again: it keeps its number and design)
+        for (auto& st : q["stages"]) {
             if (st.is_object() && st.value("index", json()).is_number()) last = std::max(last, static_cast<int>(st["index"].get<double>()));
+            if (st.is_object() && st.value("advancesScene", "") == id) own = &st;
         }
-        const int index = questStage.value("index", json()).is_number_integer() && questStage["index"].get<int>() > last
-                              ? questStage["index"].get<int>()
-                              : last + 10;
-        q["stages"].push_back({{"index", index}, {"journal", questStage.value("journal", "")}, {"advancesScene", id}});
-        store_.Write("quests/q-main", q, decision, {});
+        int index = 0;
+        if (own) {
+            index = static_cast<int>((*own)["index"].get<double>());
+            if ((*own).value("journal", "").empty()) (*own)["journal"] = questStage.value("journal", "");
+            store_.Touch("quests/q-main", q, q.value("madeBy", ""));
+        } else {
+            index = questStage.value("index", json()).is_number_integer() && questStage["index"].get<int>() > last
+                        ? questStage["index"].get<int>()
+                        : last + 10;
+            q["stages"].push_back({{"index", index}, {"journal", questStage.value("journal", "")}, {"advancesScene", id}});
+            store_.Write("quests/q-main", q, decision, {});
+        }
         StoryNode& quest = next.Upsert("q-main", "Quest");
         quest.fields["type"] = "main";
         if (!quest.fields.contains("madeBy")) quest.fields["madeBy"] = decision;
@@ -1799,6 +2299,10 @@ std::vector<std::string> GamePlan::HandlePlace(Job& job, const json& answer, con
         }
         brief = CompleteBrief(places, brief);
     }
+    // Its layout for the builder: each zone where it lies, its share of the place, its buildings by type (⑥'s zones).
+    if (const json zones = p.value("contains", json::object()).value("zones", json::array()); zones.is_array() && !zones.empty()) {
+        brief["layout"] = {{"zones", zones}, {"exits", p.value("exits", json::array())}};
+    }
     p["brief"] = brief;
     if (host_.places) {
         // Anything else the checks name inside the Brief ("brief.x.y"): that part left out, and
@@ -1892,6 +2396,8 @@ void GamePlan::QueueDesigns() {
         const std::string id = PlanSlug(Text(f, "id"));
         if (!id.empty() && !store_.Locked("systemdesigns/" + id)) designs.push_back(AddJob("system", id));
     }
+    // The game's controls, once the features say what they need (⑦ Systems ▸ Input).
+    if (!store_.Locked("input")) AddJob("input", "input", designs);
     std::vector<std::string> data;
     if (!store_.Locked("systems")) data.push_back(AddJob("systems", "systems", designs));
     else data = designs;
@@ -1906,6 +2412,15 @@ void GamePlan::QueueDesigns() {
 }
 
 std::vector<std::string> GamePlan::HandleSystem(Job& job, const json& answer, const std::string& rationale) {
+    // Its scripts compile (development_plan.md 32.10): one that doesn't goes back to the AI with the error.
+    std::vector<std::string> broken;
+    for (const auto& sc : answer.value("scripts", json::array())) {
+        if (!sc.is_object() || !host_.validateScript) continue;
+        if (const std::string why = host_.validateScript(sc.value("source", "")); !why.empty()) {
+            broken.push_back(sc.value("path", std::string("a script")) + " doesn't compile: " + why);
+        }
+    }
+    if (!broken.empty()) return broken;
     PlanDecision d;
     d.stage = "systems";
     d.actor = "ai";
@@ -1957,19 +2472,14 @@ std::vector<std::string> GamePlan::HandleSystems(Job&, const json& answer, const
         if (!record.is_object()) record = json::object();
         std::vector<std::string> refused;
         if (host_.validateRecord) {
-            for (int round = 0; round < 12; ++round) {
+            for (int round = 0; round < 40; ++round) {
                 refused = host_.validateRecord(type, record);
                 if (refused.empty()) break;
-                bool removed = false;
-                for (const auto& p : refused) {
-                    const std::string field = p.substr(0, std::min(p.find(':'), std::min(p.find('.'), p.find('['))));
-                    if (record.contains(field)) {
-                        record.erase(field);
-                        fixes.push_back(type + "/" + id + ": " + p + " (left at its default)");
-                        removed = true;
-                    }
-                }
-                if (!removed) break;
+                // Only the value a problem names goes ("enchantment.on", "modifiers[1].attribute"): one at a time, as
+                // removing a list's element moves the ones after it.
+                const std::string& p = refused.front();
+                if (!EraseAtPath(record, p.substr(0, p.find(':')))) break;
+                fixes.push_back(type + "/" + id + ": " + p + " (left out)");
             }
         }
         if (!refused.empty()) {
@@ -2024,6 +2534,66 @@ std::vector<std::string> GamePlan::HandleVisuals(Job&, const json& ui, const std
     doc["schema"] = "aige.ui-plan/1";
     doc["rationale"] = rationale;
     store_.Write("ui", doc, store_.Decide(d), {"brief", "systems"});
+    return {};
+}
+
+// --- ⑥b Cast timeline ---------------------------------------------------------------------------------
+
+std::vector<std::string> GamePlan::HandleTimeline(Job&, const json& answer, const std::string& rationale) {
+    // {characters, cutscenes} (an answer from before cutscenes: the characters alone).
+    const json timeline = answer.is_array() ? answer : answer.value("characters", json::array());
+    const json cutscenes = answer.is_object() ? answer.value("cutscenes", json::array()) : json::array();
+    if (!timeline.is_array() || timeline.empty()) return {"the timeline has no characters"};
+    // Everyone of the cast but the player has an entry (a repair that answered with only what it fixed isn't kept).
+    std::set<std::string> seen;
+    for (const auto& t : timeline) {
+        if (t.is_object()) seen.insert(Text(t, "who"));
+    }
+    std::string missing;
+    for (const auto& c : Outline().value("cast", json::array())) {
+        if (c.value("player", false) || seen.contains(Text(c, "id"))) continue;
+        if (const json d = store_.Read("characters/" + PlanSlug(Text(c, "id"))).value_or(json::object()); d.value("player", false)) continue;
+        missing += (missing.empty() ? "" : ", ") + Text(c, "id");
+    }
+    if (!missing.empty()) return {"every character has an entry: missing " + missing};
+    // Every watched scene (mode cutscene) has its cutscene.
+    std::string unwatched;
+    for (const auto& doc : store_.List("story/scenes")) {
+        const json s = store_.Read(doc).value_or(json::object());
+        if (s.value("card", json::object()).value("mode", "") != "cutscene") continue;
+        const std::string sid = Text(s, "id").empty() ? PlanSlug(doc) : Text(s, "id");
+        const bool covered = std::any_of(cutscenes.begin(), cutscenes.end(), [&](const json& c) { return c.is_object() && Text(c, "scene") == sid; });
+        if (!covered) unwatched += (unwatched.empty() ? "" : ", ") + sid;
+    }
+    if (!unwatched.empty()) return {"these scenes are watched (mode cutscene) and have no cutscene: " + unwatched};
+    PlanDecision d;
+    d.stage = "timeline";
+    d.actor = "ai";
+    d.kind = "design-timeline";
+    d.subject = "timeline";
+    d.chosen = std::to_string(timeline.size()) + " characters";
+    d.rationale = rationale;
+    // Made from the characters, the places and the quests: any of them changed, it's stale.
+    std::vector<std::string> inputs = {"outline"};
+    for (const char* folder : {"characters", "places", "quests"}) {
+        for (const auto& doc : store_.List(folder)) inputs.push_back(doc);
+    }
+    // The quests it's laid out by (a tab each, a column per stage): each stage's index and journal.
+    json quests = json::array();
+    for (const auto& doc : store_.List("quests")) {
+        const json q = store_.Read(doc).value_or(json::object());
+        json stages = json::array();
+        for (const auto& s : q.value("stages", json::array())) {
+            stages.push_back({{"index", s.value("index", 0)}, {"journal", Text(s, "journal")}, {"scene", Text(s, "advancesScene")}});
+        }
+        const std::string id = Text(q, "id").empty() ? PlanSlug(doc) : Text(q, "id");
+        quests.push_back({{"id", id}, {"name", Text(q, "name")}, {"type", Text(q, "type").empty() ? (id == "q-main" ? "main" : "side") : Text(q, "type")},
+                          {"stages", stages}});
+    }
+    std::stable_sort(quests.begin(), quests.end(), [](const json& a, const json& b) { return a.value("id", "") == "q-main" && b.value("id", "") != "q-main"; });
+    store_.Write("timeline", {{"schema", "aige.cast-timeline/2"}, {"characters", timeline}, {"cutscenes", cutscenes}, {"quests", quests},
+                              {"rationale", rationale}},
+                 store_.Decide(d), inputs);
     return {};
 }
 

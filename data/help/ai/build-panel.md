@@ -8,10 +8,10 @@ The Build panel is a dockable panel (bottom by default) for building whole place
 
 Open it:
 - **U** (show or hide the Build panel);
-- by asking the AI panel to build a new place ("build a large village by a river"): the editor recognises a build request (a verb like build, make, create, generate, add, place with a kind of place) and starts a build. The AI panel shows a **build card** ("Building Riverford", its stage) with **Open build panel**;
+- by asking the AI panel to build a new place ("build a large village by a river"): the editor recognises a build request (a verb like build, make, create, generate, add, place with a kind of place) and asks, **Open the Build panel with it** or **Do it here in the AI panel**. The first starts a build, and the AI panel shows a **build card** ("Building Riverford", its stage) with **Open build panel**;
 - from the Planner (⑥ Places ▸ **Build…**, or ⑩ Build).
 
-Requests about changing things (move, delete, tougher...) or about a place's people and story (story, populate, NPCs, dialogue, gossip, lore, villagers) are not builds; they stay in the AI panel. On a build card that is still reading the request, **Ask as a change instead** cancels the build and sends your words to the AI panel as a change.
+Requests about changing things (move, delete, tougher...) or about a place's people and story (story, populate, NPCs, dialogue, gossip, lore, villagers) are not builds; they stay in the AI panel. A request that reads like building a new place asks first: **Open the Build panel with it** or **Do it here in the AI panel**; one that names a scene the project has is an edit there, never a build. On a build card that is still reading the request, **Ask as a change instead** cancels the build and sends your words to the AI panel as a change.
 
 ### Example: a fishing village from the AI panel
 
@@ -169,6 +169,7 @@ The Result step: **Build into the scene** puts the place into the scene, verifie
 - **Undo (Ctrl+Z)** takes the whole build out of the scene in one step.
 - Revise and Build again: the place is replaced, nothing else in the scene is touched.
 - **Finish** saves the scene with the place in it, closes the build and shows it in the viewport (reopen it from Builds).
+- A painted place has **Mark again** beside Finish: ⑤ Mark opens on its marks, and **Update the scene** builds just that place into the scene again with the changed marks (see painted-places.md).
 
 Once built, the place is the scene's: ask the AI panel to add or change things in it ("add a well to the village") like any part of the scene.
 
@@ -218,3 +219,5 @@ The next village you build "with a smokehouse" can have one, since the AI reads 
 Questions: what is the ontology? how do I add a new kind of building? can I share my modules?
 
 See also: build-methods.md, revising-places.md, planner.md, ai-providers-and-keys.md.
+
+Where characters and story props are placed, and where they go over the story, is the AI Planner's **Placements** tab (AI Planner ▸ Build, after Quests and before Behaviour): see planner.md.

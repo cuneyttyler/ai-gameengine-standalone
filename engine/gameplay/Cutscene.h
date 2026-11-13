@@ -15,13 +15,18 @@ namespace aige {
 // some last a while ("seconds"). The game carries keys out (GameSession); the player
 // here only keeps time and says which keys are due, so it's the same in a test.
 //
-//   actor     move (to a marker, or x/y; speed), face (a marker, an actor or "player"),
-//             show, hide, place (jump to a marker)
-//   dialogue  a line: speaker, text, seconds, voice
-//   camera    follow (an actor; "player"), move (to a marker or x/y), shake, zoom
+//   actor     move (to a marker, or x/y; speed, or seconds: it takes that long; path: round what's in the
+//             way), face (a marker, an actor or "player"), show, hide, place (jump to a marker)
+//   dialogue  a line: speaker, text, seconds, voice; talk (with: a character): their conversation,
+//             the player choosing; the timeline waits for it to end
+//   camera    follow (an actor; "player"), move (to a marker or x/y; seconds: a pan that long), shake, zoom
 //   audio     music (path; "" for the scene's), sound (path)
 //   screen    fade_out, fade_in (seconds), title (text, seconds), letterbox (on)
-//   logic     do (story effects, as in dialogue), emit (event), wait_input
+//   logic     do (story effects, as in dialogue), emit (event), wait_input, wait_until (until: {moves},
+//             {talk}, {event}, {flag}; max seconds): the timeline holds until it's so
+//
+// "world": "waits" (the default: nothing else moves) or "runs" (the world goes on around it; the player
+// still only watches).
 //   effect    (Phase 18) accepted and skipped
 //
 // Actors are named the way quests name things: an Actor key, a World Bible key, an
@@ -45,6 +50,11 @@ struct Cutscene {
     std::string name;
     bool letterbox = true;
     bool skippable = true;
+    bool worldRuns = false; // "world": "runs"
+    // "ambient": true — a small scene (docs/systems/story.md: small scenes): it plays round the player, who keeps control;
+    // its lines are said over the speakers' heads, its camera and screen keys are skipped, and it runs beside a cutscene
+    // (one small scene at a time). Its cast is held from their packages while it plays.
+    bool ambient = false;
     float length = 0.0f; // 0: until the last key ends
     std::vector<CutsceneTrack> tracks;
 
@@ -67,6 +77,7 @@ struct CutsceneTrigger {
     std::string cutscene; // its id
     float radius = 1.5f;
     bool once = true;
+    std::string conditions; // JSON, as dialogue's: it plays only while they hold (a quest at its stage)
 };
 
 // Plays one cutscene: Update hands over the keys that came due, in time order.
@@ -85,9 +96,11 @@ public:
     float Time() const { return time_; }
     // Advances time (not while waiting for input) and fires what's due.
     void Update(float dt, const FireFn& fire);
-    // A wait_input key holds the timeline until Continue.
-    bool WaitingForInput() const { return waiting_; }
-    void Continue() { waiting_ = false; }
+    // A wait_input, wait_until or talk key holds the timeline until Continue.
+    bool WaitingForInput() const { return waiting_ && waitKey_ && waitKey_->op == "wait_input"; }
+    bool Waiting() const { return waiting_; }
+    const CutsceneKey* WaitKey() const { return waiting_ ? waitKey_ : nullptr; }
+    void Continue() { waiting_ = false; waitKey_ = nullptr; }
     // Fires every key not yet fired (skipping) and ends.
     void Skip(const FireFn& fire);
     void Stop() { active_ = false; }
@@ -102,6 +115,7 @@ private:
     float time_ = 0.0f;
     bool active_ = false;
     bool waiting_ = false;
+    const CutsceneKey* waitKey_ = nullptr;
 };
 
 } // namespace aige

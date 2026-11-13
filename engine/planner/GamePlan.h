@@ -60,6 +60,8 @@ public:
         nlohmann::json catalog = nlohmann::json::object();
         // Checks a record the Systems stage writes; empty: not checked.
         std::function<std::vector<std::string>(const std::string& type, const nlohmann::json& record)> validateRecord;
+        // Compiles a Lua script the Systems stage writes: why it doesn't, or ""; empty: not checked.
+        std::function<std::string(const std::string& source)> validateScript;
         int parallel = 3; // jobs that may run side by side (characters, places)
     };
 
@@ -95,6 +97,16 @@ public:
     std::string Lock(const std::string& doc, bool locked);
     std::string Regenerate(const std::string& doc);
     std::string RegenerateStale();
+    // A page of the Planner made again: each of its documents regenerated (the locked ones kept). Concept is the request
+    // read again (RestartFrom). Empty: under way; else why not.
+    std::string RegeneratePage(const std::string& page);
+    // A revision of one step (its documents only: "characters", "systems", ...), in the user's words: the AI finds which
+    // documents and fields they're about, then edits those. Each step keeps its history (planner/revisions.json).
+    std::string ReviseStep(const std::string& step, const std::string& text);
+    nlohmann::json Revisions() const; // {step: [{id, at, text, status, targets, edits, rationale, error}]}, the jobs' status in it
+    // A step's revision taken back: each of its edits undone, the newest first (a value put back as it was, an item it
+    // added to a list taken out). Empty: done; else why not.
+    std::string RevertRevision(const std::string& step, const std::string& id);
     // A step that failed, tried again from its first attempt; or every failed step. The plan
     // goes back to what it was doing (waiting for review, done) once they're through.
     std::string RetryJob(const std::string& id);
@@ -139,6 +151,14 @@ public:
     std::string AcceptFinding(const std::string& finding, const std::string& reason);
     // Back to a history snapshot (the baseline, a stage's commit).
     std::string Restore(int snapshot);
+    // Back to a step and on from there (development_plan.md 32.11): the step and every one after it made again, from
+    // the plan as the step before left it (its snapshot), with the documents of the steps before as they are now (the
+    // user's edits kept, the outline's brought into the graph). ① starts the plan again from its request. Why not, or "".
+    std::string RestartFrom(const std::string& stage);
+    // A character's, place's or faction's id changed ("character/mara-venn" -> "character/ashen-venn"), everywhere: every
+    // document of the plan that names it (and the documents named after it), the story graph, the World Bible (its
+    // entry and the relations to it). Why not, or "".
+    std::string RenameId(const std::string& from, const std::string& to);
 
     // --- Views ---------------------------------------------------------------------------
     nlohmann::json State() const; // the Planner panel's model
@@ -160,6 +180,7 @@ private:
         std::string decision;
     };
 
+    std::string lastEdit_; // the decision the last Edit recorded (a revision keeps its own, to be taken back)
     Host host_;
     PlannerStore store_;
     StoryOntology gso_;
@@ -227,6 +248,9 @@ private:
     // Stage work.
     void MergeConcept();
     std::vector<std::string> HandleOutline(Job& job, const nlohmann::json& outline, const std::string& decision);
+    StoryGraph SeedGraph(const nlohmann::json& outline, const std::string& decision);
+    void SyncOutline(const std::string& decision); // an edited outline into the graph, the later steps' facts kept
+    void SyncDocToGraph(const std::string& doc, const nlohmann::json& content); // a character's or place's fields
     std::vector<std::string> HandleAct(Job& job, const nlohmann::json& act, const std::string& decision);
     std::vector<std::string> HandleScene(Job& job, const nlohmann::json& scene, const std::string& decision);
     std::vector<std::string> HandleCritic(Job& job, const nlohmann::json& answer, const std::string& decision);
@@ -239,6 +263,7 @@ private:
     std::vector<std::string> HandleGameplay(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleSystems(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleVisuals(Job& job, const nlohmann::json& ui, const std::string& decision);
+    std::vector<std::string> HandleTimeline(Job& job, const nlohmann::json& timeline, const std::string& decision);
     void BuildReport(const nlohmann::json& critic);
     void UndoScene(const std::string& scene); // a scene's facts out of the graph before it's written again
 

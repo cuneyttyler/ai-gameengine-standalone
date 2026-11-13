@@ -4,7 +4,17 @@
 add_library(aige_gamebuild STATIC
     GameBuild.h
     GameBuild.cpp
+    BuildCheck.cpp
+    SceneTest.cpp
+    Requirements.cpp
+    Implement.cpp
+    CastTimeline.cpp
+    Placements.cpp
+    PlanCast.h
+    PlanCast.cpp
+    PlanKeys.h
+    PlanKeys.cpp
 )
 target_include_directories(aige_gamebuild PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_gamebuild PUBLIC aige_planner aige_editing aige_gameplay aige_assets aige_records aige_places aige_story)
+target_link_libraries(aige_gamebuild PUBLIC aige_planner aige_editing aige_gameplay aige_assets aige_records aige_places aige_story aige_game)
 target_compile_features(aige_gamebuild PUBLIC cxx_std_20)

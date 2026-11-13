@@ -10,6 +10,7 @@ import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
 import { menuExtensions } from '../menus'
 import { keyLabel, runAction } from '../keys'
+import { openSearch } from '../projectSearch'
 import { isOpen, movePanel, panelIds, panelNames, resetLayout, setPanelVisible, sideNames, type Side } from '../layout'
 
 // View ▸ <panel> ▸ Show / Hide, and docking on a window edge (5.6, 6.8).
@@ -49,6 +50,9 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
     { label: 'Replace prefab…', disabled: editorState.playing, action: () => (editorState.replacePrefab = '') },
     // A picture of your own as the scene's ground (top-down, the whole site), with or without the AI.
     { label: 'Background Image…', disabled: editorState.playing, action: () => (editorState.showBackground = true) },
+    separator,
+    // Text across the project's files; each result opens where it's edited (projectSearch.ts).
+    { label: 'Search in Project…', shortcut: keyLabel('edit.searchProject'), action: () => openSearch() },
     separator,
     ...menuExtensions.edit,
     {

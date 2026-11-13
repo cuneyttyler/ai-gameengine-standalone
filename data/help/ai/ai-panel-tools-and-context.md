@@ -13,7 +13,7 @@ Each request sends the model a summary of the open project as it is now:
 - dialogue and quests in full while they fit (16,000 characters), records in full while they fit (16,000), then by id only;
 - the scene's markers and the schedules; cutscenes; every scene with its markers and the start scene; the World Bible place each scene shows;
 - the selection (every selected entity when several are), and the Inspector field you asked about;
-- difficulty levels, game UI files and themes, animation sheets and their clips, particles and effects, abilities and magic effects, physics layers and triggers, the story graph and its issues, the plan (when the project has one), shipping (achievements, accessibility, version);
+- difficulty levels, game UI files and themes, animation sheets and their clips, particles and effects, abilities and magic effects, physics layers and triggers, the story graph and its issues, the plan (when the project has one: with the placements of whoever stands in the open scene, their building, home, work and why), shipping (achievements, accessibility, version);
 - what the Build panel has open (its place, step, and for a painted place its marks);
 - the last 8 turns of the conversation.
 
@@ -57,13 +57,16 @@ Questions: how does the AI know which components exist? why didn't the AI write 
 
 ## The tools: looking before answering
 
-When the context doesn't show what it needs, the AI asks for tools instead of guessing. The editor runs them (they only read; nothing changes) and asks again with the results, up to 8 rounds. The chat shows "Looked at: ..." with the tools used.
+When the context doesn't show what it needs, the AI asks for tools instead of guessing. The editor runs them (they only read; nothing changes, except open_scene, which only opens a scene) and asks again with the results, round after round until it has what it needs (a high safety limit stops a search that goes in circles). The chat shows "Looked at: ..." with the tools used.
 
 - **find_entities**: entities by name, prefab, component, or near a spot (with a radius): ids, names, prefabs, positions.
 - **read_entity**: one entity's every component and field, and its script properties.
 - **find_assets**: art by what it shows (its analysis), name or folder. **find_prefabs**: prefabs.
 - **read_file**: a record, script, dialogue, quest, cutscene, schedule, UI file, World Bible entry or input.json.
 - **list_scenes**: the scenes, their types, the start scene.
+- **open_scene**: opens the scene a request is about (the open one is saved first), so the lookups after it and every edit are made there. "Put a gate at the north road of Bellwether" while Reed Apothecary is open opens Bellwether first.
+- **requirements**: the AI Planner's requirements (planner/requirements.json), filtered by id, scene, status, kind or words: each one's when, where, who, its checks and their results, and its implementation items (each with the Build tab it belongs to: a Build tab sends the AI panel what its rules can't build, such as scripts on Systems and dialogue on Behaviour). Asked to build or fix a named requirement, the AI builds exactly what it says and makes its checks hold.
+- **placements**: the AI Planner's placements (planner/placements.json), filtered by id, scene or words: the buildings of the built places (kind, door, drawn interior, whose home or work), and where each character and story prop stands (its scene, cell, building or marker, and why) and is over the story (its whereabouts, from a quest stage or event until the next). To move a planned character or prop for good, the AI moves the entity and its marker in its scene and records it with the **placement.set** command, which locks it so **Replace Characters** keeps it.
 - **read_settings**: project settings. **read_input**: the input actions and their keys.
 - **search_world**: World Bible entries about something.
 - **what_is_at**: what stands at a spot (world cells), solid or not.
@@ -71,6 +74,12 @@ When the context doesn't show what it needs, the AI asks for tools instead of gu
 - **check**: the project's problems: gateways, records, animation sheets, and script errors from a 2-second headless run.
 - **look**: a picture of the scene (around an entity, an area, or the whole of it up to 96 cells), drawn by the CPU renderer and attached to the next message so the model sees it.
 - **playtest**: the open scene played headless for 1 to 30 seconds (5 by default), pressing the input actions asked for in turn (`move_x+` walks right): its events, script errors, where the player went, its pockets and health.
+
+### Example: send the gravedigger to the graves
+
+1. Ask "Ash Carter should stand by the graves in Bellwether, not in the graveyard".
+2. The chat shows "Looked at: placements, open_scene": the AI read where Ash Carter is placed and why, and which graves Bellwether has (its buildings list).
+3. The card moves Ash Carter and his `start-ash-carter` marker beside the grave, and records it with `placement.set` (his spot and why). The AI Planner's Placements tab shows him **Locked** there, so **Replace Characters** keeps him.
 
 ### Example: put two guards inside the inn
 
@@ -84,7 +93,7 @@ When the context doesn't show what it needs, the AI asks for tools instead of gu
 2. The AI uses **look** to see the area and **playtest** pressing `move_x+` (and `move_y-` to go up) for a few seconds; the chat shows "Looked at: look, playtest".
 3. If the player gets stuck at the river, the card proposes a change (a bridge or a ford of walkable tiles) and the notes say what the playtest found, such as where the player stopped.
 
-Questions: what tools does the AI have? can the AI see the scene? can the AI playtest my game? what does "Looked at" mean?
+Questions: what tools does the AI have? can the AI see the scene? can the AI playtest my game? what does "Looked at" mean? where is a character placed and why? how do I move a planned character so it stays?
 
 ## What the AI can and can't do
 

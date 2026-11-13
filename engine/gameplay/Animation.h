@@ -153,6 +153,12 @@ struct Attachment {
 };
 
 // Runtime: what an Attachment (or a piece of Equipment shown) is on, found each frame.
+// Runtime: the item a character holds in its hand (the crafting "item in hand", docs/systems/actions.md §6): drawn at
+// its hand point over the weapon (development_plan.md 32.6), by its record's sprite, else its icon.
+struct InHand {
+    std::string item;
+};
+
 struct AttachmentLink {
     Entity parent{entt::null};
     std::string slot; // the Equipment slot it shows ("" for an Attachment of the scene's)

@@ -198,3 +198,7 @@ never plays again, and the quest starts when it ends.
 
 Questions: how do I play a cutscene when the player walks somewhere? how do I play a cutscene from dialogue? does a
 cutscene play again?
+
+## Small scenes (ambient cutscenes)
+
+A cutscene with `"ambient": true` is a small scene: it plays round the player, who keeps control (no letterbox; its camera, screen and audio keys are skipped). Its lines are said over the speakers' heads, its people walk, turn and play their clips (`animate` with a `clip`), its story effects run, and its cast's packages wait until it's over. One plays at a time, beside any cutscene. The AI Planner writes them (Life ▸ Small scenes) and Build ▸ Scenes (was Small scenes) makes each one: its file (cutscenes/small-<id>.json) and a player-near Reaction where it plays, with its quest stage and time of day as conditions.

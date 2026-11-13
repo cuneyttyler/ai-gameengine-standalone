@@ -4,7 +4,9 @@
 // surface at whatever rect the Vue app's viewport placeholder reports
 // ("hole punching", docs/project/technical.md §4). The WebView2 control always
 // fills the client area; only the viewport window's bounds are dynamic.
+#include "BetaExpiry.h"
 #include "EditorApp.h"
+#include "install/InstallPath.h"
 #include "ai_bridge/UserPrefs.h"
 #include "Launcher.h"
 #include "Win32Util.h"
@@ -121,11 +123,11 @@ int RunWelcome(HWND mainWindow) {
     g_webView = &webView;
     aige::Launcher launcher(mainWindow, std::filesystem::path(aige::Utf8ToWide(AIGE_EDITOR_DEFAULT_PROJECT)),
                             [&webView](const nlohmann::json& message) {
-                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump()));
+                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)));
                             });
     webView.SetBounds(0, 0, client.right - client.left, client.bottom - client.top);
     webView.SetUrlFragment(L"welcome");
-    webView.NavigateToVirtualHost(kVirtualHostName, aige::Utf8ToWide(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
+    webView.NavigateToVirtualHost(kVirtualHostName, aige::InstalledOr(std::filesystem::u8path(AIGE_EDITOR_UI_DIST_DIR), "ui").wstring(), L"index.html");
     webView.SetMessageHandler([&launcher](std::wstring json) {
         try {
             launcher.OnWebMessage(nlohmann::json::parse(aige::WideToUtf8(json)));
@@ -221,6 +223,12 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         const CommandLine commandLine = ParseCommandLine();
         WaitForProcess(commandLine.after);
+        // A beta past its last day (BetaExpiry.h): said, the beta page opened for the new one, and nothing else runs.
+        if (const std::string ended = aige::BetaExpired(); !ended.empty()) {
+            MessageBoxW(nullptr, aige::Utf8ToWide(ended).c_str(), L"AIGE beta", MB_OK | MB_ICONINFORMATION);
+            ShellExecuteW(nullptr, L"open", L"https://aige-dev.com/beta", nullptr, nullptr, SW_SHOWNORMAL);
+            return 0;
+        }
 
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(wc);
@@ -304,10 +312,10 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
 
         aige::EditorApp app(mainWindow, viewportWindow, registry, lua, assets, audio, renderer,
                             [&webView](const nlohmann::json& message) {
-                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump()));
+                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)));
                             });
         g_app = &app;
-        app.StartAi(AIGE_EDITOR_AI_SERVICE_DIR);
+        app.StartAi(aige::InstalledOr(std::filesystem::u8path(AIGE_EDITOR_AI_SERVICE_DIR), "ai_service"));
 
         viewportWindow.SetMouseCallback([&app](const aige::ViewportMouseEvent& event) { app.OnViewportMouse(event); });
         viewportWindow.SetKeyDownCallback(
@@ -324,7 +332,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             std::filesystem::create_directories(library, ec);
             if (!library.empty()) webView.MapVirtualHostToFolder(L"aige-library.local", library.wstring());
         }
-        webView.NavigateToVirtualHost(kVirtualHostName, aige::Utf8ToWide(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
+        webView.NavigateToVirtualHost(kVirtualHostName, aige::InstalledOr(std::filesystem::u8path(AIGE_EDITOR_UI_DIST_DIR), "ui").wstring(), L"index.html");
         webView.SetMessageHandler([&app](std::wstring json) {
             try {
                 app.OnWebMessage(nlohmann::json::parse(aige::WideToUtf8(json)));

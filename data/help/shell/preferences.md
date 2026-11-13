@@ -159,15 +159,14 @@ Assets).
 - **Characters, animations**: a note: characters (Generate ▸ Character) are drawn by the art model when it's a BFL
   one, else by PixelLab; animations by the Humanoid and Non-humanoid animation choices.
 - **Painting ▸ Background**: who paints a place's background (its ground, roads and floors as one picture). The
-  choices are BFL FLUX.3 Image (keeps the map best), FLUX.2 max (as good, slower), FLUX.2 pro, or FLUX.2 klein (fast,
-  loose).
+  choices are BFL FLUX.3 Image (keeps the map best) or FLUX.2 klein (fast, loose).
 - **Humanoid animation**: AutoSprite (its motions or your own; a character's 8 directions at once) or PixelLab Animate
   with text v3 (8 frames, up to 256 px; slow).
 - **Non-humanoid animation**: things like doors, chests, levers and flags. PixelLab Animate with text v3 (keeps the
   thing as drawn; 8 frames) or BFL FLUX video (12 frames taken from a 5 s clip).
 - **Paint model**: who paints a place whole for the Paint build method when the project doesn't say. The choices are
-  FLUX-3-Image (keeps the layout best), FLUX-2-Klein-4b (fast, a rough draft), FLUX-2-Pro, FLUX-2-Max,
-  FLUX-3-Image-to-Pro and FLUX-3-Image-to-Klein.
+  FLUX-3-Image (keeps the layout best) and FLUX-2-Klein-4b (fast, a rough draft). FLUX.2 pro and max and
+  FLUX-3-Image-to-Pro/-Klein are no longer offered: a setting still naming one uses FLUX-3-Image.
 
 ### Example: a sharper background painter and BFL for animated doors
 
