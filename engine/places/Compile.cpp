@@ -631,7 +631,10 @@ void Compiler::Root(const json& root) {
         if (!options_.fixedSide && form_.value("site-fit", "") == "content") {
             // Sized to the content (the layout form's site-fit): the plan's lots and their streets, its open space on
             // top; on a shared grid, whole blocks (and the line closing them).
-            const double open = form_.value("open-space", "") == "many" ? 0.4 : form_.value("open-space", "") == "some" ? 0.25 : 0.1;
+            double open = form_.value("open-space", "") == "many" ? 0.4 : form_.value("open-space", "") == "some" ? 0.25 : 0.1;
+            const std::string coverage = form_.value("coverage", "");
+            if (coverage == "partial") open = std::max(open, 0.35); // intentional breathing room when content-sized
+            if (coverage == "full") open = std::min(open, 0.12);    // tight fit: zones fill the site
             // A shared radial plan's spokes and rings take more of the land than a grid's streets, and leave wedges.
             const bool radial = form_.value("street-grid", "") == "shared" && m && LeadPattern(FieldOf(root, *m, "layout")) == "radial";
             int fit = static_cast<int>(std::ceil(std::sqrt(required * (1.0 + open) / (radial ? 0.6 : 0.9)))) + 2 * margin;
@@ -978,8 +981,11 @@ void Compiler::Root(const json& root) {
         const double need = needed * 1.9 * scale;
         // Without buildings (farmland, a green), a zone takes what the others leave.
         const bool flexible = needed <= 0;
+        const double requested = std::max(1.0, planned * (flexible ? 1.0 : scale));
+        const double target = std::max(requested, need);
         json zone = {{"id", c.value("id", "")}, {"node", c.value("id", "")}, {"module", cm->id},
-                     {"area", static_cast<int>(std::lround(std::max(planned * (flexible ? 1.0 : scale), need)))}, {"prefers", prefers}};
+                     {"area", static_cast<int>(std::lround(target))}, {"quota", target}, {"minQuota", need}, {"prefers", prefers}};
+        if (area) zone["maxQuota"] = std::max(target, area->second * (flexible ? 1.0 : scale));
         // How its edge grows (its compile's `edge`: organic or not, the round middle kept for what it holds).
         if (cm->compile.is_object() && cm->compile.contains("edge")) {
             zone["edge"] = cm->compile["edge"];

@@ -208,16 +208,109 @@ place of `W × H` cells:
 The block-out is drawn at the final size, so the painting, the block-out and its id map stay the same size, pixel
 for pixel: the Mark step, the occluders and the interiors are unchanged.
 
-### Painting the tiles
+### Painting the tiles — context propagation (current approach)
 
-- Each tile is cut from the block-out with its overlap and painted at the model's full size, with the place's
-  prompt (its kind's paint guide, its own words, the key) plus a note that it is one part of a bigger map (paint
-  up to the cut edges, no frame) and the scale of its part. The whole place's counts become "of the whole map's".
-- The tiles of one place are painted in parallel (4 at a time), with the same seed.
-- They are joined by **cross-fading** the overlaps (each tile weighted 1 inside, fading to 0 across its overlap).
-  Walls, roads and edges line up because the block-out under them is the same; the floor's texture blends.
-- Tested (`builder_tests/bfl_paint/dungeon_test/packed/tiles-1`): a 50 × 50 dungeon in 2 × 2 tiles at 4000 ×
-  2140 holds about 2.5 times the detail of the one-image painting, with no visible seam.
+**Why this replaced the old approach.** Previously one image was painted with the general layout of the whole scene
+(including its buildings), and then each tile was re-painted in detail from that. For big scenes that makes every
+building come out at the same size, whatever the scene's size — detail does not scale with the place. The current
+approach paints **each tile directly from its flat, colour-coded block-out crop**, so a tile's content (buildings,
+trees, roads) is generated at the tile's own scale. The only thing shared between tiles is an **8% context band**
+copied from the tile painted just before it, which is what makes the separate paintings join congruently.
+
+This works for any scene size and for both kinds of build: **one place** (a settlement, castle, dungeon…) and an
+**open world** (§3, many sections). The number of tiles comes from the cell count (§6 "How many"); the 18 steps below
+describe the four-tile case in the order painting happens. Tiles are painted one after another (not in parallel),
+because each one needs the previously painted tile's pixels as its context.
+
+Names: **TL** = top-left, **TR** = top-right, **BL** = bottom-left, **BR** = bottom-right. "%8" means a band 8% of the
+tile's size: 8% of its width for a left/right band, 8% of its height for a top/bottom band.
+
+#### The 18 steps (worked example: the four-tile / 2 × 2 case)
+
+These 18 steps are the concrete 2 × 2 case; the general `cols × rows` case follows the same rules with the same
+right-to-left, top-to-bottom order (see "How many tiles" and "Which sides come from previous tiles" below).
+
+Block-out preparation:
+
+1. Divide the block-out into 4 tiles.
+2. Enlarge each tile so its resolution becomes the same as the whole block-out.
+3. Append %8 of the **right** of the left tile (TL) and %8 of the **top** of the bottom tile (BR) to the **top-right**
+   corner block-out (TR). Append 8% of the **top-right** corner of the left-bottom tile (BL) to the **bottom-left** of
+   the **top-right** corner blockout (TR)
+4. Append %8 of the **top** of the left-bottom tile (BL) to the **left-top** tile (TL) — i.e. TL's bottom band.
+5. Append %8 of the **right** of the left-bottom tile (BL) to the **right-bottom** tile (BR) — i.e. BR's left band.
+
+Paint and propagate, in order:
+
+6. **Paint the top-right corner (TR)** — it is painted first, from the block-out built in step 3.
+7. Extract %8 **left** of painted TR and put it over the **right** of the top-left block-out tile (TL).
+8. Extract %8 **bottom** of painted TR and put it over the **top** of the bottom-right block-out tile (BR).
+9. **Paint the top-left tile (TL)**, from the block-out built in steps 4 and 7.
+10. **Paint the bottom-right tile (BR)**, from the block-out built in steps 5, 8 and 11.
+11. Extract %8 **left** of painted BR and put it over the **right** of the bottom-left block-out tile (BL).
+12. Extract %8 **bottom** of painted TL and put it over the **top** of the bottom-left block-out tile obtained in
+    step 10 — the **full height** of that left band, including its top corner.
+13. **Paint the bottom-left tile (BL)**, from the block-out built in steps 10 and 13.
+
+Cut and combine on an exact grid:
+
+14. Cut %8 **left** and %8 **bottom** off the top-right corner (TR) — remove its appended context.
+15. Cut %8 **bottom** off the top-left corner (TL).
+16. Cut %8 **left** off the bottom-right corner (BR).
+17. **Combine** the four cut tiles on an exact grid (TL top-left, TR top-right, BL bottom-left, BR bottom-right), then
+    scale the result back to the full block-out size.
+
+#### Exact-strip restoration (required for congruence)
+
+A model repaints whatever context band it is given, so the band drifts away from the neighbour it came from. To
+guarantee the tiles join exactly, **after each tile is painted, its context bands are overwritten with the exact
+pixels from the previously painted tile**:
+
+- after painting TL: its right band ← TR's painted left band (step 7);
+- after painting BR: its top band (full width, including the top-left corner) ← TR's painted bottom band (step 8);
+  the centre-corner content reaches BR through that full-width band, so no separate corner overlay is needed;
+- after painting BL: its top band ← TL's painted bottom band (step 10), and its right band (full height, including
+  its top corner) ← BR's painted left band (step 12).
+
+The prompt tells the model, per tile, exactly which previously painted neighbour each context band came from, so it
+continues the right content across the right cut. It also states that **buildings go only inside the coloured zone
+areas**: the plain green land, dark-green woods, blue water and brown roads carry no buildings, only trees, grass,
+water and roads. This keeps open land (the uncoloured gaps between zones) open instead of filling it with buildings.
+
+With the bands restored exactly, a tile's edge column and its neighbour's edge column come from the **same paint
+pass**, so the seam is a natural image gradient rather than a mismatch. The prompt tells the model that each named
+edge band is a continuation of the already-painted neighbour and must be continued seamlessly — but it must **not**
+say the band is "untouched / not yours to paint": that makes the model leave the flat colour zones beside the band as
+empty fields. Every coloured zone must still be filled densely with its characteristic content, including right up
+to the cut edges (see the prompt rules in `ai_service/app/bfl.py`).
+
+#### How many tiles
+
+The number of tiles is decided in the **editor**, not by the painter. For Paint (Free) the user picks a pixel density
+(`build:paintDensity`, cellPx); the editor's `PlanFreePaint()` turns the scene's cell count and that density into a
+`cols × rows` grid. For Paint (by Plan) it uses `PaintTiles()` (a square `n × n` from the cell span). The editor sends
+`cols` and `rows` to `/places/paint`; the painter uses exactly that grid and reports the same count. So a small scene
+can be one tile, a village a 3 × 3 grid, a big world section larger — whatever the editor chose.
+
+#### Which sides come from previous tiles
+
+Tiles are painted **right-to-left within each row, rows top-to-bottom**, so a tile's right neighbour (same row) and
+top neighbour (row above) are always already painted. A tile only receives context on the sides that join a tile
+painted before it; the prompt states this per tile:
+
+- the **top-right** tile (painted first): no previous tiles — its flat bands come from the block-out;
+- the **top row** (other tiles): context only from the **right** tile;
+- the **right column** (other tiles): context only from the tile **above**;
+- **every other tile**: context from **both** the right tile and the tile above (their shared corner flows through
+  the full-width bottom band and full-height left band).
+
+Crucially, the prompt also says the **other** sides are the **outer edge of the map** — the black there is the real
+map boundary and must be kept black. Without that, the model extends the painted scene past the map's diagonal edge
+into the black (a serious artifact seen when this rule was missing). Water likewise is painted **only** where the
+block-out actually shows blue: no blue in a tile means no river, lake or sea is invented there.
+
+This applies to Paint (Free), Paint (by Plan) and open-world sections alike — all three go through the same endpoint
+with the same editor-chosen tile grid.
 
 ### A section painted freely
 

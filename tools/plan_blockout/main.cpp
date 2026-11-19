@@ -354,7 +354,8 @@ int Prepare(const fs::path& solvedFile, const fs::path& out, int cellPx, bool la
         for (int c = 0; c < W * H; ++c) {
             std::string& g = ground[c];
             if (g == "road") g = "dirt"; // the world's roads round it: roads (as a road looks)
-            else if (g == "forest-floor") g = "grass"; // under the trees: plain ground
+            // Keep forest-floor dark green: it is the wood AREA the painter fills with dense trees, not individual
+            // tree shapes. See docs/places/tiling.md §6.
             else if ((g == "dirt" || g == "tilled" || g == "plaza") && !main[c]) g = "grass";
         }
         SetTerrain(solved, ground, W, H);

@@ -17,8 +17,11 @@ import random
 import time
 
 import httpx
+import numpy as np
 
 from .providers import ProviderError
+from .tiling import paint_tiled, tile_prompt, tile_note
+from .style_refs import generate_style_refs
 
 BASE = "https://api.bfl.ai/v1"
 
@@ -316,11 +319,11 @@ def scale_sentence(legend: dict | None) -> str:
     across, down, m = int(s.get("across") or 0), int(s.get("down") or 0), float(s.get("metresPerCell") or 2)
     if not s.get("grid") or across <= 0 or down <= 0:
         return ""
-    return (f"SCALE: the image shows the whole level, {across} by {down} grid squares; each grid square on the floor is one "
-            f"flagstone about {m:g} m across (one person stands in one), so the level is about {across * m:g} m by "
-            f"{down * m:g} m and holds many rooms. Keep that scale: count the squares; a wall that runs 20 squares in the "
-            f"image is {20 * m:g} m long and stays exactly that long in the painting; flagstones, torches, doors and "
-            "things stay small, at that scale. ")
+    return (f"SCALE: the image shows the whole place, {across} by {down} grid squares; each grid square is about {m:g} m across "
+            f"(one person stands in one), so the place is about {across * m:g} m by {down * m:g} m. Keep that scale: a typical "
+            f"building occupies about 3 to 5 grid squares per side (6 to {5 * m:.0f} m); a person is about 1 grid square tall. "
+            f"Count the squares; an element that spans 20 squares in the image is {20 * m:g} m long and stays exactly that long "
+            f"in the painting. Things stay small at that scale. ")
 
 
 def counts_sentence(legend: dict | None) -> str:
@@ -468,6 +471,12 @@ def free_prompt(place: dict, scale: str, contents: list, design: str, request: s
     kind = str(place.get("type") or "place")
     name = place.get("name") or "the place"
     size = f" a {scale.replace('-', ' ')}" if scale else ""
+    layout = place.get("layoutParams") or {}
+    layout_line = ""
+    if isinstance(layout, dict) and layout:
+        layout_line = " Composition/plan parameters to follow: " + ", ".join(
+            f"{k}={v}" for k, v in layout.items() if v not in (None, "", [], {})
+        ) + "."
     def building(kind: str) -> str:  # the plan's kind as a building ("house plot" is a house)
         for tail in (" plot", " yard", " lot", " site"):
             if kind.endswith(tail):
@@ -478,10 +487,11 @@ def free_prompt(place: dict, scale: str, contents: list, design: str, request: s
                       if c.get("kind") and c.get("count"))
     total = sum(int(c.get("count") or 0) for c in contents)
     text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a block-out "
-            "of the LAND only: green is grass, brown strips are dirt roads, dark red-brown strips across water are wooden bridges (paint them as bridges), blue is water, dark green dots are trees, brown "
+            "of the LAND only: green is grass, brown strips are dirt roads, dark red-brown strips across water are wooden bridges (paint them as bridges), blue is water, green areas are forests/woods, brown "
             "patches are farm fields, grey is a paved square. STAY TRUE TO THE BLOCK-OUT'S LAND: every road, river, lake, "
             "coast and the sea exactly where it is in the block-out, the same course, width and shape; the woods and fields "
-            "where they are. Don't move, add or remove a road or any water; build the place around them. ")
+            "where they are. Don't move, add or remove a road or any water; build the place around them. "
+            "Green areas are where trees and forests belong; you may also place occasional trees on grass elsewhere. ")
     text += f"Build {name},{size} {kind}, on it"
     text += f": about {total} buildings: {built}. " if built else ". "
     text += zones_sentence(place.get("zones") or [], True)
@@ -510,9 +520,15 @@ def zoned_prompt(place: dict, scale: str, design: str, request: str, guide: str,
     zones = [z for z in place.get("zones") or [] if isinstance(z, dict) and z.get("colour")]
     names = sorted({str(z["colour"]).lower() for z in zones})
     colours = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " or " + names[-1]
+    layout = place.get("layoutParams") or {}
+    layout_line = ""
+    if isinstance(layout, dict) and layout:
+        layout_line = "Composition/plan parameters to follow: " + ", ".join(
+            f"{k}={v}" for k, v in layout.items() if v not in (None, "", [], {})
+        ) + ". "
     text = ("Paint this isometric game map as finished, hand-crafted art, as in classic isometric RPGs. The image is a "
             f"colour-coded plan of {name},{size} {kind}. THE COLOURS ARE AREAS, NOT MATERIALS: none of the flat "
-            f"{colours} may remain in the painting. ")
+            f"{colours} may remain in the painting. " + layout_line)
     for z in zones:
         built = ", ".join(f"{int(b.get('count') or 0)} {str(b.get('kind'))}{'s' if int(b.get('count') or 0) != 1 else ''}"
                           for b in z.get("buildings") or [] if isinstance(b, dict) and b.get("kind") and b.get("count"))
@@ -526,8 +542,9 @@ def zoned_prompt(place: dict, scale: str, design: str, request: str, guide: str,
             text += ": fill all of it as such a place is; no houses in it unless it has them. "
     text += ("Brown strips are dirt roads, blue is water, dark red-brown strips across water are wooden bridges, grey is a "
              "paved square: keep every road, river, lake and coast exactly where it is, the same course, width and shape. "
-             "Green is grass and dark green dots are trees: keep the woods and the meadow outside the coloured areas where "
-             "they are, as natural woodland and meadow. Every part stays exactly where its colour is: don't build outside "
+             "Arrange buildings, lots, blocks and open spaces inside each zone according to the composition/plan parameters (lot-layout, block-fill, block-use, frontage, building-cover, building-shape, coverage, open-space, arrangement) when given. "
+             "Green is grass and green areas are forests/woods: keep the woods and the meadow outside the coloured areas where "
+             "they are, as natural woodland and meadow. You may also place occasional trees on grass elsewhere. Every part stays exactly where its colour is: don't build outside "
              "the coloured areas. ")
     if request.strip():
         text += f"What it is: {request.strip()[:400]}. "
@@ -556,81 +573,111 @@ KLEIN_GROUND = (
     "stays ground: no water, river, pond, stream or marsh anywhere on it. No people, animals or text.")
 
 
+# Zone tint colours (the editor's kTints). Used to decide which zones actually appear in each tile's crop.
+_ZONE_RGB = {
+    "orange": (232, 146, 76), "yellow": (236, 212, 58), "purple": (146, 96, 196),
+    "red": (200, 60, 60), "white": (240, 240, 240), "pink": (235, 140, 190),
+}
+
+
+def _zones_in_tile(crop, zones: list) -> list:
+    """Only the zones whose tint colour actually appears in this tile's flat block-out crop."""
+    arr = np.asarray(crop).astype(int)
+    present = []
+    for z in zones:
+        if not isinstance(z, dict):
+            continue
+        colours = []
+        if z.get("rgb"):
+            colours.append(tuple(z["rgb"]))
+        name = str(z.get("colour") or "").strip().lower()
+        if name in _ZONE_RGB:
+            colours.append(_ZONE_RGB[name])
+        if any(np.any(np.abs(arr - np.array(c)).sum(2) < 30) for c in colours):
+            present.append(z)
+    return present
+
+
+# Terrain colours from the editor's blockout palette. A terrain key in the per-tile prompt gives forest/meadow/water
+# the same prominence as zones; the model otherwise only sees the zone colours in the key and misplaces them.
+_TERRAIN_KEY = [
+    ((58, 84, 48), "- dark green patches = DENSE OLD-GROWTH FOREST: cover them with closely packed tall trees, no flat green ground"),
+    ((96, 130, 70), "- light green = open meadow: lush grass, wildflowers and stones, NO buildings"),
+    ((52, 96, 150), "- blue = real water: keep its exact course and banks; no blue in the block-out means no water"),
+    ((150, 118, 78), "- brown strips = dirt roads and paths"),
+]
+
+
+def _terrain_in_tile(crop) -> list[str]:
+    arr = np.asarray(crop).astype(int)
+    return [text for rgb, text in _TERRAIN_KEY if np.any(np.abs(arr - np.array(rgb)).sum(2) < 30)]
+
+
 def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents: list, design: str, request: str,
                guide: str = "", notes: str = "", seed: int = 7, report=None, tiles_dir=None,
-               model: str = "flux-3-image") -> tuple[bytes, str]:
-    """A place painted freely on its land block-out (at its full size, 48 px a cell): composed in one call, then its
-    tiles repainted at full size and joined; its black kept black. Tiles saved to `tiles_dir` as they're painted and
-    reused. The painting (PNG bytes, the block-out's size) and the prompts."""
+               model: str = "flux-3-image", cols: int = 0, rows: int = 0,
+               variety: str = "", debug_dir=None) -> tuple[bytes, str]:
+    """A place painted freely on its colour-coded land/district block-out, in congruent tiles (docs/places/tiling.md
+    §6): each tile painted directly from its flat block-out crop, one after another, each taking an 8% context band
+    from the tile before it, the bands restored exactly and the tiles joined on an exact grid. No whole-scene compose
+    step (which made buildings the same size in big scenes). Open-world sections use the same path.
+    Returns (painting PNG bytes at the block-out's size, the prompt used)."""
     import io
-    from concurrent.futures import ThreadPoolExecutor
-    from pathlib import Path
     from PIL import Image
+    import math
     Image.MAX_IMAGE_PIXELS = None
     src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
     W, H = src.size
-    painter = BflPainter(key, model if model in PAINT_MODELS else "flux-3-image")
-    # Paint (Free): its zones coloured in the block-out, each colour said; else (a land block-out alone) composed by counts.
-    zoned = any(isinstance(z, dict) and z.get("colour") for z in place.get("zones") or [])
-    compose_prompt = (zoned_prompt(place, scale, design, request, guide, notes) if zoned
-                      else free_prompt(place, scale, contents, design, request, guide, notes))
-    saved = Path(tiles_dir) if tiles_dir else None
-    boxes = free_grid(W, H)
     black = src.getpixel((2, 2))
-    land = [b for b in boxes if any(sum(abs(a - c) for a, c in zip(px, black)) > 30
-                                    for px in src.crop(b).resize((32, 16)).getdata())]
-    total = (2 if painter.model == "flux-2-klein-4b" else 1) + len(land)
-    if report:
-        report(0, total, f"Composing the place on its land (1 call), then {len(land)} tiles")
-    composed_file = saved / "compose.png" if saved else None
-    if composed_file and composed_file.is_file():
-        composed = Image.open(composed_file).convert("RGB")
-    else:
-        size = _four_mp(W, H)
-        small = src.resize((size["width"], size["height"]), Image.LANCZOS)
-        buf = io.BytesIO()
-        small.save(buf, format="PNG")
-        composed = Image.open(io.BytesIO(painter.repaint(buf.getvalue(), compose_prompt, seed=seed, **size))).convert("RGB")
-        if painter.model == "flux-2-klein-4b":
-            # klein re-lays land it's free to decorate: its composing is strict (the ground left plain), then a call that
-            # paints the ground only, everything else kept (painted-places.md §2a).
-            buf = io.BytesIO()
-            composed.save(buf, format="PNG")
-            composed = Image.open(io.BytesIO(painter.repaint(buf.getvalue(), KLEIN_GROUND, seed=seed, width=composed.width,
-                                                             height=composed.height))).convert("RGB")
-        if composed_file:
-            composed_file.parent.mkdir(parents=True, exist_ok=True)
-            composed.save(composed_file)
-    big = composed.resize((W, H), Image.LANCZOS)
-    done = [1]
+    painter = BflPainter(key, model if model in PAINT_MODELS else "flux-3-image")
+    # Tile grid chosen in the editor from the scene's cell count / pixel density, sent in the request.
+    # 0 means the editor didn't send one (older callers): fall back to a 2x2 grid.
+    cols = cols if cols > 0 else 2
+    rows = rows if rows > 0 else cols
 
-    def tile(box):
-        file = saved / f"tile-{boxes.index(box)}.png" if saved else None
-        if file and file.is_file():
-            im = Image.open(file).convert("RGB")
-        else:
-            part = big.crop(box)
-            b = io.BytesIO()
-            part.save(b, format="PNG")
-            im = Image.open(io.BytesIO(painter.repaint(b.getvalue(), FREE_DETAIL + TILE_NOTE, seed=seed, **_four_mp(*part.size)))).convert("RGB")
-            if file:
-                im.save(file)
-        done[0] += 1
+    # Art direction from the Build panel. A zone-tinted block-out uses the generic colour key from the editor's
+    # zones (colour + name + ontology description); land-only block-outs get the land/woods instructions.
+    extra = " ".join(x for x in (guide, design, request, notes) if x).strip()
+
+    # Style references: paint a few distinct designs of each part kind once, and give those sheets to every tile of
+    # this place. Generated once here so all tiles of the place share the same designs (open-world: once per section).
+    refs = []
+    if variety:
+        # `design` is the place's Paint Prompt from the Build panel's Confirm window — use it as the sheet's art style.
+        refs, _ = generate_style_refs(place, variety, painter, design, out_dir=tiles_dir)
         if report:
-            report(done[0], total, f"Painted tile {done[0] - 1} of {len(land)}")
-        return im
+            report(0, cols * rows, "Painted 1 style-reference sheet")
 
-    with ThreadPoolExecutor(min(TILES_AT_ONCE, max(1, len(land)))) as pool:
-        tiles = list(pool.map(tile, land))
-    # The tiles over the composed painting (where no tile is: black), joined; black wherever the land isn't.
-    joined = join_tiles(tiles, land, W, H) if land else big
-    import numpy as np
-    mask = (np.abs(np.asarray(src, dtype=int) - np.array(black)).sum(axis=2) <= 30)
-    out_arr = np.asarray(joined).copy()
-    out_arr[mask] = black
-    out = io.BytesIO()
-    Image.fromarray(out_arr).save(out, format="PNG")
-    return out.getvalue(), compose_prompt + "\n---\n(" + str(len(land)) + " tiles) " + FREE_DETAIL
+    # Per-tile colour key: only zones whose tint actually appears in this tile's crop. The full-place key makes the
+    # model build every listed zone inside a tile that shows only one of them. Detect from the SAME resized crop that
+    # is put into the block-out (pw x ph), not the raw native cell — thin features (a road only a few px wide) vanish
+    # when downsampled, so detecting on the raw cell and the model seeing the resized crop disagree.
+    zones = place.get("zones") or []
+    tile_zones = {}
+    tile_terrain = {}
+    _pw = min(2048, W)
+    _ph = max(16, round(_pw * H / W / 16) * 16)
+    for r in range(rows):
+        for c in range(cols):
+            bx0, bx1 = c * W // cols, (c + 1) * W // cols
+            by0, by1 = r * H // rows, (r + 1) * H // rows
+            cell = src.crop((bx0, by0, bx1, by1)).resize((_pw, _ph), Image.LANCZOS)
+            tile_zones[(r, c)] = _zones_in_tile(cell, zones)
+            tile_terrain[(r, c)] = _terrain_in_tile(cell)
+
+    def prompt_for_tile(r, c, edges, tile_idx=0):
+        tile_place = {**place, "zones": tile_zones.get((r, c), [])} if zones else place
+        prompt = tile_prompt(tile_place, scale, extra, "", "", "", edges, with_refs=bool(refs),
+                             terrain_lines=tile_terrain.get((r, c)))
+        return prompt
+
+    def paint_one(png, prompt, width, height, sd, tile_idx=0):
+        size = {"width": width // 16 * 16, "height": height // 16 * 16}
+        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
+
+    out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
+                      seed=seed, black=black, debug_dir=debug_dir)
+    return out, prompt_for_tile(0, 0, {"right":"outer","top":"outer","left":"outer","bottom":"outer","position":"the whole map (a single tile)"}) + "\n---\n(painted in " + str(cols) + " x " + str(rows) + " congruent tiles)"
 
 
 # Who paints a place whole (Project Settings ▸ AI ▸ paint), as shown.
@@ -717,78 +764,64 @@ def _tile_legend(legend: dict | None, n: int) -> dict:
 
 def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
                 notes: str = "", seed: int = 7, reference: bytes | None = None, guide: str | None = None, written: str = "",
-                objects: bool = True, report=None, tiles_dir=None) -> tuple[bytes, str]:
-    """A place painted from its block-out by one of PAINT_MODELS; with `tiles_dir`, each tile is saved there as it's painted
-    (tile-<i>.png) and one already there is reused, so a run cut short (credit, a timeout) goes on where it stopped; the painting at the block-out's own size (so its
-    pixels line up with the block-out's id map) and the prompt(s). A place more than TILE_SPAN cells across its diamond
-    (its legend's scale) is painted in tiles (tile_count) and joined; `report(done, total, text)` hears each tile.
-    - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
-    - flux-2-klein-4b: klein copies a flat input it's told about: the block-out as a rough draft, scaled up, a short key."""
+                objects: bool = True, report=None, tiles_dir=None, cols: int = 0, rows: int = 0,
+                variety: str = "", debug_dir=None) -> tuple[bytes, str]:
+    """A place painted from its colour-coded block-out by one of PAINT_MODELS, in congruent tiles (docs/places/tiling.md
+    §6). Each tile is painted directly from its flat block-out crop — no composed whole-scene image — with an 8%
+    context band from the previously painted tile, restored exactly, then joined on an exact grid. The building/terrain
+    colour key and counts come from the legend; art direction from the Build panel. A reference picture's look is
+    described in the prompt. Works for any number of tiles and place types (and open-world sections)."""
     import io
-    from concurrent.futures import ThreadPoolExecutor
-    from PIL import Image
-    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
-    # The ontology's guide for its kind unless one is given; the place's own words; the key only for things shown.
-    guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
-    # As many tiles a side as its width needs (TILE_PX each): the same as by its cells at the editor's density.
     import math
-    n = max(1, math.ceil(src.width / TILE_PX))
-    tiled = _tile_legend(legend, n) if n > 1 else legend
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
+    W, H = src.size
+    black = src.getpixel((2, 2))
+    guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
+    # Tile grid chosen in the editor from the scene's cell count / pixel density, sent in the request.
+    # 0 means the editor didn't send one (older callers): fall back to a 2x2 grid.
+    cols = cols if cols > 0 else 2
+    rows = rows if rows > 0 else cols
+    tiled = _tile_legend(legend, cols) if cols > 1 or rows > 1 else legend
+    # The plan's building/terrain colour key, its counts and the art direction. The whole place's counts become
+    # "of the whole map's" for a tiled paint, and the per-tile note is added in prompt_for_tile.
     keyed = (blockout_prompt(place, story, look, tiled, notes, guide, written, objects) + " " +
              (counts_sentence(tiled) if objects else "")).strip()
+    if cols > 1 or rows > 1:
+        keyed = keyed.replace("Exactly ", "Of the whole map's ")
+    if reference:
+        keyed += (" A reference picture shows how this place should look: paint it in that picture's look, palette and "
+                  "details, but keep the block-out's layout exactly.")
     draft = draft_prompt(place, story, look, tiled, notes, guide, written, objects)
-    if n > 1:
-        # The counts are the whole place's: a part has only some of them.
-        keyed = keyed.replace("Exactly ", "Of the whole map's ") + " " + TILE_NOTE
-        draft += " " + TILE_NOTE
-    # A picture given to paint after (the Build panel's "as a reference"): its look, on the plan's layout.
-    refs = [reference] if reference else []
-    after = (" The second image is a picture of how this place should look: paint it in that picture's look, palette and "
-             "details (or as that picture, changed as the notes say), but keep the first image's layout exactly.") if reference else ""
-    keyed += after
-    draft += after
 
-    def one(part):
-        """One image painted from `part` (a PIL block-out, the whole or a tile): the painting (PIL) and its prompt(s)."""
-        buf = io.BytesIO()
-        part.save(buf, format="PNG")
-        part_png = buf.getvalue()
-        size = _four_mp(part.width, part.height)
-        if model == "flux-2-klein-4b":
-            big = part.resize((4096, round(4096 * part.height / part.width)), Image.LANCZOS)
-            buf = io.BytesIO()
-            big.save(buf, format="PNG")
-            png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, references=refs, seed=seed, **size), draft
-        else:
-            png, prompt = BflPainter(key, "flux-3-image").repaint(part_png, keyed, references=refs, seed=seed, **size), keyed
-        return Image.open(io.BytesIO(png)).convert("RGB"), prompt
+    painter_model = model if model in PAINT_MODELS else "flux-3-image"
+    painter = BflPainter(key, painter_model)
 
-    boxes = tile_boxes(src.width, src.height, n)
-    done = [0]
+    # Style references (Low/Medium/High variety), shared across this place's tiles; combined with any user reference.
+    style_refs = []
+    if variety:
+        style_refs, _ = generate_style_refs(place, variety, painter, notes, out_dir=tiles_dir)
+        if report:
+            report(0, cols * rows, "Painted 1 style-reference sheet")
 
-    def tile(box):
-        from pathlib import Path
-        saved = Path(tiles_dir) / f"tile-{boxes.index(box)}.png" if tiles_dir and n > 1 else None
-        if saved and saved.is_file():
-            result = (Image.open(saved).convert("RGB"), keyed)
-        else:
-            result = one(src.crop(box))
-            if saved:
-                saved.parent.mkdir(parents=True, exist_ok=True)
-                result[0].save(saved)
-        done[0] += 1
-        if report and n > 1:
-            report(done[0], len(boxes), f"Painted tile {done[0]} of {len(boxes)}")
-        return result
+    def prompt_for_tile(r, c, edges, tile_idx=0):
+        base = keyed if painter_model != "flux-2-klein-4b" else draft
+        return base + "\n\n" + tile_note(edges)
 
-    if report and n > 1:
-        report(0, len(boxes), f"Painting in {n} × {n} tiles ({len(boxes)} images, {TILES_AT_ONCE} at a time)")
-    with ThreadPoolExecutor(min(TILES_AT_ONCE, len(boxes))) as pool:
-        results = list(pool.map(tile, boxes))
-    painted = join_tiles([r[0] for r in results], boxes, src.width, src.height) if n > 1 else results[0][0]
-    if painted.size != src.size:
-        painted = painted.resize(src.size, Image.LANCZOS)
-    out = io.BytesIO()
-    painted.save(out, format="PNG")
-    prompt = results[0][1] + (f"\n---\n(painted in {n} × {n} tiles)" if n > 1 else "")
-    return out.getvalue(), prompt
+    def paint_one(png, prompt, width, height, sd, tile_idx=0):
+        if painter_model == "flux-2-klein-4b":
+            im = Image.open(io.BytesIO(png))
+            big = im.resize((4096, round(4096 * height / width)), Image.LANCZOS)
+            buf = io.BytesIO(); big.save(buf, format="PNG")
+            size = {"width": width // 16 * 16, "height": height // 16 * 16}
+            return painter.repaint(buf.getvalue(), prompt, seed=sd, **size)
+        size = {"width": width // 16 * 16, "height": height // 16 * 16}
+        refs = style_refs + ([reference] if reference else [])
+        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
+
+    out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
+                      seed=seed, black=black, debug_dir=debug_dir)
+    label = "klein draft" if painter_model == "flux-2-klein-4b" else "colour key"
+    return out, label + "\n---\n(painted in " + str(cols) + " x " + str(rows) + " congruent tiles)"
+

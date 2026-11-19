@@ -136,9 +136,13 @@ public:
     // ⑩ rows: switch a row to manual or automatic; try a failed row again; give it a
     // placeholder place; a manual row's build (for the Build panel), and its completion.
     std::string SetMode(const std::string& place, const std::string& mode);
-    std::string Retry(const std::string& place);
     // Builds the place again from the start (a new build of it, built or not); the game build goes
     // on with it, then what follows (binding, files, playtest) again.
+    std::string Retry(const std::string& place);
+    // The Build panel has it now (the user pressed Build or Open build): the automatic build lets go — its own
+    // copy stops (no more plan, layout or paint behind the panel), and the row waits for the user.
+    // `place` (its row) or `buildId` (the build's folder) names it; either may be empty.
+    std::string HandToEditor(const std::string& place, const std::string& buildId = {});
     std::string Rebuild(const std::string& place);
     std::string UsePlaceholder(const std::string& place);
     // A place built outside the game build (the build test, docs/build-fixes.md), its scene already
@@ -269,6 +273,8 @@ private:
     bool keepArt_ = false;
     // The requirements made again, or a tab's items built, while the build is stopped: only they go on; it stops after.
     bool reqsOnly_ = false;
+    // One place rebuilt from the start while stopped: only it is built, then the build stays where it was.
+    bool rebuildOnly_ = false;
     std::string subStep_; // where a Build tab's step is ("" as it begins): what it has done already
     // The story's markers (its anchors, where one arrives, the player in the first scene) on a built
     // place's scene; the number of anchors that had no part showing them.
@@ -289,6 +295,9 @@ private:
     Host host_;
     PlannerStore store_;
     std::string stage_, status_, message_, mode_;
+    // The furthest stage this build has reached: Continue goes from here, so an earlier step run again
+    // while stopped (the requirements, a tab's items) never moves the resume point back.
+    std::string reached_;
     std::vector<Row> rows_;
     std::deque<Job> jobs_;
     std::map<int, std::string> pending_;            // request id -> "job:<id>" | "build:<place>"

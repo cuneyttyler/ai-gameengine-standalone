@@ -4,6 +4,7 @@ adapter hides one vendor's SDK. Cloud first (Mistral); local models later
 
 from __future__ import annotations
 
+import os
 import time
 
 from dataclasses import dataclass, field
@@ -225,6 +226,22 @@ def _strip_fence(text: str) -> str:
         if stripped.rstrip().endswith("```"):
             stripped = stripped.rstrip()[:-3]
     return stripped.strip()
+
+
+class LmStudioProvider(OpenRouterProvider):
+    """A model running on this machine in LM Studio, through its local server's OpenAI-style API (the same
+    chat/completions shape as OpenRouter's, so the adapter is shared). No key, no account: start LM Studio's
+    server and load a model; LMSTUDIO_BASE_URL points at another address or port (default http://localhost:1234/v1).
+    A local model can be slow, so the timeout is longer and nothing is retried on another machine's behalf."""
+
+    name = "lmstudio"
+
+    def __init__(self, model: str, timeout_s: float = 300.0, base_url: str = "", max_tokens: int = 12000):
+        super().__init__(api_key=os.environ.get("LMSTUDIO_API_KEY", "lm-studio"), model=model, timeout_s=timeout_s, max_tokens=max_tokens)
+        self.URL = (base_url or os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")).rstrip("/") + "/chat/completions"
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
 
 class ClaudeProvider:

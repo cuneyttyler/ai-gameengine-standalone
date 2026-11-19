@@ -48,6 +48,7 @@ interface Component {
   unit?: string // what the amount counts: ward(s), house(s), how common
   holds?: { field: string; value: unknown; unit: string } // a zone: its buildings, each
   kinds?: ZoneKind[] // a zone: its kinds of building, each with how many
+  parts?: { module: string; name: string; min?: number; max?: number; count?: number }[] // the ontology's children (parts)
   count: unknown
   density: string | null
   source: string | null
@@ -155,6 +156,7 @@ interface BuildState {
   scope?: 'place' | 'world' // a single place, or an open world of sections (docs/places/tiling.md): its build type's
   buildType?: string // its build type (the ontology's)
   paintModel?: string // who paints it (Paint)
+  objectVariety?: 'low' | 'medium' | 'high' // distinct designs per part kind in the style references (Paint)
   // Painted freely (painted-places.md §2a): the painting's size and the calls it takes (1 to compose, then its tiles).
   paintPlan?: { calls: number; tiles: number; width: number; height: number; cellPx: number
                 options?: { cellPx: number; tiles: number; calls: number }[] } // each density it may be painted at
@@ -197,6 +199,8 @@ interface BuildState {
   questions?: { text: string; about?: string; zone?: string }[] // ② Assets' confirming questions
   directions?: string
   decisionAnswers?: Record<string, string>
+  layoutMade?: boolean // the zones are laid out (① Confirm ▸ Layout pressed): on to Paint/Plan
+  layoutStale?: boolean // the Contents changed since they were laid out
   // ③ Layout: the zones and where they go.
   layout?: {
     unit: string
@@ -221,6 +225,7 @@ interface BuildState {
       drawn?: unknown
       painted?: boolean
       area?: unknown
+      calculatedArea?: number
       space?: { cells: number; needed: number; ok: boolean }
     }[]
     stale?: boolean
@@ -303,6 +308,7 @@ interface BuildState {
   origin?: [number, number]
   revisions?: Revision[]
   reviseLanguage?: ReviseInstruction[] // what a revision can do at this step
+  paintPrompt?: string // the Paint Prompt (① Confirm, paint method): what the painter paints the layout from
 }
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -331,12 +337,17 @@ const buildMethod = computed(() => state.value?.method ?? newMethod.value)
 // Painted (Paint (Free) or Paint (by Plan)): ④ Paint, ⑤ Mark and ⑦ Animate.
 const painted = computed(() => isPaintMethod(buildMethod.value))
 // Paint (Free) on a place of zones (a single place): no ③ Plan, painted from ② Layout.
+// Paint (Free) on a place of zones (a single place): no drawn plan is generated, but the Plan step shows parameters only.
 const noPlanStep = computed(() => !!state.value?.freePaint && buildScope.value !== 'world')
-// An open world (docs/places/tiling.md §4) has ② World after Confirm: the world plan and the sections it's cut into.
+// Plan/composition (inside-zone) vs zone/site layout-form fields.
+const PLAN_FORM_FIELDS = new Set(['block-size', 'block-fill', 'open-space', 'lot-layout', 'block-use', 'frontage', 'building-cover', 'building-shape', 'street-grid'])
+const LAYOUT_ZONE_FORM_FIELDS = new Set(['site-fit', 'zone-shape', 'arrangement', 'coverage'])
+const layoutFormZone = computed(() => (state.value?.layoutForm ?? []).filter((f: any) => LAYOUT_ZONE_FORM_FIELDS.has(f.field)))
+const layoutFormPlan = computed(() => (state.value?.layoutForm ?? []).filter((f: any) => PLAN_FORM_FIELDS.has(f.field)))
+// An open world (docs/places/tiling.md §4) has ⑤ World after Confirm: the world plan and the sections it's cut into.
 const buildScope = computed(() => (state.value ? state.value.scope ?? 'place' : newScope.value))
 // From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
 const STEPS = computed(() => ALL_STEPS.filter((st) => (painted.value || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
-  !(st.id === 'plan' && noPlanStep.value) &&
   (st.id !== 'world' || buildScope.value === 'world') && !(st.id === 'layout' && buildScope.value === 'world') &&
   !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦⑧⑨'[i]} ${st.label.slice(2)}`,
@@ -693,12 +704,12 @@ const otherAssumptions = computed(() => {
 const viewing = ref('')
 // A plan stands (laid out, past ② Layout): ① Confirm and ② Layout are only looked at, never gone back to by a click (that
 // would discard the plan and the steps after it: a build the AI Planner drives has no layout picture, and went back).
-const planStands = computed(() => ['plan', 'planned', 'sourcing', 'sourced', 'building', 'built'].includes(stage.value))
+const planStands = computed(() => ['plan', 'planned', 'painted', 'marked', 'sourcing', 'sourced', 'building', 'built'].includes(stage.value))
 const atConfirm = computed(
   () => stage.value === 'layout' || (stage.value === 'revising' && state.value?.revisingFrom === 'layout') || (viewing.value === 'confirm' && planStands.value),
 )
 const atLayout = atConfirm
-// ① Confirm looked at while the plan stands: changing anything discards the plan (asked first).
+// ① Confirm/Layout looked at while later work stands: changing anything discards it (asked first).
 const confirmLocked = computed(() => atConfirm.value && planStands.value)
 const discardAsk = ref(false)
 function guardLocked(e: Event): void {
@@ -756,6 +767,8 @@ function approveAndPaint(): void {
 function goPaint(): void {
   viewing.value = 'paint'
   if (!paint.value.file && !paint.value.painting && !state.value?.busy) startPaint()
+  // Keep the paint page shown after any stage change that painting triggers.
+  void nextTick(() => { viewing.value = 'paint' })
 }
 watch(stage, (s) => {
   if (s === 'planned' && paintWhenPlanned.value) {
@@ -833,6 +846,7 @@ const neededBySource = computed(() => {
 })
 const activeStep = computed(() => {
   if (atPaint.value) return viewing.value
+  if (viewing.value === 'plan' && noPlanStep.value) return 'plan'
   if (viewing.value === 'animate' && painted.value) return 'animate'
   const s = stage.value
   if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
@@ -889,13 +903,17 @@ function step(id: string): void {
     viewing.value = id
     return
   }
-  // ① Confirm (the contents) and ② Layout are the same stage, two pages.
-  if (id === 'confirm' || id === 'layout') confirmTab.value = id === 'layout' ? 'layout' : 'contents'
-  if ((id === 'confirm' || id === 'layout') && planStands.value) {
-    // ① Confirm as the plan was made from it; the plan stays (changing it there asks first).
+  // ① Confirm (the contents) and ② Layout are the same page, two tabs.
+  if (id === 'confirm' || id === 'layout') {
+    confirmTab.value = id === 'layout' ? 'layout' : 'contents'
     viewing.value = 'confirm'
-  } else if ((id === 'confirm' || id === 'layout') && ['plan', 'planned', 'built'].includes(stage.value)) {
-    sendToHost({ type: 'build:step', step: 'layout' })
+    // ② Layout shows the place's zones — also a painted place: if it has no zone layout yet, ask the host for it, so
+    // the Layout tab opens the zones rather than falling back to ① Confirm.
+    if (id === 'layout' && !state.value?.layout) sendToHost({ type: 'build:step', step: 'layout' })
+    return
+  }
+  if (id === 'plan' && noPlanStep.value) {
+    viewing.value = 'plan'
   } else if (id === 'plan' && stage.value === 'plan') {
     viewing.value = ''
   } else if (id === 'assets' && ['planned', 'sourcing', 'sourced'].includes(stage.value)) {
@@ -1034,7 +1052,10 @@ watch(() => state.value?.layout, () => {
   if (drawing.value) setTimeout(redraw, 0)
 })
 watch(drawZone, () => redraw())
-watch(stage, () => {
+watch(stage, (s) => {
+  // Keep the paint page shown while painting is in progress (stage may change
+  // to 'planned' when painting starts from the layout/plan step).
+  if (viewing.value === 'paint' && (s === 'planned' || s === 'planning')) return
   viewing.value = ''
 })
 // ② Assets' answers to the questions, in the user's words: sent as they're written (on leaving the box).
@@ -1288,6 +1309,19 @@ watch(
   { immediate: true },
 )
 
+// The Paint Prompt (① Confirm, paint method): what the painter paints the place's layout from.
+const paintPromptText = ref('')
+watch(
+  () => state.value?.paintPrompt,
+  (p) => {
+    if (typeof p === 'string' && p !== paintPromptText.value) paintPromptText.value = p
+  },
+  { immediate: true },
+)
+function savePaintPrompt(): void {
+  sendToHost({ type: 'build:paintPrompt', text: paintPromptText.value })
+}
+
 function edit(path: string, value: unknown): void {
   sendToHost({ type: 'build:edit', path, value })
 }
@@ -1303,6 +1337,29 @@ function show(value: unknown): string {
   if (Array.isArray(value)) return value.join('–')
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+// A field value as one number, for a number input (a range shows its low end; an area/count object its number).
+function pnum(value: unknown): number | '' {
+  if (typeof value === 'number') return value
+  if (Array.isArray(value) && typeof value[0] === 'number') return value[0]
+  if (value && typeof value === 'object') {
+    const o = value as { area?: unknown; count?: unknown }
+    if (typeof o.area === 'number') return o.area
+    if (typeof o.count === 'number') return o.count
+  }
+  return ''
+}
+function ptext(value: unknown): string {
+  const n = pnum(value)
+  return n === '' ? show(value) : String(n)
+}
+// A number typed into a numeric field: keeps a range's shape, an area as {area}, else a number.
+function setNum(c: Component, p: Control, text: string): void {
+  const n = Number(text)
+  if (text.trim() === '' || Number.isNaN(n)) { setParam(c, p, null); return }
+  if (Array.isArray(p.value) && (p.value as number[]).length === 2) setParam(c, p, [n, n])
+  else if (p.type === 'area') setParam(c, p, { area: n })
+  else setParam(c, p, n)
 }
 function problemFor(prefix: string): string {
   const p = (win.value?.problems ?? []).find((x) => x.where === prefix || x.where.startsWith(prefix + '.'))
@@ -1879,6 +1936,59 @@ onUpdated(applyFolds)
       </section>
     </div>
 
+    <!-- ③ Plan (Paint Free): parameters only, no drawn plan. -->
+    <div v-else-if="viewing === 'plan' && state && noPlanStep && !showResult" class="body window plan-params-view">
+      <section class="note">
+        <h4>Plan settings / Composition</h4>
+        <p>Paint (Free) has no drawn plan: set how the painter should fill the zones (lots, blocks, buildings, coverage, open space). These parameters are provided to the paint model.</p>
+      </section>
+      <section class="layout-form">
+        <div class="form-row">
+          <div class="form-cell">
+            <label>Object variety <span class="help" title="How many distinct designs of each part kind the painter should use. It paints a few example buildings once as style references, then reuses those designs in every tile — Low 6, Medium 12, High 18 per kind.">?</span></label>
+            <select :value="state.objectVariety || 'medium'" @change="sendToHost({ type: 'build:objectVariety', variety: ($event.target as HTMLSelectElement).value })">
+              <option value="low">Low — a few designs</option>
+              <option value="medium">Medium — more designs</option>
+              <option value="high">High — many designs</option>
+            </select>
+          </div>
+        </div>
+      </section>
+      <section v-if="layoutFormPlan.length || win?.walled?.options?.length" class="layout-form">
+        <h4>Inside zones (planning) <span class="help" title="Parcel/block/building arrangement inside each zone, and walls/fortification. A change lays it out again.">?</span></h4>
+        <div class="form-row">
+          <div v-if="win?.walled?.options?.length" class="form-cell">
+            <label>Walls <span class="help" title="Fortification around the place; affects planning and painting.">?</span></label>
+            <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
+              <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
+            </select>
+          </div>
+          <template v-for="f in layoutFormPlan" :key="f.field">
+            <div class="form-cell">
+              <label>{{ f.field.replace(/-/g, ' ') }} <span class="help" :title="[f.description, f.meaning?.[f.value]].filter(Boolean).join(' — ')">?</span></label>
+              <select v-if="f.values" :value="f.value" @change="sendToHost({ type: 'build:rootField', field: f.field, value: ($event.target as HTMLSelectElement).value })">
+                <option v-for="v in f.values" :key="v" :value="v">{{ v }}{{ v === f.default ? ' (default)' : '' }}</option>
+              </select>
+              <span v-else-if="f.type === 'size'" class="size-pair">
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Number(($event.target as HTMLInputElement).value), h: Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h } })" />
+                ×
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w, h: Number(($event.target as HTMLInputElement).value) } })" />
+                cells
+              </span>
+            </div>
+          </template>
+        </div>
+      </section>
+      <p v-else class="dim">No inside-zone planning parameters available for this place.</p>
+      <div class="actions">
+        <button @click="step('layout')">← ② Layout</button>
+        <span class="dim">{{ state.status }}</span>
+        <button class="primary" :disabled="stage === 'revising' || !state.layoutMade || state.layoutStale || errors.length > 0" @click="goPaint()">④ Paint →</button>
+      </div>
+    </div>
+
     <div v-else-if="(stage === 'interpreting' || (stage === 'planning' && state?.planPhase === 'root')) && state?.confirmProgress" class="body start progress-view">
       <p class="query">“{{ state.query }}”</p>
       <div class="bar"><i :style="{ width: `${Math.round(100 * state.confirmProgress.fraction)}%` }" /></div>
@@ -1928,10 +2038,30 @@ onUpdated(applyFolds)
       @mousedown.capture="guardLocked"
       @keydown.capture="guardLocked"
     >
-      <section v-if="state.layoutForm?.length" class="layout-form">
-        <h4>Layout form <span class="help" title="How the place is laid out: the shape of its zones, its streets, its blocks and lots. A change lays it out again.">?</span></h4>
+      <section v-if="layoutFormZone.length || (win?.settings ?? []).some((x: any) => /^(root\.)?(woods|relief)$/i.test(x.path) || /wood|relief|hill/i.test(x.label || ''))" class="layout-form">
+        <h4>Layout form <span class="help" title="How the site and its zones are laid out: site fit, zone shape, arrangement, coverage/open land, woods and relief. Street grid and inside-zone/parcel settings are in ③ Plan. A change lays it out again.">?</span></h4>
+        <p v-if="layoutFormZone.some((f:any)=>f.field==='coverage' || f.field==='site-fit')" class="dim small">Coverage and site fit interact with total site/zone sizes: if site area and zone areas are fixed, leftover open land is determined by (site − zones). Coverage then affects distribution/compaction rather than amount; use site-fit “content” with partial coverage (or flexible zone sizing) to create intentional open space.</p>
         <div class="form-row">
-          <template v-for="f in state.layoutForm" :key="f.field">
+          <template v-for="f in (win?.settings ?? []).filter((x: any) => /^(root\.)?(woods|relief)$/i.test(x.path) || /wood|relief|hill/i.test(x.label || ''))" :key="'ls-' + f.path">
+            <div class="form-cell">
+              <label>{{ f.label }} <span v-if="f.hint" class="help" :title="f.hint">?</span></label>
+              <div :class="markClass(f.path)">
+                <select v-if="f.values" :value="f.value ?? ''" @change="edit(f.path, ($event.target as HTMLSelectElement).value || null)">
+                  <option value="">default</option>
+                  <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
+                </select>
+                <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
+                       @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
+                <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
+                <span v-else-if="f.type === 'slider'" class="slider">
+                  <input type="range" :min="f.min" :max="f.max" step="1" :value="countOf(f.value) || f.min"
+                         @change="edit(f.path, Number(($event.target as HTMLInputElement).value))" />
+                  <span class="num-out">{{ countOf(f.value) || '—' }}</span>
+                </span>
+              </div>
+            </div>
+          </template>
+          <template v-for="f in layoutFormZone" :key="f.field">
             <div class="form-cell">
             <label>{{ f.field.replace(/-/g, ' ') }} <span class="help" :title="[f.description, f.meaning?.[f.value]].filter(Boolean).join(' — ')">?</span></label>
               <select v-if="f.values" :value="f.value" @change="sendToHost({ type: 'build:rootField', field: f.field, value: ($event.target as HTMLSelectElement).value })">
@@ -1981,22 +2111,13 @@ onUpdated(applyFolds)
               </td>
               <td class="small">
                 <template v-if="z.level === 'zone'">
-                  <input class="num" type="number" min="1" :value="areaOf(z.area)" title="Its land, in cells²"
+                  <input class="num" type="number" min="1" :value="areaOf(z.area)" title="Preferred/target land (Confirm), in cells²"
                          @change="sendToHost({ type: 'build:zoneField', zone: z.id, field: 'area', value: Number(($event.target as HTMLInputElement).value) })" />
-                  <span class="dim">cells²</span>
-                  <template v-if="z.countField">
-                    <br />
-                    <input class="num" type="number" min="0" :value="countOf(z.count)" :title="'Its ' + state.layout.unit"
-                           @change="sendToHost({ type: 'build:zoneField', zone: z.id, field: z.countField, value: Number(($event.target as HTMLInputElement).value) })" />
-                    <span class="dim">{{ state.layout.unit }}</span>
-                  </template>
-                  <div v-if="z.kinds?.length" class="kinds">
-                    <label v-for="k in z.kinds" :key="k.module" :title="'How many ' + k.name + ' (empty: the plan decides)'">
-                      <input class="num small" type="number" min="0" :value="k.count ?? ''" :placeholder="k.estimate !== undefined ? '~' + k.estimate : 'any'"
-                             @change="setKind(z.module, k.module, ($event.target as HTMLInputElement).value)" />
-                      <span class="dim">{{ k.name }}</span>
-                    </label>
+                  <span class="dim">cells² preferred</span>
+                  <div v-if="z.calculatedArea" class="dim small" :class="{ warning: areaOf(z.area) && Math.abs(Number(z.calculatedArea) - Number(areaOf(z.area))) > Math.max(1, Number(areaOf(z.area)) * 0.15) }">
+                    {{ z.calculatedArea }} cells² calculated
                   </div>
+                  <!-- Parts (houses, inns, ...) and the buildings/plots count are set in ① Confirm, not here. -->
                 </template>
               </td>
             </tr>
@@ -2099,29 +2220,33 @@ onUpdated(applyFolds)
           </span>
           <button
             class="primary"
-            :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
+            :disabled="stage === 'revising' || !state.layoutMade || state.layoutStale || errors.length > 0"
             :title="
-              state.layout.stale
-                ? 'Lay the zones out again first'
-                : errors.length
-                  ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
-                  : 'Paint (Free): each zone’s ground coloured on the land, and the place painted freely in its colours (no Plan step)'
+              !state.layoutMade
+                ? 'Lay out the zones first (① Confirm ▸ Layout)'
+                : state.layoutStale
+                  ? 'Lay the zones out again first'
+                  : errors.length
+                    ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
+                    : 'Paint (Free): set plan/composition parameters, then paint (no drawn plan)'
             "
-            @click="goPaint()"
+            @click="viewing = 'plan'"
           >
-            ③ Paint →
+            ③ Plan →
           </button>
         </template>
         <button
           v-else
           class="primary"
-          :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
+          :disabled="stage === 'revising' || !state.layoutMade || state.layoutStale || errors.length > 0"
           :title="
-            state.layout.stale
-              ? 'Lay the zones out again first'
-              : errors.length
-                ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
-                : 'Plans what is inside each zone, the zones kept where they are'
+            !state.layoutMade
+              ? 'Lay out the zones first (① Confirm ▸ Layout)'
+              : state.layoutStale
+                ? 'Lay the zones out again first'
+                : errors.length
+                  ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
+                  : 'Plans what is inside each zone, the zones kept where they are'
           "
           @click="sendToHost({ type: 'build:planFromLayout' })"
         >
@@ -2208,10 +2333,15 @@ onUpdated(applyFolds)
     </div>
     <div v-else-if="viewing === 'paint' && state" class="body window paint-view">
       <section v-if="paint.painting" class="build-progress">
-        <h4>Painting {{ state.name || 'the place' }} from its plan</h4>
-        <div class="bar indeterminate"><i /></div>
-        <p>{{ paintCall?.step || (state.paintPlan ? 'Composing the place on its land, then its tiles' : 'FLUX.3 Image paints the block-out, the layout kept') }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
-        <p class="dim">About a minute. Then the painting shows here; ⑤ Mark → has what can be walked on and the occluders pre-filled.</p>
+        <h4>Painting {{ state.name || 'the place' }} in tiles</h4>
+        <div class="bar" :class="{ indeterminate: !paintCall || !paintCall.total }">
+          <i :style="paintCall && paintCall.total ? { width: `${(100 * (paintCall.done || 0)) / paintCall.total}%` } : undefined" />
+        </div>
+        <p>
+          {{ paintCall?.step || (state.paintPlan ? 'Painting the place in congruent tiles' : 'FLUX.3 Image paints the block-out, the layout kept') }}
+          <span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span>
+        </p>
+        <p class="dim">Each tile joins the one before it so the seams meet. Then the painting shows here; ⑤ Mark → has what can be walked on and the occluders pre-filled.</p>
       </section>
       <section v-else-if="paint.file" class="painting">
         <div class="pictures">
@@ -2363,7 +2493,7 @@ onUpdated(applyFolds)
         </section>
         <!-- How the art is found (both methods; a painting's art is only what isn't painted: doors, chests, items) -->
         <section v-if="state" class="plan art-strategy">
-        <div v-if="state.fromPlanner" class="row set-all">
+        <div v-if="state.fromPlanner && !painted" class="row set-all">
           <span>How the art is found: <b>{{ ({ search: 'Search (project, library, web, then make)', generate: 'Generate (the Art tool)', library: 'Library (else made by the Art tool)', project: 'The project (else made by the Art tool)', auto: 'Auto (by each piece’s importance)' } as Record<string, string>)[sourcingSettings.defaultSource] ?? sourcingSettings.defaultSource }}</b><template v-if="sourcingSettings.defaultSource === 'generate'">, made by {{ modelName(state.models?.art || state.projectModels?.art) }}</template></span>
           <span class="dim">set in the AI Planner's Game Brief (① Concept ▸ Plan ▸ Art for the places)</span>
         </div>
@@ -2473,7 +2603,7 @@ onUpdated(applyFolds)
         </table>
         </section>
         <div class="actions">
-          <button @click="viewing = 'plan'">← Plan</button>
+          <button @click="viewing = painted ? 'mark' : 'plan'">{{ painted ? '← Mark' : '← Plan' }}</button>
           <span class="dim">{{ state?.status }}</span>
           <span v-if="state?.matched" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
             {{ state.matched.state === 'making' ? 'Making the art…'
@@ -2797,6 +2927,33 @@ onUpdated(applyFolds)
         </div>
       </section>
       <template v-if="!showResult">
+      <section v-if="layoutFormPlan.length || win?.walled?.options?.length" class="layout-form plan-form">
+        <h4>Plan settings / Composition <span class="help" title="How each zone is filled: lots, blocks, buildings, streets, walls, and open space. A change replans it.">?</span></h4>
+        <div class="form-row">
+          <div v-if="win?.walled?.options?.length" class="form-cell">
+            <label>Walls <span class="help" title="Fortification around the place; affects planning and painting.">?</span></label>
+            <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
+              <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
+            </select>
+          </div>
+          <template v-for="f in layoutFormPlan" :key="f.field">
+            <div class="form-cell">
+              <label>{{ f.field.replace(/-/g, ' ') }} <span class="help" :title="[f.description, f.meaning?.[f.value]].filter(Boolean).join(' — ')">?</span></label>
+              <select v-if="f.values" :value="f.value" @change="sendToHost({ type: 'build:rootField', field: f.field, value: ($event.target as HTMLSelectElement).value })">
+                <option v-for="v in f.values" :key="v" :value="v">{{ v }}{{ v === f.default ? ' (default)' : '' }}</option>
+              </select>
+              <span v-else-if="f.type === 'size'" class="size-pair">
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Number(($event.target as HTMLInputElement).value), h: Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h } })" />
+                ×
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w, h: Number(($event.target as HTMLInputElement).value) } })" />
+                cells
+              </span>
+            </div>
+          </template>
+        </div>
+      </section>
       <p class="headline">
         {{ state.plan.totals.buildings }} {{ state.plan.totals.unit ?? 'buildings' }} in {{ state.plan.totals.zones }} zones
         <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
@@ -3099,7 +3256,14 @@ onUpdated(applyFolds)
       </section>
 
       <template v-if="win.round === 1 || atConfirm">
-        <h4 class="section-title">The place <span class="dim">· what it is, how big, its look</span></h4>
+        <section v-if="painted" class="paint-prompt">
+          <label class="small"><b>Paint prompt</b> <span class="dim">— what the painter paints: this place's layout</span></label>
+          <textarea v-model="paintPromptText" rows="3"
+                    placeholder="The layout to paint: the land, streets, squares, water and how each part lies…"
+                    @change="savePaintPrompt" />
+          <p class="dim small">Written from the place's Planner data; edit it as you like. The painter paints the layout from it (no plan buildings).</p>
+        </section>
+        <h4 class="section-title">The place <span class="dim">— what it is, how big, its look</span></h4>
         <div class="form-row confirm-form">
           <div class="form-cell">
             <label>Name</label>
@@ -3118,7 +3282,11 @@ onUpdated(applyFolds)
               <input class="num" :value="countRange(win.size.buildings)[0]" @change="setBuildings(0, ($event.target as HTMLInputElement).value)" />
               –
               <input class="num" :value="countRange(win.size.buildings)[1]" @change="setBuildings(1, ($event.target as HTMLInputElement).value)" />
-              <span class="dim">area {{ amountText(win.size.area) }} cells²</span>
+              <span class="dim">area {{ amountText(win.size.area) }} cells²·</span>
+              <label class="dim" title="The scene's size in cells² (its land area). Layout and the later steps use it.">size</label>
+              <input class="num" type="number" min="1" :value="areaOf(win.size.area)"
+                     @change="edit('scale.area', { area: Number(($event.target as HTMLInputElement).value) })" />
+              <span class="dim">cells²</span>
               <div v-if="mark('scale.class')?.disputed || mark('scale.buildings.count')?.disputed" class="alts">
                 other readings:
                 <button v-for="(alt, i) in mark('scale.class')?.alternatives ?? []" :key="'c' + i" @click="edit('scale.class', alt)">
@@ -3128,62 +3296,6 @@ onUpdated(applyFolds)
                   {{ mark('scale.buildings.count')?.readings[i] }}: {{ show(alt) }} {{ win.size.unit ?? 'buildings' }}
                 </button>
               </div>
-            </div>
-          </div>
-
-          <div class="form-cell" v-if="!atConfirm">
-            <label v-if="!atConfirm">Layout <span class="help" title="One street pattern or several; the plan gives each ward one of them">?</span></label>
-            <div v-if="!atConfirm" :class="markClass('shape.layout')">
-              <div class="layouts">
-                <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
-                  <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
-                    <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
-                    <span>{{ l.replace(/-/g, ' ') }}</span>
-                  </button>
-                  <span v-if="l in win.layout.value && Object.keys(win.layout.value).length > 1" class="share">
-                    <input
-                      class="num"
-                      :value="Math.round((win.layout.value[l] ?? 0) * 100)"
-                      @change="edit('shape.layout', setShare(win.layout.value, l, Number(($event.target as HTMLInputElement).value) / 100))"
-                    />%
-                  </span>
-                </div>
-              </div>
-              <input
-                class="wide"
-                :value="win.layout.description ?? ''"
-                placeholder="Where each goes, if it matters: e.g. a grid core inside the walls, organic lanes outside"
-                @change="edit('shape.description', ($event.target as HTMLInputElement).value)"
-              />
-            </div>
-          </div>
-
-          <template v-for="f in win.settings ?? []" :key="f.path">
-            <div class="form-cell">
-              <label>{{ f.label }} <span v-if="f.hint" class="help" :title="f.hint">?</span></label>
-              <div :class="markClass(f.path)">
-                <select v-if="f.values" :value="f.value ?? ''" @change="edit(f.path, ($event.target as HTMLSelectElement).value || null)">
-                  <option value="">default</option>
-                  <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
-                </select>
-                <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
-                       @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
-                <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
-                <span v-else-if="f.type === 'slider'" class="slider">
-                  <input type="range" :min="f.min" :max="f.max" step="1" :value="countOf(f.value) || f.min"
-                         @change="edit(f.path, Number(($event.target as HTMLInputElement).value))" />
-                  <span class="num-out">{{ countOf(f.value) || '—' }}</span>
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <div class="form-cell" v-if="win.walled.options.length">
-            <label v-if="win.walled.options.length">Walls</label>
-            <div v-if="win.walled.options.length" :class="markClass('walled')">
-              <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
-                <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
-              </select>
             </div>
           </div>
 
@@ -3211,7 +3323,7 @@ onUpdated(applyFolds)
 
         </div>
 
-        <template v-if="win.places">
+        <template v-if="win.places && !atConfirm">
           <h4 class="section-title">Places <span class="dim">· {{ win.places.description || 'the world\'s settled places, each a section of its own' }}</span></h4>
           <table class="components places">
             <thead>
@@ -3290,7 +3402,7 @@ onUpdated(applyFolds)
           <button class="link" @click="addPlace()">Add a place</button>
         </template>
 
-        <template v-if="win.gateways">
+        <template v-if="win.gateways && !atConfirm">
           <h4 class="section-title">Gateways <span class="dim">· ways into other places (a dungeon, a crypt, a mine): placed where they suit, linked when those are built</span></h4>
           <table class="components places">
             <thead><tr><th>Into</th><th>From</th><th>Kind</th><th>Where</th><th></th></tr></thead>
@@ -3321,7 +3433,7 @@ onUpdated(applyFolds)
         <h4 class="section-title">Components <span class="dim">· the place's parts: on or off, how many, and what each holds</span></h4>
         <table class="components unified">
           <thead>
-            <tr><th>Component</th><th class="center">On</th><th>How many</th><th>What it holds</th></tr>
+            <tr><th>Component</th><th class="center">On</th><th>Fields</th><th>Parts</th></tr>
           </thead>
           <tbody>
             <tr v-for="c in shownComponents" :key="c.id" :class="{ off: !c.enabled, ...markClass('components.' + c.id + '.enabled') }">
@@ -3329,49 +3441,58 @@ onUpdated(applyFolds)
                 <div v-if="problemFor('components.' + c.id)" class="error small">{{ problemFor('components.' + c.id) }}</div>
               </td>
               <td class="center"><input type="checkbox" :checked="c.enabled" @change="edit(`components.${c.id}.enabled`, ($event.target as HTMLInputElement).checked)" /></td>
-              <td :class="markClass(`components.${c.id}.${c.amount === 'count' ? 'count' : 'density'}`)">
-                <template v-if="c.enabled && c.amount === 'count'">
-                  <input class="range" :value="show(c.count) === '—' ? '' : show(c.count)" placeholder="any" @change="setCount(c, ($event.target as HTMLInputElement).value)" />
-                  <span class="dim"> {{ c.unit }}</span>
-                  <span v-if="c.holds" class="dim"> · {{ show(c.holds.value) }} {{ c.holds.unit }} each</span>
-                  <div v-if="c.kinds?.length && c.level === 'zone'" class="kinds">
-                    <label v-for="k in c.kinds" :key="k.module" :title="'How many ' + k.name + ' in each (empty: the plan decides)'">
-                      <input class="num small" type="number" min="0" :value="k.count ?? ''" :placeholder="k.estimate !== undefined ? '~' + k.estimate : 'any'"
-                             @change="setKind(c.id, k.module, ($event.target as HTMLInputElement).value)" />
-                      <span class="dim">{{ k.name }}</span>
-                    </label>
-                  </div>
-                </template>
-                <template v-else-if="c.enabled && c.amount === 'density'">
-                  <span class="dim">how common </span>
-                  <select :value="c.density ?? ''" @change="edit(`components.${c.id}.density`, ($event.target as HTMLSelectElement).value)">
-                    <option value="">default</option>
-                    <option v-for="d in DENSITIES" :key="d" :value="d">{{ d }}</option>
-                  </select>
-                </template>
+              <td class="fields">
+                <table v-if="c.enabled" class="inline">
+                  <tbody>
+                    <tr v-if="c.amount === 'count'" :class="markClass(`components.${c.id}.count`)">
+                      <td class="k" title="How many of them the place has">how many</td>
+                      <td><input class="num" type="number" min="0" :value="show(c.count) === '—' ? '' : show(c.count)" placeholder="any"
+                                 @change="setCount(c, ($event.target as HTMLInputElement).value)" /> <span class="dim">{{ c.unit }}</span></td>
+                    </tr>
+                    <tr v-else-if="c.amount === 'density'" :class="markClass(`components.${c.id}.density`)">
+                      <td class="k" title="How common they are">how common</td>
+                      <td><select :value="c.density ?? ''" @change="edit(`components.${c.id}.density`, ($event.target as HTMLSelectElement).value)">
+                        <option value="">default</option>
+                        <option v-for="d in DENSITIES" :key="d" :value="d">{{ d }}</option>
+                      </select></td>
+                    </tr>
+                    <tr v-for="p in c.params" :key="p.name" :class="markClass(`components.${c.id}.params.${p.name}`)">
+                      <td class="k" :title="p.description">{{ p.name.replace(/-/g, ' ') }}</td>
+                      <td>
+                        <select v-if="p.type === 'enum' || p.type === 'density'" :value="p.value ?? ''" @change="setParam(c, p, ($event.target as HTMLSelectElement).value)">
+                          <option v-if="!p.options || !p.options.includes(String(p.value ?? ''))" value="">default</option>
+                          <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
+                        </select>
+                        <input v-else-if="p.type === 'bool'" type="checkbox" :checked="!!p.value" @change="setParam(c, p, ($event.target as HTMLInputElement).checked)" />
+                        <span v-else-if="p.type === 'enumSet'" class="chips">
+                          <button v-for="o in p.options" :key="o" :class="{ active: Array.isArray(p.value) && (p.value as string[]).includes(o) }" @click="toggleInSet(c, p, o)">{{ o }}</button>
+                        </span>
+                        <span v-else-if="p.type === 'mix'" class="mix">
+                          <span v-for="o in p.options" :key="o">{{ o }} <input class="num" type="number" min="0" step="0.05" :value="mixOf(p)[o] ?? ''" placeholder="0" @change="setMix(c, p, o, ($event.target as HTMLInputElement).value)" /></span>
+                        </span>
+                        <span v-else-if="p.type === 'size'" class="mix">
+                          <input class="num" type="number" :value="sizeText(p.value, 'w')" @change="setSize(c, p, 'w', ($event.target as HTMLInputElement).value)" />×<input class="num" type="number" :value="sizeText(p.value, 'h')" @change="setSize(c, p, 'h', ($event.target as HTMLInputElement).value)" />
+                        </span>
+                        <input v-else-if="['count', 'number', 'area', 'length', 'share', 'range', 'int', 'float'].includes(p.type)" class="num" type="number" step="any"
+                               :min="p.min ?? undefined" :max="p.max ?? undefined" :value="pnum(p.value)" @change="setNum(c, p, ($event.target as HTMLInputElement).value)" />
+                        <input v-else class="range" :value="ptext(p.value)" @change="setParam(c, p, ($event.target as HTMLInputElement).value)" />
+                        <span v-if="p.unit" class="dim">{{ p.unit }}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
                 <span v-else class="dim">—</span>
               </td>
-              <td class="holds">
-                <template v-if="c.enabled && c.params?.length">
-                  <span v-for="p in c.params" :key="p.name" class="param" :class="markClass(`components.${c.id}.params.${p.name}`)">
-                    <label :title="p.description">{{ p.name.replace(/-/g, ' ') }}</label>
-                    <select v-if="p.type === 'enum' || p.type === 'density'" :value="p.value ?? ''" @change="setParam(c, p, ($event.target as HTMLSelectElement).value)">
-                      <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
-                    </select>
-                    <input v-else-if="p.type === 'bool'" type="checkbox" :checked="!!p.value" @change="setParam(c, p, ($event.target as HTMLInputElement).checked)" />
-                    <span v-else-if="p.type === 'enumSet'" class="chips">
-                      <button v-for="o in p.options" :key="o" :class="{ active: Array.isArray(p.value) && (p.value as string[]).includes(o) }" @click="toggleInSet(c, p, o)">{{ o }}</button>
-                    </span>
-                    <span v-else-if="p.type === 'mix'" class="mix">
-                      <span v-for="o in p.options" :key="o">{{ o }} <input class="num" :value="mixOf(p)[o] ?? ''" placeholder="0" @change="setMix(c, p, o, ($event.target as HTMLInputElement).value)" /></span>
-                    </span>
-                    <span v-else-if="p.type === 'size'">
-                      <input class="num" :value="sizeText(p.value, 'w')" @change="setSize(c, p, 'w', ($event.target as HTMLInputElement).value)" />×<input class="num" :value="sizeText(p.value, 'h')" @change="setSize(c, p, 'h', ($event.target as HTMLInputElement).value)" />
-                    </span>
-                    <input v-else class="range" :value="show(p.value) === '—' ? '' : show(p.value)" @change="setParam(c, p, parseRange(($event.target as HTMLInputElement).value) ?? ($event.target as HTMLInputElement).value)" />
-                    <span v-if="p.unit" class="dim">{{ p.unit }}</span>
-                  </span>
-                </template>
+              <td class="parts">
+                <table v-if="c.enabled && c.parts?.length" class="inline">
+                  <tbody>
+                    <tr v-for="pt in c.parts" :key="pt.module">
+                      <td class="k" :title="'How many ' + pt.name + ' it holds (empty: the plan decides)'">{{ pt.name }}</td>
+                      <td><input class="num small" type="number" min="0" :value="pt.count ?? ''" placeholder="any"
+                                 @change="setKind(c.id, pt.module, ($event.target as HTMLInputElement).value)" /></td>
+                    </tr>
+                  </tbody>
+                </table>
                 <span v-else class="dim">—</span>
               </td>
             </tr>
@@ -3781,6 +3902,39 @@ button.link {
 }
 .components tr.off td {
   color: #6c7086;
+}
+/* A component's fields and parts, one per row: small tables inside the component's row. */
+.components table.inline {
+  width: 100%;
+  border-collapse: collapse;
+}
+.components table.inline td {
+  border: none;
+  padding: 1px 4px;
+  vertical-align: middle;
+}
+.components table.inline td.k {
+  color: #8a8f98;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.components table.inline input.num,
+.components table.inline select {
+  width: 6em;
+}
+.components table.inline td input.num.small {
+  width: 4em;
+}
+/* The Paint Prompt (① Confirm, paint method). */
+.paint-prompt {
+  margin: 6px 0 12px;
+}
+.paint-prompt textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
 }
 .kinds {
   display: flex;

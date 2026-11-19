@@ -96,9 +96,9 @@ def test_visuals_pick_from_the_themes_windows_and_widgets():
 
 
 def test_every_step_has_an_endpoint():
-    assert set(STEPS) == {"concept", "outline", "act", "scene", "critic", "character", "quests", "place", "gameplay", "system", "behaviour", "systems",
+    assert set(STEPS) == {"concept", "outline", "act", "scene", "critic", "character", "routine", "quests", "world", "gameplay", "system", "behaviour", "systems",
                           "visuals", "review", "revise", "dialogue", "buildcheck", "judgetest", "cutscene", "requirements",
-                          "assets", "implement", "timeline", "placements"}
+                          "assets", "implement", "timeline", "input", "uipanel", "objects", "smallscenes", "placements", "decompose"}
     provider = scripted({"findings": [], "rationale": "fine"})
     client = TestClient(create_app(provider=provider))
     response = client.post("/planner/review", json={"brief": {}, "issues": []})

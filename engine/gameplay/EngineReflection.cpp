@@ -729,8 +729,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "the whole scene.")
         .Options({"Isometric", "TopDown"});
     r.Settings("AI", "This project's AI: each left empty uses the app's choice (Preferences ▸ AI).", &settings.ai)
-        .Field("provider", &AiSettings::provider, "The language model's provider (empty: the app's).")
-        .Options({"", "mistral", "claude", "openrouter"})
+        .Field("provider", &AiSettings::provider, "The language model's provider (empty: the app's). lmstudio: a local model in LM Studio.")
+        .Options({"", "mistral", "claude", "openrouter", "lmstudio"})
         .Field("model", &AiSettings::model, "Its model (empty: the app's, or the provider's default).")
         .Field("art", &AiSettings::art, "Who draws the prefabs' art (empty: the app's).")
         .Options({"", "mistral", "pixellab", "bfl:flux-2-klein-4b", "bfl:flux-3-image", "bfl:flux-2-pro"})

@@ -12,8 +12,8 @@ export const BUILD_METHODS: { id: BuildMethod; label: string; short: string; tit
   {
     id: 'Paint',
     label: 'Paint (Free)',
-    short: 'painted freely from its zones, no Plan step',
-    title: "Each place is painted whole as one picture, freely: its zones are laid out, each zone's ground is coloured on the land (roads, water and woods as they are), and the painter fills each colour with its part of the place. There's no Plan step. Then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Paint, Mark, Assets, Build.",
+    short: 'painted freely from its zones (composition set in Plan)',
+    title: "Each place is painted whole as one picture, freely: its zones are laid out, each zone's ground is coloured on the land (roads, water and woods as they are), and the painter fills each colour with its part of the place. Plan/composition parameters (lots, blocks, buildings, coverage) are set in the Plan step (parameters only, no drawn plan) and provided to the painter. Then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build.",
   },
   {
     id: 'PaintPlan',

@@ -85,6 +85,8 @@ public:
     // A Brief already written (the AI Planner's place description, development_plan.md
     // 22.10): straight to ① Confirm with it, no reading of words. `words` names the build.
     std::string StartFromBrief(const std::string& words, const nlohmann::json& brief);
+    // The Paint Prompt from the place's planner data, once its method is known (Paint): what the painter is told.
+    void EnsurePaintPrompt();
     // A picture given as the place itself (docs/places/scene-types.md): a Paint build with no Layout, Plan or Paint. The
     // picture becomes its painting over a square grid fitted to its width, every cell walkable, no occluders; it waits
     // at ⑤ Mark. `words` name it (else the picture's file name).
@@ -107,6 +109,11 @@ public:
     // Revise works on them there; PlanFromLayout plans what's inside each zone, the
     // zones kept where the layout put them. Returns why not, or "".
     std::string PlanFromLayout();
+    // True when the zones are laid out (their layout.solved exists): ① Confirm's Layout tab has been used.
+    bool HasLayout() const { return solved_.is_object() && solved_.contains("objects"); }
+    // Paint (Free): no ③ Plan and no planning AI, whatever path got here. The zones come from the Brief and
+    // their module rules; laid out if they aren't yet, else the layout as it stands becomes the plan to paint.
+    void PlanFreePaintPlace();
     // ① Confirm's Layout tab: the zones planned again from the Brief and the answers
     // (after the Contents tab changed them); a zone's own field (its street pattern,
     // its area, its count); a zone drawn where the user wants it ({x, y, w, h}, or
@@ -156,6 +163,9 @@ public:
     // Painted freely: its painting's density, px across a cell (48 by default; lowered: fewer tiles and calls). Why not, or "".
     std::string SetPaintDensity(int cellPx);
     int PaintDensity() const { return paintCellPx_; }
+    // Object variety for Paint (Low/Medium/High): how many distinct designs per part kind in the style references.
+    void SetObjectVariety(const std::string& v) { objectVariety_ = v; }
+    std::string ObjectVariety() const { return objectVariety_; }
     // The story each section serves (a game plan's: {place key: story}), given to its build when it starts.
     void SetSectionStories(const nlohmann::json& stories) { sectionStories_ = stories; }
 
@@ -169,6 +179,10 @@ public:
     // who is here, what the quests need in it): given to every AI request, so the place is
     // designed for its story. Kept with the build.
     void SetStory(nlohmann::json story);
+    // The Paint Prompt: what the painter is told to paint (the place's layout, in words). Set by the user in ① Confirm,
+    // or written from the place's planner data when a paint-method build is opened from the Planner. Kept with the build.
+    void SetPaintPrompt(const std::string& text);
+    const std::string& PaintPrompt() const { return paintPrompt_; }
     // The Assets step's Build: saves the Brief and starts planning. Returns why not, or "".
     std::string Confirm();
     // ③ Plan's Approve: compiles and solves the plan, then has the AI review
@@ -419,6 +433,7 @@ private:
     Host host_;
     std::string id_, query_, stage_, status_;
     nlohmann::json story_; // SetStory
+    std::string paintPrompt_; // SetPaintPrompt: what the painter is told to paint
     bool fromPlanner_ = false; // started by the AI Planner's game build (its art strategy is the Brief's)
     int round_ = 1;
     std::vector<nlohmann::json> drafts_;
@@ -453,6 +468,7 @@ private:
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
     std::string scope_ = "place";      // place or world (Scope)
     int paintCellPx_ = 48;             // painted freely: px across a cell (SetPaintDensity; 48, or lowered for fewer calls)
+    std::string objectVariety_ = "medium";  // Paint: Low/Medium/High -> style-reference sheets of part designs
     // A section's (SetSection): its compile options and the world type's rules, on every compile.
     void ForSection(CompileOptions& options, nlohmann::json& spec) const;
     void MergeSections();

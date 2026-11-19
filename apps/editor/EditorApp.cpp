@@ -486,6 +486,11 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         if (!build_ || buildJob_) return true;
         if (const std::string why = build_->SetPaintDensity(message.value("cellPx", 48)); !why.empty()) post_({{"type", "notify"}, {"text", why}});
         PostBuild();
+    } else if (type == "build:objectVariety") {
+        // Paint: Low/Medium/High variety -> how many distinct designs per part kind in the style references.
+        if (!build_ || buildJob_) return true;
+        build_->SetObjectVariety(message.value("variety", "medium"));
+        PostBuild();
     } else if (type == "build:openSection") {
         // World ▸ Sections: a section's own build, to see and change (its zones, its plan); Back to the world returns.
         if (!build_) return true;
@@ -606,6 +611,10 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         }, "Not now: ");
     } else if (type == "build:relayout") {
         RunBuildJob([](PlaceBuild& build) { return build.Relayout(); }, "Not now: ");
+    } else if (type == "build:paintPrompt") {
+        // The Paint Prompt, edited in ① Confirm: what the painter is told to paint.
+        if (build_) build_->SetPaintPrompt(message.value("text", ""));
+        PostBuild();
     } else if (type == "build:editNode" || type == "build:regenerate") {
         // A part laid out again (a partial solve), then the scene follows, on the UI thread.
         const std::string node = message.value("node", ""), field = message.value("field", "");
@@ -881,7 +890,8 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
         const std::string provider = message.value("provider", "mistral");
         if (Ai() && Ai()->GetState() == AiClient::State::Ready &&
-            (provider == "mistral" || provider == "claude" || provider == "openrouter" || provider == "openrouter-vision")) {
+            (provider == "mistral" || provider == "claude" || provider == "openrouter" || provider == "openrouter-vision" ||
+             provider == "lmstudio")) {
             modelsRequest_ = Ai()->Request("GET", "/models?provider=" + provider, nlohmann::json::object(), 30);
         } else {
             post_({{"type", "ai:models"}, {"provider", provider}, {"models", nlohmann::json::array()}, {"errors", {"the AI service isn't running"}}});
@@ -5528,6 +5538,14 @@ void EditorApp::PostPlanner() {
     post_({{"type", "planner:card"}, {"card", card}});
 }
 
+// A build plan's row place ("location/bellwether") as the planner keeps its description ("places/bellwether"):
+// the Build panel opens a place's page from that document.
+static std::string PlaceDocFor(const std::string& place) {
+    const size_t at = place.find_last_of('/');
+    const std::string stem = at == std::string::npos ? place : place.substr(at + 1);
+    return "places/" + stem;
+}
+
 bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::json& message) {
     const fs::path root = assets_.GetProject().root;
     if (type == "planner:setBuildMethod") {
@@ -5618,11 +5636,17 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
     } else if (type == "planner:approve") why = plan_->Approve();
     else if (type == "planner:pause") plan_->Pause(message.value("on", true));
     else if (type == "planner:edit") {
-        why = plan_->Edit(message.value("doc", ""), message.value("pointer", ""), message.value("value", nlohmann::json()), message.value("reason", ""));
+        const std::string op = message.value("op", "replace");
+        if (op == "move") {
+            why = plan_->Move(message.value("from", ""), message.value("to", ""), message.value("reason", ""));
+        } else {
+            why = plan_->Edit(message.value("doc", ""), message.value("pointer", ""), message.value("value", nlohmann::json()), message.value("reason", ""));
+        }
     } else if (type == "planner:lock") why = plan_->Lock(message.value("doc", ""), message.value("on", true));
     else if (type == "planner:regenerate") why = plan_->Regenerate(message.value("doc", ""));
     else if (type == "planner:regenerateStale") why = plan_->RegenerateStale();
     else if (type == "planner:revertRevision") why = plan_->RevertRevision(message.value("step", ""), message.value("id", ""));
+    else if (type == "planner:removeRevision") why = plan_->RemoveRevision(message.value("step", ""), message.value("id", ""));
     else if (type == "planner:regeneratePage") why = plan_->RegeneratePage(message.value("page", ""));
     else if (type == "planner:reviseStep") why = plan_->ReviseStep(message.value("step", ""), message.value("text", ""));
     else if (type == "planner:retryJob") why = plan_->RetryJob(message.value("id", ""));
@@ -5688,8 +5712,34 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
             post_({{"type", "notify"}, {"text", "The game is still being built: a moment"}});
             return true;
         }
-        if (!gameBuild_) return true;
         const std::string place = message.value("place", ""), action = message.value("action", "");
+        if (action == "open" || action == "openBuild") {
+            // Its build — the game build's row, or the plan's own build list when no game build runs this session —
+            // opened in the Build panel at ① Confirm. Without one yet, the place's page from the planner's description.
+            nlohmann::json rows = nlohmann::json::array();
+            if (gameBuild_) {
+                const nlohmann::json state = gameBuild_->State();
+                if (state.is_object()) rows = state.value("rows", rows);
+            } else if (plan_) {
+                const nlohmann::json plan = plan_->Document("buildplan");
+                if (plan.is_object()) rows = plan.value("rows", rows);
+            }
+            std::string buildId;
+            if (rows.is_array()) {
+                for (const auto& row : rows) {
+                    if (row.is_object() && row.value("place", "") == place) buildId = row.value("build", "");
+                }
+            }
+            if (!buildId.empty()) {
+                ResumeBuild(buildId);
+            } else {
+                // Not started yet: its page from the planner's own description of it, at ① Confirm.
+                HandlePlannerMessage("planner:buildPlace", {{"doc", PlaceDocFor(place)}});
+            }
+            PostPlanner();
+            return true;
+        }
+        if (!gameBuild_) return true;
         if (action == "retry") why = gameBuild_->Retry(place);
         else if (action == "rebuild") why = gameBuild_->Rebuild(place);
         else if (action == "placeholder") why = gameBuild_->UsePlaceholder(place);
@@ -5744,10 +5794,7 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
             }
         }
         else if (action == "open") {
-            const nlohmann::json state = gameBuild_->State();
-            for (const auto& row : state["rows"]) {
-                if (row.value("place", "") == place && !row.value("build", "").empty()) ResumeBuild(row.value("build", ""));
-            }
+            // Handled above (it works without a game build this session).
         }
         gameBuildDirty_ = true;
     } else if (type == "planner:play") {
@@ -5759,17 +5806,26 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
         }
     } else if (type == "planner:buildPlace") {
         // 22.10: the place's draft Brief, straight into the Build panel's confirmation window.
-        const nlohmann::json place = plan_->Document(message.value("doc", ""));
+        const nlohmann::json place = plan_ ? plan_->Document(message.value("doc", "")) : nlohmann::json::object();
         if (buildJob_) {
             post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
             return true;
         }
+        if (!place.is_object() || !place.contains("brief") || !place["brief"].is_object()) {
+            post_({{"type", "notify"}, {"text", "No description of " + message.value("doc", std::string("that place")) +
+                                                   " in the planner yet: write it there first"}});
+            return true;
+        }
+        // The user builds it here now: the automatic build lets go of this place (no plan, layout or paint behind
+        // the panel; its Confirm waits for the user's steps).
+        if (gameBuild_) gameBuild_->HandToEditor(message.value("doc", ""), {});
         build_ = MakeBuild();
         const nlohmann::json brief = place.value("brief", nlohmann::json::object());
         why = build_->StartFromBrief(brief.value("name", place.value("id", "")), brief);
         // Into the open scene: its type when it has one (its menu's Type), else the plan's method.
         if (why.empty()) build_->SetMethod(!OpenSceneType().empty() ? SceneMethod() : PlanBuildMethod());
         post_({{"type", "build:open"}});
+        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}}); // the new build, in the list
         PostBuild();
     } else {
         return false;
@@ -6998,6 +7054,8 @@ void EditorApp::ResumeBuild(const std::string& id) {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         return;
     }
+    // The panel has it now: the automatic build stops driving it (no plan or layout behind the panel's window).
+    if (gameBuild_) gameBuild_->HandToEditor({}, id);
     auto build = MakeBuild();
     const std::string why = build->Open(id);
     if (!why.empty()) {
@@ -7006,6 +7064,7 @@ void EditorApp::ResumeBuild(const std::string& id) {
     }
     build_ = std::move(build);
     post_({{"type", "build:open"}});
+    post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}}); // the list, with it in it
     PostBuild();
 }
 
@@ -8919,8 +8978,15 @@ void EditorApp::PostBuild() {
     if (buildJob_) {
         // Working (off the UI thread): what it was, marked busy; the build itself isn't touched.
         nlohmann::json shown = buildShown_.is_object() ? buildShown_ : nlohmann::json{{"type", "build:state"}};
-        shown["busy"] = true;
-        shown["status"] = "Working: planning and laying the place out…";
+        // Painting is tracked by the /places/paint request and the tile-by-tile progress bar, not by a build job.
+        // Never show "Laying out the zones" while a paint is in flight — that stale text lingered over the tile progress.
+        if (build_->Painting()) {
+            shown["busy"] = false;
+            shown.erase("status"); // the paint section's determinate tile bar shows the real progress
+        } else {
+            shown["busy"] = true;
+            shown["status"] = shown.value("freePaint", false) ? "Laying out the zones…" : "Working: planning and laying the place out…";
+        }
         if (shown.contains("confirmProgress") && shown["confirmProgress"].contains("steps")) {
             // The zones planned, laid out now (the solver, off the UI thread): the steps go on, shown on their page
             // (no overlay over them).
@@ -8962,7 +9028,21 @@ void EditorApp::PostBuild() {
     if ((stage == "planned" || stage == "sourced") && !build_->HasAssetNeeds() && !buildJob_ && !buildRun_) PreviewAssets();
     {
         const SlowWatch w("PostBuild: the build's state");
-        buildShown_ = build_->State();
+        try {
+            buildShown_ = build_->State();
+        } catch (const std::exception& error) {
+            // One build the panel can't read (a file written by another version, or half saved): said plainly, and the
+            // panel keeps working on the rest of it rather than the editor failing a frame.
+            const std::string id = build_->Id();
+            buildShown_ = buildShown_.is_object() ? buildShown_ : nlohmann::json::object();
+            if (!buildShown_.contains("type")) buildShown_["type"] = "build:state";
+            buildShown_["id"] = id;
+            buildShown_["stage"] = stage;
+            buildShown_["status"] = std::string("This build's files couldn't be read (") + error.what() + "): " + id +
+                                    " at '" + stage + "'. Its Build panel shows what it has; ① Confirm and the steps go on.";
+            post_(buildShown_);
+            return;
+        }
     }
     buildShown_["afterBackground"] = afterBackground_;
     // The AI Planner is building this place by itself (its steps go on without the user's buttons).

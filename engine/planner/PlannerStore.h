@@ -59,6 +59,11 @@ public:
     void Remove(const std::string& doc);
     bool Locked(const std::string& doc) const;
 
+    // Renames/moves a document (renames the file on disk and updates revision).
+    int Move(const std::string& from, const std::string& to);
+    // Copies a document to a new id (a new file with a fresh revision). Returns the new revision (0: no source).
+    int Copy(const std::string& from, const std::string& to);
+
     // Documents whose recorded inputs no longer match (sorted).
     std::vector<std::string> Stale() const;
     // Documents that list `doc` among their inputs.

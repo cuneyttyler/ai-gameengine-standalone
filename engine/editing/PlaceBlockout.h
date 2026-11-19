@@ -34,7 +34,9 @@ inline constexpr int kBlockoutLine = 0xFFFFFF;
 // `natural`: small things (not buildings) in their own materials' colours (stone grey, wood brown, torch gold) instead of
 // the key's strong colours, so a painter that keeps a marker's colour still paints it right (the Paint method: the id map,
 // not the colour, says which thing is where).
+// `paintBlockout`: skip drawing objects entirely — the Paint method's block-out shows only terrain + zone tints
+// (no decoration dots), which is what the painter extracts per-tile colour keys from.
 ImageData RenderPlanBlockout(const nlohmann::json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology = nullptr,
-                             nlohmann::json* legend = nullptr, ImageData* ids = nullptr, bool natural = false);
+                             nlohmann::json* legend = nullptr, ImageData* ids = nullptr, bool natural = false, bool paintBlockout = false);
 
 } // namespace aige

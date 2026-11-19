@@ -322,7 +322,8 @@ json LandOnly(const json& solved) {
             auto at = [&](int xx) {
                 std::string t = row[xx];
                 if (t == "road") return std::string("dirt"); // a world's road: a road, as a road looks
-                if (t == "forest-floor") return std::string("grass"); // under the trees: plain ground (the trees are the wood)
+                // Keep forest-floor dark green: the painter fills these areas with a dense canopy of mature trees,
+                // so the layout marks the wood as an AREA (not individual tree shapes). See docs/places/tiling.md §6.
                 if ((t == "dirt" || t == "plaza" || t == "cobble" || t == "paved" || t == "gravel") && !(xx < W && main[static_cast<size_t>(y) * W + xx])) return std::string("grass");
                 return t;
             };
@@ -364,7 +365,7 @@ json PrepareBlockout(const json& solved, const Ontology* ontology, const fs::pat
     if (width <= 0) width = PaintWidth(b[2] - b[0], b[3] - b[1]);
     json legend;
     ImageData idMap;
-    const ImageData image = RenderPlanBlockout(painted, b[0], b[1], b[2], b[3], width, ontology, &legend, &idMap, true);
+    const ImageData image = RenderPlanBlockout(painted, b[0], b[1], b[2], b[3], width, ontology, &legend, &idMap, true, true);
     std::error_code ec;
     fs::create_directories(folder, ec);
     WritePng(folder / "blockout.png", image);

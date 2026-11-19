@@ -188,7 +188,7 @@ public:
 } // namespace
 
 ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology, json* legend, ImageData* ids,
-                             bool natural) {
+                             bool natural, bool paintBlockout) {
     // The terrain, cell by cell.
     const json bounds = solved.contains("grid") ? solved["grid"].value("bounds", json::array({0, 0, 0, 0})) : json::array({0, 0, 0, 0});
     const int W = bounds[2].get<int>(), H = bounds[3].get<int>();
@@ -208,6 +208,17 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         }
     }
     auto terrainAt = [&](int x, int y) { return x >= 0 && y >= 0 && x < W && y < H ? cells[static_cast<size_t>(y) * W + x] : std::string("void"); };
+    // Forested areas: mark cells with tree objects as forest-floor (green) instead of rendering individual tree dots.
+    for (const auto& o : solved.value("objects", json::array())) {
+        const std::string slot = o.value("slot", "");
+        if (slot != "tree") continue;
+        const int ox = o.value("x", 0), oy = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
+        for (int yy = oy; yy < oy + h && yy < H; ++yy) {
+            for (int xx = ox; xx < ox + w && xx < W; ++xx) {
+                if (xx >= 0 && yy >= 0) cells[static_cast<size_t>(yy) * W + xx] = "forest-floor";
+            }
+        }
+    }
     // The view: a cell is a diamond twice as wide as tall; the area's diamond fills the width.
     const int cw = std::max(1, x1 - x0), ch = std::max(1, y1 - y0);
     const double tw = 2.0 * width / (cw + ch), th = tw / 2;
@@ -279,7 +290,7 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
         return size * tall >= 1.2 ? "tall thin marker" : tall < 0.4 ? "flat marker" : "small marker";
     };
     for (const auto& [slot, n] : kinds) {
-        if (slot == "grass") continue;
+        if (slot == "grass" || slot == "tree" || slot == "bush") continue; // forested areas are green ground
         std::string name;
         if (Plant(slot)) {
             colourOf[slot] = slot == "tree" ? Rgb{44, 74, 40} : slot == "flower" ? Rgb{200, 170, 90} : slot == "crop" ? Rgb{100, 140, 50} : Rgb{58, 96, 50};
@@ -447,11 +458,15 @@ ImageData RenderPlanBlockout(const json& solved, int x0, int y0, int x1, int y1,
     }
     int objectIndex = -1;
     for (const auto& o : solved.value("objects", json::array())) {
+        // The Paint method's block-out carries only terrain + zone tints: no decoration shapes (flower/tree/bush
+        // dots) that would be zone-tinted into stray marks the painter mistakes for content.
+        if (paintBlockout) break;
         tDrawObject = ++objectIndex + 1;
         const int ox = o.value("x", 0), oy = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
         if (!inside(ox + w / 2.0, oy + h / 2.0)) continue;
         const std::string layer = o.value("layer", "prop"), slot = o.value("slot", "");
         if (slot == "peak") continue; // the relief shows it
+        if (slot == "tree") continue; // forested areas are shown as green ground, not individual dots
         const double depth = ox + w + oy + h - 1;
         if (layer == "building") {
             // A box as tall as it's big, a hipped roof, its door on the side it faces.

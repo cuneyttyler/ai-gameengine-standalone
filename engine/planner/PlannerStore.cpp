@@ -186,6 +186,30 @@ void PlannerStore::Remove(const std::string& doc) {
     fs::remove(PathOf(doc), ec);
 }
 
+int PlannerStore::Move(const std::string& from, const std::string& to) {
+    if (from == to) return RevisionOf(to);
+    const auto content = Read(from);
+    if (!content) return 0;
+    const int revision = RevisionOf(from) + 1;
+    auto contentCopy = *content;
+    contentCopy["revision"] = revision;
+    // Its own id follows the new name (a scene's "id" is the file's short name).
+    if (contentCopy.contains("id") && contentCopy["id"].is_string()) contentCopy["id"] = to.substr(to.rfind('/') == std::string::npos ? 0 : to.rfind('/') + 1);
+    WriteJsonFile(PathOf(to), contentCopy);
+    this->Remove(from);
+    return revision;
+}
+
+int PlannerStore::Copy(const std::string& from, const std::string& to) {
+    const auto content = Read(from);
+    if (!content) return 0;
+    auto copy = *content;
+    copy["revision"] = 1; // a new document starts at its first revision
+    if (copy.contains("id") && copy["id"].is_string()) copy["id"] = to.substr(to.rfind('/') == std::string::npos ? 0 : to.rfind('/') + 1);
+    WriteJsonFile(PathOf(to), copy);
+    return 1;
+}
+
 bool PlannerStore::Locked(const std::string& doc) const {
     const auto j = Read(doc);
     return j && j->value("locked", false);

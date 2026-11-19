@@ -56,7 +56,7 @@ bool OutOfCredits(const std::string& lower) {
 
 std::string ProviderIn(const std::string& lower) {
     static const std::pair<const char*, const char*> names[] = {
-        {"openrouter", "OpenRouter"}, {"pixellab", "PixelLab"},   {"bfl", "Black Forest Labs (FLUX)"},
+        {"openrouter", "OpenRouter"}, {"lmstudio", "LM Studio"}, {"lm studio", "LM Studio"}, {"pixellab", "PixelLab"},   {"bfl", "Black Forest Labs (FLUX)"},
         {"flux", "Black Forest Labs (FLUX)"}, {"black forest", "Black Forest Labs (FLUX)"}, {"autosprite", "Autosprite"},
         {"anthropic", "Anthropic"},   {"claude", "Anthropic"},    {"openai", "OpenAI"},  {"gemini", "Google Gemini"},
         {"elevenlabs", "ElevenLabs"}, {"replicate", "Replicate"}, {"fal.ai", "fal"},     {"stability", "Stability AI"}};

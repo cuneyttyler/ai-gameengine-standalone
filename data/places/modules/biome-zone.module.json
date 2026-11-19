@@ -49,7 +49,7 @@
     "fill": {
       "field": "biome",
       "values": {
-        "forest": "grass",
+        "forest": "forest-floor",
         "plains": "grass",
         "hills": "grass",
         "swamp": "mud",

@@ -1,3 +1,4 @@
+
 // The Build panel's steps, fast (no AI service: its answers given, or none): every kind of place
 // read, laid out, planned and built; the layout and the plan revised as a user asks
 // (docs/test.md, place-refine.md §9).
@@ -407,4 +408,52 @@ TEST(PlaceFlowTest, ResolveASavedLayout) {
     ASSERT_TRUE(WritePng(out, RenderLayoutImage(solved.document, image)));
     std::cout << "short ends (3 cells): before " << ShortEnds(old, 3) << ", now " << ShortEnds(solved.document, 3) << "; (10 cells): before "
               << ShortEnds(old, 10) << ", now " << ShortEnds(solved.document, 10) << std::endl;
+}
+
+// The Build panel's first two stages: the request becomes a Brief shown for
+// confirmation (build type, size, layout format and zones/components), then the
+// layout lays those zones out.
+TEST(PlaceFlowTest, BuildPanelConfirmShowsBriefAndLayoutLaysOutZones) {
+    Bench b("confirm-layout", true);
+    ASSERT_EQ(b.build->Start("a village by a river with a market"), "");
+
+    // Stage 1 — Brief prepared from user input and shown in the Confirm page.
+    const auto readings = b.Waiting("/places/interpret");
+    ASSERT_FALSE(readings.empty());
+    b.Answer(readings[0], {{"ok", true}, {"drafts", json::array({{{"reading", "typical"}, {"brief", VillageBrief()}}})}});
+    for (size_t i = 1; i < readings.size(); ++i) b.Answer(readings[i], {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
+    b.FailAll("/places/repair-brief");
+    for (int id : b.Waiting("/places/plan-root")) b.Answer(id, {{"ok", true}, {"answer", RootAnswer()}});
+    b.FailAll("/places/questions");
+    b.FailAll("/places/repair-node");
+    ASSERT_EQ(b.build->Stage(), "layout") << b.build->State().value("status", "");
+
+    const json state = b.build->State();
+    ASSERT_TRUE(state.contains("window")) << state.dump();
+    const json& window = state["window"];
+    EXPECT_FALSE(window.value("buildTypeName", "").empty()); // build type
+    EXPECT_EQ(b.build->Brief().value("buildType", ""), "settlement");
+    EXPECT_FALSE(window.value("name", "").empty());
+    ASSERT_TRUE(window.contains("size")) << window.dump(); // size
+    EXPECT_FALSE(window["size"].value("unit", "").empty());
+    ASSERT_TRUE(window.contains("layout")) << window.dump(); // layout format
+    EXPECT_TRUE(window["layout"].contains("value") || window["layout"].contains("options"));
+    ASSERT_TRUE(window.contains("components") && window["components"].is_array()) << window.dump(); // zones/components
+    bool hasZone = false;
+    for (const auto& c : window["components"]) {
+        if (c.value("level", "") == "zone" || c.value("id", "") == "residential-ward" || c.value("id", "") == "market-ward") {
+            hasZone = true;
+        }
+    }
+    EXPECT_TRUE(hasZone) << window["components"].dump();
+
+    // Stage 2 — Layout: the zones are laid out (on the map / in the layout).
+    ASSERT_TRUE(state.contains("layout")) << state.dump();
+    const json& layout = state["layout"];
+    EXPECT_TRUE(layout.value("zones", json::array()).is_array());
+    EXPECT_FALSE(layout.value("zones", json::array()).empty()) << layout.dump();
+    const auto land = ZoneLand(b.build->Solved());
+    EXPECT_FALSE(land.empty());
+    EXPECT_TRUE(land.contains("market"));
+    EXPECT_TRUE(land.contains("ward-1") || land.contains("ward-2"));
 }

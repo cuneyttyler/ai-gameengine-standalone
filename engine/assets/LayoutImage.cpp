@@ -30,6 +30,7 @@ uint32_t Hash(int x, int y, uint32_t salt = 0) {
 float Noise(int x, int y, uint32_t salt = 0) { return (Hash(x, y, salt) & 0xFFFF) / 65535.0f; }
 
 Rgb TerrainColor(const std::string& t) {
+    if (t == "forest-floor") return Hex(0x3a5430);
     if (t == "grass" || t.empty()) return Hex(0x86b25f);
     if (t == "dirt") return Hex(0xc9a874);
     if (t == "road") return Hex(0xe07b2a); // a world's roads (between its places): their own colour
@@ -343,6 +344,7 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
         for (const auto& o : solved.value("objects", json::array())) {
             if (o.value("layer", "") == "building") continue;
             const std::string slot = o.value("slot", ""), shows = o.value("shows", "");
+            if (slot == "tree") continue; // forested areas are green ground, not a separate swatch
             slots.insert(slot);
             if (shows.empty()) continue;
             if (slot == "animal") animals.insert(shows);
@@ -410,22 +412,87 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             for (int k = 0; k < run[0].get<int>() && x < W; ++k) terrain[static_cast<size_t>(y) * W + x++] = run[1].get<int>();
         }
     }
+    // Forested cells: marked green (forest-floor) instead of showing individual tree dots.
+    std::set<std::pair<int, int>> forested;
+    int treeCount = 0;
+    for (const auto& o : solved.value("objects", json::array())) {
+        if (o.value("slot", "") != "tree") continue;
+        ++treeCount;
+        const int ox = o.value("x", 0), oy = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
+        for (int yy = oy; yy < oy + h; ++yy)
+            for (int xx = ox; xx < ox + w; ++xx)
+                if (xx >= 0 && yy >= 0 && xx < W && yy < H) forested.insert({xx, yy});
+    }
+    (void)treeCount;
+    static const std::string forestFloor = "forest-floor";
     auto terrainAt = [&](int x, int y) -> const std::string& {
         static const std::string none;
+        if (forested.contains({x, y})) return forestFloor;
         const int t = terrain[static_cast<size_t>(std::clamp(y, 0, H - 1)) * W + std::clamp(x, 0, W - 1)];
         return t >= 0 && t < static_cast<int>(palette.size()) ? palette[t] : none;
+    };
+    // Relief (hills/mountains): per-cell height (tenths of storeys) and snow, if present.
+    std::vector<float> reliefH(static_cast<size_t>(W) * H, 0.0f);
+    std::vector<uint8_t> reliefSnow(static_cast<size_t>(W) * H, 0);
+    float reliefMax = 0.0f;
+    if (solved.contains("relief") && solved["relief"].is_object()) {
+        const auto decode = [&](const char* key, auto&& set) {
+            const json rowsJ = solved["relief"].value(key, json::array());
+            for (int y = 0; y < H && y < static_cast<int>(rowsJ.size()); ++y) {
+                int x = 0;
+                for (const auto& run : rowsJ[y]) {
+                    if (!run.is_array() || run.size() != 2 || !run[0].is_number() || !run[1].is_number()) continue;
+                    const int count = run[0].get<int>(), val = run[1].get<int>();
+                    for (int k = 0; k < count && x < W; ++k, ++x) set(x, y, val);
+                }
+            }
+        };
+        decode("rows", [&](int x, int y, int v) {
+            const float h = v / 10.0f;
+            reliefH[static_cast<size_t>(y) * W + x] = h;
+            reliefMax = std::max(reliefMax, h);
+        });
+        decode("snow", [&](int x, int y, int v) { reliefSnow[static_cast<size_t>(y) * W + x] = static_cast<uint8_t>(v != 0); });
+    }
+    auto heightAt = [&](int x, int y) -> float {
+        x = std::clamp(x, 0, W - 1);
+        y = std::clamp(y, 0, H - 1);
+        return reliefH[static_cast<size_t>(y) * W + x];
     };
     for (int y = 0; y < H; ++y) {
         for (int x = 0; x < W; ++x) {
             const std::string& t = terrainAt(x, y);
-            const Rgb base = TerrainColor(t.empty() ? "grass" : t);
+            Rgb base = TerrainColor(t.empty() ? "grass" : t);
+            const float h = heightAt(x, y);
+            if (h > 0.05f && t != "water") {
+                const float nrm = reliefMax > 0.0f ? std::min(1.0f, h / reliefMax) : 0.0f;
+                // Simple hill shading: slope-facing lightening and elevation tint; snow caps at peaks.
+                const float dhx = heightAt(x + 1, y) - heightAt(x - 1, y);
+                const float dhy = heightAt(x, y + 1) - heightAt(x, y - 1);
+                const float slopeLight = std::clamp(0.55f - 0.18f * dhx - 0.10f * dhy, 0.0f, 1.0f);
+                base = Mix(base, Hex(0xcdbb7a), 0.08f + 0.22f * nrm);
+                base = Shade(base, 0.92f + 0.18f * slopeLight);
+                if (reliefSnow[static_cast<size_t>(y) * W + x]) base = Mix(base, Hex(0xf4f7fa), 0.75f);
+            }
             for (int py = 0; py < cell; ++py) {
                 for (int px = 0; px < cell; ++px) {
                     const int gx = x * cell + px, gy = y * cell + py;
                     float f = 0.94f + 0.1f * Noise(gx / 2, gy / 2, 1);
                     if (t == "water") f = 0.92f + 0.14f * std::sin((gx + gy * 0.6f) * 0.35f + Noise(x, y, 3) * 3.0f) * 0.5f + 0.07f;
                     if (t == "cobble") f = ((gx / 3 + gy / 3) % 2) ? 0.95f : 1.03f;
+                    if (h > 0.05f && t != "water") f *= 0.98f + 0.04f * Noise(gx, gy, 17);
                     canvas.Set(gx, gy, Shade(base, f));
+                }
+            }
+            // Subtle contour lines on hills.
+            if (h > 0.05f && t != "water" && reliefMax > 0.0f) {
+                const int band = static_cast<int>(std::floor(h / std::max(0.5f, reliefMax / 5.0f)));
+                const int bandR = static_cast<int>(std::floor(heightAt(x + 1, y) / std::max(0.5f, reliefMax / 5.0f)));
+                const int bandD = static_cast<int>(std::floor(heightAt(x, y + 1) / std::max(0.5f, reliefMax / 5.0f)));
+                if ((x + 1 < W && bandR != band) || (y + 1 < H && bandD != band)) {
+                    const Rgb line = reliefSnow[static_cast<size_t>(y) * W + x] ? Hex(0xdfe7ef) : Hex(0x8b7a52);
+                    canvas.Rect(x * cell, y * cell, (x + 1) * cell, y * cell + std::max(1, cell / 8), line, 0.22f);
+                    canvas.Rect(x * cell, y * cell, x * cell + std::max(1, cell / 8), (y + 1) * cell, line, 0.22f);
                 }
             }
         }
@@ -595,11 +662,10 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             if (f == "n") canvas.Rect(cx - d / 2, y0, cx + d / 2, y0 + t, Hex(0x3a2a1c));
             if (f == "e") canvas.Rect(x1 - t, cy - d / 2, x1, cy + d / 2, Hex(0x3a2a1c));
             if (f == "w") canvas.Rect(x0, cy - d / 2, x0 + t, cy + d / 2, Hex(0x3a2a1c));
-        } else if (slot == "tree" || slot == "bush") {
-            const float r = cell * (slot == "tree" ? 0.62f : 0.42f);
-            canvas.Disc(cx + cell * 0.18f, cy + cell * 0.22f, r, Hex(0x1c2614), 0.35f);
-            canvas.Disc(cx, cy, r, Hex(0x3d6b2a));
-            canvas.Disc(cx - r * 0.25f, cy - r * 0.25f, r * 0.55f, Hex(0x5a8f3c), 0.8f);
+        } else if (slot == "tree") {
+            continue; // forested areas are shown as green ground, not individual dots
+        } else if (slot == "bush") {
+            continue; // bushes are small plants; leave the area as grass (no green dots)
         } else if (slot == "grass" || slot == "reed" || slot == "fern" || slot == "weed" || slot == "herb" || slot == "mushroom") {
             // Ground cover: a few small tufts (or caps), not a box.
             const Rgb tuft = slot == "mushroom" ? Hex(0xd9c7a3) : slot == "reed" ? Hex(0x7d8c3a) : Hex(0x4f8a34);

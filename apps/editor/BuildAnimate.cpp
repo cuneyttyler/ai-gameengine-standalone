@@ -88,7 +88,9 @@ nlohmann::json DoorRequest(const std::string& buildId, const nlohmann::json& tar
 
 nlohmann::json ReadJsonFile(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
-    return in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+    if (!in) return nlohmann::json::object();
+    auto j = nlohmann::json::parse(in, nullptr, false);
+    return j.is_discarded() ? nlohmann::json::object() : j;
 }
 
 } // namespace
@@ -207,6 +209,7 @@ nlohmann::json EditorApp::AnimateTargets() {
 }
 
 void EditorApp::PostAnimate() {
+    if (!animate_.is_object()) animate_ = nlohmann::json::object();
     int done = 0, failed = 0, total = 0;
     for (const auto& t : animate_.value("targets", nlohmann::json::array())) {
         if (t.value("status", "") == "skipped") continue;
@@ -232,6 +235,8 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
         PostAnimate();
         return true;
     }
+    if (!animate_.is_object()) animate_ = nlohmann::json::object();
+    if (!animate_.contains("targets") || !animate_["targets"].is_array()) animate_["targets"] = nlohmann::json::array();
     if (type == "build:animateSkip" || type == "build:animateUnskip") {
         for (auto& t : animate_["targets"]) {
             if (t.value("key", "") != message.value("key", "")) continue;

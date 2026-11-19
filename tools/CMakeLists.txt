@@ -7,6 +7,10 @@ add_executable(plan_blockout plan_blockout/main.cpp)
 # aige_ai_bridge: httplib (the AI service's planning steps, `"ai": "sections"`).
 target_link_libraries(plan_blockout PRIVATE aige_editing aige_places aige_assets aige_ai_bridge)
 
+# Regenerate a place's Paint block-out through the editor's own code, without decorations.
+add_executable(regen_blockout regen_blockout/main.cpp)
+target_link_libraries(regen_blockout PRIVATE aige_editing aige_places aige_assets aige_ai_bridge)
+
 # A request read into a Brief as the Builder reads it, and its Confirm window (the AI service's /places/interpret).
 add_executable(brief_test brief_test/main.cpp)
 target_link_libraries(brief_test PRIVATE aige_editing aige_places aige_ai_bridge)

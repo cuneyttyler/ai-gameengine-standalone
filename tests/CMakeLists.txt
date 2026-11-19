@@ -79,6 +79,7 @@ add_executable(aige_tests
     live_build_test.cpp
     place_flow_test.cpp
     layout_tests/layout_revise_test.cpp
+    layout_tests/confirm_layout_params_test.cpp
     plan_tests/plan_revise_test.cpp
     revise_language_test.cpp
     paint_build_test.cpp

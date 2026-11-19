@@ -1071,18 +1071,27 @@ std::string GamePlan::Edit(const std::string& doc, const std::string& pointer, c
     // A field keeps its kind (a list of stages isn't written over with text); what it was is kept with the decision.
     json previous;
     try {
-        const json::json_pointer at(pointer);
-        if (content->contains(at)) {
-            previous = content->at(at);
-            const auto kind = [](const json& v) {
-                return v.is_object() ? "an object" : v.is_array() ? "a list" : v.is_string() ? "text" : v.is_boolean() ? "true or false"
-                       : v.is_number() ? "a number" : "nothing";
-            };
-            if (!previous.is_null() && !value.is_null() && std::string(kind(previous)) != kind(value)) {
-                return "won't change " + doc + pointer + " from " + kind(previous) + " to " + kind(value) + ": its structure is kept";
+        const std::string p = pointer;
+        // A trailing "/-" appends to a list (JSON Patch): a new scene's id goes onto the act's chapters[].scenes.
+        if (p.size() >= 2 && p.compare(p.size() - 2, 2, "/-") == 0) {
+            json::json_pointer parent(p.substr(0, p.size() - 2));
+            json& list = (*content)[parent];
+            if (!list.is_array()) return "won't add to " + doc + pointer + ": it isn't a list";
+            list.push_back(value);
+        } else {
+            const json::json_pointer at(pointer);
+            if (content->contains(at)) {
+                previous = content->at(at);
+                const auto kind = [](const json& v) {
+                    return v.is_object() ? "an object" : v.is_array() ? "a list" : v.is_string() ? "text" : v.is_boolean() ? "true or false"
+                           : v.is_number() ? "a number" : "nothing";
+                };
+                if (!previous.is_null() && !value.is_null() && std::string(kind(previous)) != kind(value)) {
+                    return "won't change " + doc + pointer + " from " + kind(previous) + " to " + kind(value) + ": its structure is kept";
+                }
             }
+            (*content)[at] = value;
         }
-        (*content)[at] = value;
     } catch (const std::exception& e) {
         return std::string("can't change ") + pointer + ": " + e.what();
     }
@@ -1577,6 +1586,48 @@ std::string GamePlan::RevertRevision(const std::string& step, const std::string&
     history.erase("revision"), history.erase("inputs"), history.erase("madeBy");
     store_.Write("revisions", history, std::string());
     message_ = std::to_string(undone) + " edit(s) of a revision taken back; " + std::to_string(Stale().size()) + " document(s) to regenerate.";
+    Save();
+    return {};
+}
+
+std::string GamePlan::RemoveRevision(const std::string& step, const std::string& id) {
+    json history = store_.Read("revisions").value_or(json::object());
+    if (!history.is_object() || !history[step].is_array()) return "no revision " + id;
+    json& list = history[step];
+    json kept = json::array();
+    bool found = false;
+    for (auto& e : list) {
+        if (e.value("id", "") == id) {
+            found = true;
+            continue; // taken off the list; the edits it made stay
+        }
+        kept.push_back(e);
+    }
+    if (!found) return "no revision " + id;
+    history[step] = kept;
+    store_.Write("revisions", history, std::string());
+    Save();
+    return {};
+}
+
+std::string GamePlan::Move(const std::string& from, const std::string& to, const std::string& reason) {
+    if (from == to) return {};
+    const auto content = store_.Read(from);
+    if (!content) return "no document " + from;
+    const int revision = store_.Move(from, to);
+    if (revision == 0) return "failed to move " + from + " to " + to;
+    PlanDecision d;
+    d.stage = StageOfJob(from.rfind("story/") == 0 ? "scene" : from.rfind("characters/") == 0 ? "character"
+                                                     : from.rfind("quests/") == 0    ? "quests"
+                                                     : from.rfind("places/") == 0    ? "place"
+                                                                                     : "outline");
+    d.actor = "user";
+    d.kind = "edit";
+    d.subject = from + " -> " + to;
+    d.chosen = "move " + from + " -> " + to;
+    d.reason = reason;
+    d.checks = {{"previous", from}, {"new", to}};
+    store_.Decide(d);
     Save();
     return {};
 }

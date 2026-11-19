@@ -393,6 +393,11 @@ void PlaceBuild::SetStory(json story) {
     }
 }
 
+void PlaceBuild::SetPaintPrompt(const std::string& text) {
+    paintPrompt_ = text;
+    Save();
+}
+
 bool PlaceBuild::Send(Pending what) {
     // The story this place serves, with the rest of what the AI is told (its context).
     if (story_.is_object() && !story_.empty() && what.path.rfind("/places/", 0) == 0 && what.body.is_object()) {
@@ -443,6 +448,8 @@ void PlaceBuild::Save() const {
                                           {"matched", matched_},
                                           {"method", method_},
                                           {"paintCellPx", paintCellPx_},
+                                          {"objectVariety", objectVariety_},
+                                          {"paintPrompt", paintPrompt_},
                                           {"scope", scope_},
                                           {"sections", SectionsSession()},
                                           {"section", section_ ? SectionJobJson(*section_) : json()},
@@ -649,13 +656,46 @@ std::string PlaceBuild::StartFromBrief(const std::string& words, const json& bri
     WriteJson(Folder() / "request.json", {{"query", query_}, {"choices", choices_}, {"fromPlanner", true}});
     fromPlanner_ = true;
     Log({{"step", "start"}, {"query", query_}, {"brief", brief}, {"fromPlanner", true}});
-    // One draft, sure of itself: the merge keeps it as it is, and the window shows it to confirm.
-    drafts_ = {{{"brief", brief}, {"confidence", 1.0}, {"assumptions", json::array()}, {"questions", json::array()}, {"reading", "planner"}}};
+    // The place's own Brief is its first reading; the AI reads the request just as it reads a typed one (three readings,
+    // side by side), and ① Confirm shows their merge — the same progress page the Build panel shows.
+    drafts_ = {{"brief", brief}, {"confidence", 1.0}, {"assumptions", json::array()}, {"questions", json::array()}, {"reading", "planner"}};
     draftProblems_ = {{}};
-    FinishInterpreting();
-    Notice("This Brief comes from the AI Planner's description of the place: check it, then build.");
+    stage_ = "interpreting";
+    status_ = "Reading the place's request…";
+    if (!SendReadings()) {
+        // The AI is off: the planner's Brief alone, straight to ① Confirm.
+        Notice("The AI is off, so this Brief is the AI Planner's description of the place: check it, then build.");
+        FinishInterpreting();
+    }
     Save();
     return {};
+}
+
+void PlaceBuild::EnsurePaintPrompt() {
+    // A paint-method place: write its Paint Prompt from the place's planner data (its Brief and story), so the painter
+    // knows what to paint; it shows in ① Confirm and can be edited there.
+    if (method_ != "Paint" || !paintPrompt_.empty() || !host_.request) return;
+    json body = {{"place", brief_}, {"story", story_.is_object() ? story_ : json::object()},
+                 {"name", brief_.value("name", query_)}, {"type", brief_.value("buildType", "")}};
+    // Include plan/composition parameters so the generated paint prompt reflects layout/plan settings (important for Paint Free).
+    if (spec_.is_object() && spec_.contains("root") && spec_["root"].is_object()) {
+        json layoutParams = json::object();
+        static const std::vector<std::string> kForm = {"site-fit", "zone-shape", "street-grid", "block-size", "block-fill", "coverage", "open-space",
+                                                       "lot-layout", "block-use", "frontage", "building-cover", "building-shape", "arrangement"};
+        const json& rootSpec = spec_["root"];
+        if (const ModuleDef* rootMod = host_.ontology().Module(rootSpec.value("module", ""))) {
+            for (const auto& name : kForm) {
+                const FieldDef* f = rootMod->Field(name);
+                if (f == nullptr) continue;
+                const char* group = f->quantity ? "quantity" : "quality";
+                const json set = rootSpec.value(group, json::object()).value(name, json());
+                const json val = set.is_null() ? f->defaultValue : set;
+                if (!val.is_null()) layoutParams[name] = val;
+            }
+        }
+        if (!layoutParams.empty()) body["layoutParams"] = layoutParams;
+    }
+    if (Send({"paintprompt", -1, "", "/places/paint-prompt", body, 120})) status_ = "Writing the paint prompt from the place…";
 }
 
 // What the AI is given to read the request with: the one build type the words or the form name (a
@@ -768,6 +808,15 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
     }
     if (what.kind == "revise") {
         if (stage_ == "revising") OnRevision(what, body);
+        Save();
+        return;
+    }
+    if (what.kind == "paintprompt") {
+        // The place's Paint Prompt, written from its planner data: shown (and editable) in ① Confirm; the painter uses it.
+        if (body.value("ok", false) && body.contains("prompt") && body["prompt"].is_string()) {
+            paintPrompt_ = body["prompt"].get<std::string>();
+        }
+        if (!status_.empty()) status_.clear();
         Save();
         return;
     }
@@ -1249,13 +1298,14 @@ void PlaceBuild::FinishInterpreting() {
     Log({{"step", "merged"}, {"brief", brief_}, {"drafts", good.size()}, {"disputed", disputed}});
     if (host_.layoutStep) {
         // ① Confirm: what will be built, checked first; the zones are laid out when "Lay out the zones" is pressed
-        // (ReplanLayout), not at once. The questions are asked meanwhile.
+        // (ReplanLayout), not at once. Nothing is asked of the AI before that: the window opens with nothing running.
         round_ = 2;
         WriteJson(Folder() / "brief.json", brief_);
         stage_ = "layout";
         status_ = "Check what will be built, then lay out the zones.";
-        AskQuestions();
     }
+    // A painted place: its Paint Prompt is written now, from the Brief just read (① Confirm shows it, the painter uses it).
+    EnsurePaintPrompt();
 }
 
 void PlaceBuild::Edit(const std::string& path, const json& value) {
@@ -1266,8 +1316,32 @@ void PlaceBuild::Edit(const std::string& path, const json& value) {
     const bool background = path == "background.description";
     if (stage_ != "request" && stage_ != "assets" && !confirming && !sources && !background) return;
     ApplyWindowEdit(host_.ontology(), brief_, path, value);
-    // What the zones were planned from changed: the layout is out of date until planned again.
-    if (confirming && path != "name" && path.rfind("style.", 0) != 0 && !sources && !background) layoutStale_ = true;
+    // Keep root.* edits in the spec too (layout form/settings), so layout/solve sees them.
+    if (path.rfind("root.", 0) == 0 && spec_.is_object() && spec_.contains("root")) {
+        const std::string field = path.substr(5);
+        if (const ModuleDef* m = host_.ontology().Module(spec_["root"].value("module", ""))) {
+            if (const FieldDef* f = m->Field(field)) {
+                json& group = spec_["root"][f->quantity ? "quantity" : "quality"];
+                if (value.is_null() || (value.is_string() && value.get<std::string>().empty())) group.erase(field);
+                else group[field] = value;
+            } else {
+                if (value.is_null() || (value.is_string() && value.get<std::string>().empty())) spec_["root"]["quality"].erase(field);
+                else spec_["root"]["quality"][field] = value;
+            }
+        }
+    }
+    // What the zones were planned from changed: lay them out again in layout stage so every parameter takes effect.
+    if (confirming && path != "name" && path.rfind("style.", 0) != 0 && !sources && !background) {
+        if (PlanWaiting() == 0) {
+            layoutStale_ = false;
+            if (FreePaint() && scope_ != "world") {
+                spec_ = SpecFromRoot(host_.ontology(), brief_, FallbackRootAnswer(host_.ontology(), brief_), id_);
+            }
+            LayoutZones();
+        } else {
+            layoutStale_ = true;
+        }
+    }
     WriteJson(Folder() / "brief.json", brief_);
     Save();
 }
@@ -1276,10 +1350,20 @@ std::string PlaceBuild::ReplanLayout() {
     if (stage_ != "layout") return "there's no layout to plan again";
     const auto errors = ErrorsOf(ValidateBrief(host_.ontology(), brief_));
     if (!errors.empty()) return errors.front().where + ": " + errors.front().message;
+    if (PlanWaiting() > 0) return "the zones are being planned already"; // one press is enough
+    for (auto it = pending_.begin(); it != pending_.end();) it = it->second.kind == "plan-root" || it->second.kind == "plan-zone" ? pending_.erase(it) : std::next(it);
     layoutStale_ = false;
     UnfreezeLayout(false);
     WriteJson(Folder() / "brief.json", brief_);
     Log({{"step", "replan layout"}, {"directions", directions_}});
+    if (FreePaint() && scope_ != "world") {
+        // Paint (Free): no ③ Plan and no AI layout — the zones take the land the Brief and their module rules give them.
+        status_ = "Laying out the zones…";
+        spec_ = SpecFromRoot(host_.ontology(), brief_, FallbackRootAnswer(host_.ontology(), brief_), id_);
+        LayoutZones();
+        Save();
+        return {};
+    }
     StartPlanning();
     Save();
     return {};
@@ -1361,7 +1445,7 @@ std::string PlaceBuild::SetZoneField(const std::string& zone, const std::string&
 }
 
 std::string PlaceBuild::SetRootField(const std::string& field, const json& value) {
-    if (stage_ != "layout" && stage_ != "plan" && stage_ != "planned") return "the layout is set before the place is built";
+    if (stage_ != "layout" && stage_ != "plan" && stage_ != "planned" && stage_ != "painted" && stage_ != "marked" && stage_ != "sourcing" && stage_ != "sourced" && stage_ != "building" && stage_ != "built") return "the layout is set before the place is built";
     if (!spec_.contains("root")) return "there's no plan yet";
     const ModuleDef* m = host_.ontology().Module(spec_["root"].value("module", ""));
     const FieldDef* f = m ? m->Field(field) : nullptr;
@@ -1373,8 +1457,20 @@ std::string PlaceBuild::SetRootField(const std::string& field, const json& value
     else group[field] = value;
     SetBriefValue(brief_, "root." + field, value); // the Brief says the same
     Log({{"step", "layout form"}, {"field", field}, {"value", value}});
+    // Plan parameters (inside-zone planning) must not redraw the layout (zone positions/sizes).
+    static const std::set<std::string> planOnlyFields = {"block-size", "block-fill", "open-space", "lot-layout", "block-use",
+                                                          "frontage", "building-cover", "building-shape", "street-grid", "walled"};
+    const bool planOnly = planOnlyFields.count(field) > 0;
+    if (planOnly) {
+        WriteJson(Folder() / "spec.json", spec_);
+        Save();
+        return {};
+    }
     if (stage_ == "layout") {
-        UnfreezeLayout(true);
+        if (FreePaint() && scope_ != "world") {
+            spec_ = SpecFromRoot(host_.ontology(), brief_, FallbackRootAnswer(host_.ontology(), brief_), id_);
+        }
+        UnfreezeLayout(false); // global layout params: recompute layout so changes take effect
         LayoutZones();
         Save();
         return {};
@@ -1539,6 +1635,14 @@ std::string PlaceBuild::Confirm() {
     WriteJson(Folder() / "brief.json", brief_);
     WriteJson(host_.projectRoot / "places" / "defaults.json", DefaultsAfter(brief_, Defaults()));
     Log({{"step", "confirmed"}, {"brief", brief_}});
+    if (host_.layoutStep) {
+        // ① Confirm with nothing running: the zones are planned and laid out only when the user presses
+        // "Lay out the zones" in its Layout tab (ReplanLayout) — for both build methods.
+        stage_ = "layout";
+        status_ = "Check what will be built, then lay out the zones.";
+        Save();
+        return {};
+    }
     StartPlanning();
     Save();
     return {};
@@ -1592,6 +1696,12 @@ void PlaceBuild::StartPlanning() {
     tidied_.clear();
     zonesTotal_ = zonesDone_ = 0;
     spec_ = solved_ = json();
+    // Paint (Free): no plan-root and no plan-zone, whatever asked (a resume, a confirm without the layout step):
+    // the zones take the land the Brief and their module rules give them.
+    if (FreePaint() && scope_ != "world") {
+        PlanFreePaintPlace();
+        return;
+    }
     status_ = "Laying out the zones, roads and walls…";
     json body = {{"brief", brief_}, {"context", PlanRootContext(host_.ontology(), brief_)}, {"examples", ExamplesLikeThis()}};
     // The user's answers, in their words: to the questions, and to the decisions that set no field.
@@ -2029,7 +2139,7 @@ void PlaceBuild::LayoutZones() {
     for (const auto& r : solved_.value("regions", json::array())) {
         if (r.value("statement", "") != "site/zones") continue;
         if (json* node = SpecNode(spec_, r.value("id", ""))) {
-            (*node)["quantity"]["area"] = {{"area", r.value("area", 0)}};
+            (*node)["layout"] = {{"area", r.value("area", 0)}};
             (*node)["layoutCells"] = r.value("cells", json::array());
         }
     }
@@ -2042,7 +2152,8 @@ void PlaceBuild::LayoutZones() {
         fs::copy_file(Folder() / "layout.png", Folder() / "zones.png", fs::copy_options::overwrite_existing, ec);
     }
     stage_ = "layout";
-    status_ = "The zones and where they go: revise them here, then plan what's inside them.";
+    status_ = IsPaintMethod(method_) ? "The zones and where they go: revise them here, then paint the place."
+                                     : "The zones and where they go: revise them here, then plan what's inside them.";
     Log({{"step", "layout"}, {"zones", ZoneIds(ontology, spec_).size()}});
 }
 
@@ -2282,6 +2393,25 @@ json PlaceBuild::LayoutQuality(const json& spec, const json& solved) const {
     return {{"score", score}, {"checks", checks}};
 }
 
+void PlaceBuild::PlanFreePaintPlace() {
+    if (!spec_.is_object() || !spec_.contains("root")) {
+        spec_ = SpecFromRoot(host_.ontology(), brief_, FallbackRootAnswer(host_.ontology(), brief_), id_);
+    }
+    if (!solved_.is_object()) solved_ = ReadJson(Folder() / "zones.solved.json");
+    if (!HasLayout()) {
+        // Nothing laid out yet (or the layout file is gone): lay the zones out, no AI, one information text.
+        status_ = "Laying out the zones…";
+        LayoutZones();
+        return;
+    }
+    WriteJson(Folder() / "layout.solved.json", solved_);
+    WriteJson(Folder() / "spec.json", spec_);
+    stage_ = "planned";
+    status_.clear();
+    Log({{"step", "painted from the layout"}});
+    Save();
+}
+
 std::string PlaceBuild::PlanFromLayout() {
     if (stage_ != "layout") return "there's no layout to plan from";
     if (layoutStale_) return "the Contents changed since the layout was made: lay it out again first";
@@ -2289,6 +2419,12 @@ std::string PlaceBuild::PlanFromLayout() {
         return errors.front().where + ": " + errors.front().message;
     }
     for (auto it = pending_.begin(); it != pending_.end();) it = it->second.kind == "questions" ? pending_.erase(it) : std::next(it);
+    // Paint (Free) has no ③ Plan: its zones as laid out are what's painted (each zone's ground a colour the painter
+    // fills), so the layout is its plan from here on — no zone parcels, no AI. docs/places/painted-places.md
+    if (FreePaint() && scope_ != "world") {
+        PlanFreePaintPlace();
+        return {};
+    }
     // The zones exactly as laid out (their kept cells): the plan only fills them.
     layoutSeeds_.clear();
     layoutSide_ = SiteSide();
@@ -2347,7 +2483,6 @@ json PlaceBuild::ConfirmProgress() {
     };
     const bool reading = stage_ == "interpreting";
     const bool zonesPlanning = stage_ == "planning" && planPhase_ == "root";
-    const bool laidOut = stage_ == "layout";
     json steps = json::array();
     auto add = [&](const std::string& id, const std::string& label, const std::string& state, json detail) {
         steps.push_back({{"id", id}, {"label", label}, {"state", state}, {"detail", detail}});
@@ -2397,6 +2532,7 @@ json PlaceBuild::ConfirmProgress() {
     add("compare", "Comparing the readings", reading ? "waiting" : "done",
         reading ? json::array({"What they disagree on is marked for you to decide."}) : json::array());
     // 4. The zones: what they are and where they go (with a layout step, only once Lay out the zones is pressed).
+    const bool layoutMade = HasLayout();
     if (!(host_.layoutStep && reading)) {
         json detail = json::array();
         if (zonesPlanning && waiting("plan-root") > 0) {
@@ -2412,10 +2548,10 @@ json PlaceBuild::ConfirmProgress() {
                              "; asking again: attempt " + std::to_string(p.attempts) + " of " + std::to_string(kAttempts) +
                              ". Without an answer, the zones come from the Brief alone.");
         }
-        add("zones", "Laying out the zones", zonesPlanning ? "active" : laidOut ? "done" : "waiting", detail);
+        add("zones", "Laying out the zones", zonesPlanning ? "active" : layoutMade ? "done" : "waiting", detail);
     }
     // 5. The map of them.
-    if (!(host_.layoutStep && reading)) add("layout", "Placing the zones on the map", laidOut ? "done" : "waiting", json::array());
+    if (!(host_.layoutStep && reading)) add("layout", "Placing the zones on the map", layoutMade ? "done" : "waiting", json::array());
     // How far: each step done counts one, the active one half.
     double done = 0;
     std::string active;
@@ -2439,6 +2575,11 @@ int PlaceBuild::PlanWaiting() const {
 }
 
 void PlaceBuild::PlanZones() {
+    // Paint (Free): nothing is planned inside the zones — the layout as it stands is what gets painted.
+    if (FreePaint() && scope_ != "world") {
+        PlanFreePaintPlace();
+        return;
+    }
     planPhase_ = "zones";
     const Ontology& ontology = host_.ontology();
     const auto zones = ZoneIds(ontology, spec_);
@@ -2671,7 +2812,7 @@ void PlaceBuild::Solve() {
         spec_["root"]["quantity"]["area"] = {{"area", side * side}};
         for (const auto& r : solved_.value("regions", json::array())) {
             if (r.value("statement", "") != "site/zones") continue;
-            if (json* zone = SpecNode(spec_, r.value("id", ""))) (*zone)["quantity"]["area"] = {{"area", r.value("area", 0)}};
+            if (json* zone = SpecNode(spec_, r.value("id", ""))) (*zone)["layout"] = {{"area", r.value("area", 0)}};
         }
     }
     (void)rounds;
@@ -2744,7 +2885,7 @@ bool PlaceBuild::GrowShortZones(int attempt) {
         }
         if (added == 0) continue;
         (*zone)["layoutCells"] = EncodeCells(std::vector<int>(mine.begin(), mine.end()), W);
-        (*zone)["quantity"]["area"] = {{"area", static_cast<int>(mine.size())}};
+        (*zone)["layout"] = {{"area", static_cast<int>(mine.size())}};
         if (!revisions_.empty()) {
             revisions_.back()["notes"].push_back(id + " took " + std::to_string(added) + " cells of the open land beside it, for the " +
                                                  std::to_string(planned - built) + " more it was asked for");
@@ -2970,7 +3111,9 @@ std::string PlaceBuild::Revise(const std::string& request) {
     if (!Send({"revise", -1, request, "/places/revise-plan", body, 600})) return "the AI is off, and revising by request needs it";
     beforeRevision_ = stage_;
     stage_ = "revising";
-    status_ = std::string(beforeRevision_ == "layout" ? "Revising the layout" : "Revising the plan") + ": “" + request + "”…";
+    // A painted place has no plan: what's revised there is its layout.
+    const bool layout = beforeRevision_ == "layout" || FreePaint();
+    status_ = std::string(layout ? "Revising the layout" : "Revising the plan") + ": “" + request + "”…";
     Log({{"step", "revise"}, {"request", request}});
     Save();
     return {};
@@ -3937,7 +4080,8 @@ std::string PlaceBuild::Redo() {
 }
 
 std::string PlaceBuild::Relayout() {
-    if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "there's no plan to lay out";
+    static const std::set<std::string> allowed = {"layout", "plan", "planned", "painted", "marked", "sourcing", "sourced", "building", "built"};
+    if (!allowed.count(stage_)) return "there's no plan to lay out";
     fitScale_.clear();
     fitSide_ = 0;
     const Ontology& ontology = host_.ontology();
@@ -3949,6 +4093,7 @@ std::string PlaceBuild::Relayout() {
     RebalanceBuildings(ontology, brief_, spec_);
     Log({{"step", "relayout"}});
     Solve();
+    RenderMap();
     WriteJson(Folder() / "spec.json", spec_);
     Save();
     return {};
@@ -5010,7 +5155,14 @@ std::string PlaceBuild::Paint(const std::string& notes) {
         Log({{"step", "painted from the layout"}});
     }
     const auto box = OccupiedBounds(solved_);
-    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder(), free ? PlanFreePaint(box[2] - box[0], box[3] - box[1], paintCellPx_).width : 0, free);
+    // The paint tile grid: chosen by the user's pixel density (free paint) or the scene's cell count (by plan), both
+    // fixed in the editor. Sent to the painter so it paints the SAME number of tiles the editor reports.
+    const FreePaintPlan paintPlan = PlanFreePaint(box[2] - box[0], box[3] - box[1], paintCellPx_);
+    // Free paint: the grid follows the chosen pixel density (cols x rows). By plan: a square n x n from the cell span.
+    const int paintCols = free ? std::max(1, paintPlan.cols)
+                               : std::max(1, PaintTiles(box[2] - box[0], box[3] - box[1]));
+    const int paintRows = free ? std::max(1, paintPlan.rows) : paintCols;
+    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder(), free ? paintPlan.width : 0, free);
     // Paint (Free): each zone's ground coloured in the block-out, its colour said with the zone (TintZones).
     std::map<std::string, std::string> zoneColour;
     if (free) {
@@ -5036,8 +5188,53 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"look", LookFor(brief_.value("buildType", ""))},
                        {"notes", notes},
                        {"reference", reference_},
-                       {"model", PaintModel()}};
+                       {"model", PaintModel()},
+                       {"cols", paintCols},
+                       {"rows", paintRows},
+                       {"variety", objectVariety_}};
     json send = body;
+    // The Paint Prompt (① Confirm): what the painter is told to paint — the place's layout in the user's words.
+    if (!paintPrompt_.empty()) send["paintPrompt"] = paintPrompt_;
+    // Plan/composition parameters (layout form, zone/parcel/building arrangement). In Paint (Free) there is no drawn plan,
+    // but the painter must still compose the place according to these settings.
+    {
+        json layoutParams = json::object();
+        std::string layoutText;
+        static const std::vector<std::string> kForm = {"site-fit", "zone-shape", "street-grid", "block-size", "block-fill", "coverage", "open-space",
+                                                       "lot-layout", "block-use", "frontage", "building-cover", "building-shape", "arrangement"};
+        if (spec_.is_object() && spec_.contains("root") && spec_["root"].is_object()) {
+            const json& rootSpec = spec_["root"];
+            if (const ModuleDef* rootMod = host_.ontology().Module(rootSpec.value("module", ""))) {
+                for (const auto& name : kForm) {
+                    const FieldDef* f = rootMod->Field(name);
+                    if (f == nullptr) continue;
+                    const char* group = f->quantity ? "quantity" : "quality";
+                    const json set = rootSpec.value(group, json::object()).value(name, json());
+                    const json val = set.is_null() ? f->defaultValue : set;
+                    if (!val.is_null()) {
+                        layoutParams[name] = val;
+                        std::string vs = val.is_string() ? val.get<std::string>() : val.dump();
+                        layoutText += (layoutText.empty() ? "" : "; ") + name + ": " + vs;
+                    }
+                }
+            }
+            if (rootSpec.contains("quality") && rootSpec["quality"].contains("walled")) {
+                layoutParams["walled"] = rootSpec["quality"]["walled"];
+            }
+        }
+        if (!layoutParams.empty()) {
+            send["layoutParams"] = layoutParams;
+            const std::string line = "Plan/composition parameters — " + layoutText + ".";
+            if (send.contains("design") && send["design"].is_string() && !send["design"].get<std::string>().empty())
+                send["design"] = send["design"].get<std::string>() + "; " + line;
+            else
+                send["design"] = line;
+            if (send.contains("notes") && send["notes"].is_string() && !send["notes"].get<std::string>().empty())
+                send["notes"] = send["notes"].get<std::string>() + "\n" + line;
+            else
+                send["notes"] = line;
+        }
+    }
     // The plan's parts (its zones), for the painter (both ways of painting): each zone's name, where it is in the picture,
     // and its buildings, by kind and how many. A free painting composes the place by them; a block-out's painting knows
     // what each area of coloured shapes is.
@@ -5073,50 +5270,50 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                 std::replace(kind.begin(), kind.end(), '-', ' ');
                 ++kinds[kind];
             }
-            // Painted from its layout (Paint (Free): no ③ Plan, so nothing is built in it yet): how many buildings its plan
-            // gives it (its count field: a ward's plots), of the kinds the Brief set or its module's main parcel.
-            if (kinds.empty() && m) {
-                if (const json* node = SpecNode(spec_, id)) {
-                    const std::string field = CountField(*m);
-                    // A count as the plan gives it: n, [lo, hi], {"count": n} or {"count": [lo, hi]}: its middle.
-                    std::function<double(const json&)> middle = [&](const json& v) -> double {
-                        if (v.is_number()) return v.get<double>();
-                        if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) return (v[0].get<double>() + v[1].get<double>()) / 2;
-                        if (v.is_object() && v.contains("count")) return middle(v["count"]);
-                        return 0;
-                    };
-                    const int count = field.empty() ? 0 : static_cast<int>(std::lround(middle(node->value("quantity", json::object()).value(field, json()))));
-                    const json given = node->value("kinds", json::object());
-                    for (const auto& [k, n] : given.items()) {
-                        if (!n.is_number() || n.get<int>() <= 0) continue;
-                        std::string kind = k;
-                        for (const char* tail : {"-plot", "-yard", "-lot"}) {
-                            if (kind.size() > std::strlen(tail) && kind.ends_with(tail)) kind.resize(kind.size() - std::strlen(tail));
-                        }
-                        std::replace(kind.begin(), kind.end(), '-', ' ');
-                        kinds[kind] += n.get<int>();
+            // The parts this zone holds and how many of each — the SAME breakdown shown in Confirm (ZoneKinds):
+            // every part the zone can hold, with the user's count for it or, for those not set, the plan/ontology's
+            // estimate (from its count field and the parts' weights). Sent for BOTH paint methods: in Paint (Free)
+            // the plan's buildings aren't drawn, but the painter still needs to know what each coloured zone holds.
+            json buildings = json::array();
+            if (m && m->level == PlaceLevel::Zone) {
+                const std::string field = CountField(*m);
+                double total = 0;
+                if (!field.empty()) {
+                    if (const json* node = SpecNode(spec_, id)) {
+                        const json v = node->value("quantity", json::object()).value(field, json());
+                        const json n = v.is_object() ? v.value("count", json()) : v;
+                        if (n.is_number()) total = n.get<double>();
+                        else if (n.is_array() && n.size() == 2 && n[0].is_number() && n[1].is_number())
+                            total = (n[0].get<double>() + n[1].get<double>()) / 2;
+                        else if (v.is_object() && v.contains("default"))
+                            total = v["default"].is_array() && v["default"].size() == 2
+                                ? (v["default"][0].get<double>() + v["default"][1].get<double>()) / 2
+                                : v["default"].get<double>();
                     }
-                    int rest = count;
-                    for (const auto& [k, n] : kinds) rest -= n;
-                    if (rest > 0) {
-                        // The rest: of its module's likeliest parcel (a residential ward's houses).
-                        const ChildDef* best = nullptr;
-                        for (const ChildDef& c : m->children) {
-                            if (host_.ontology().Module(c.module) && host_.ontology().Module(c.module)->level == PlaceLevel::Parcel && (!best || c.weight > best->weight)) {
-                                best = &c;
-                            }
+                    if (total <= 0) {
+                        if (const FieldDef* f = m->Field(field)) {
+                            const json d = f->defaultValue;
+                            if (d.is_array() && d.size() == 2 && d[0].is_number() && d[1].is_number())
+                                total = (d[0].get<double>() + d[1].get<double>()) / 2;
+                            else if (d.is_number()) total = d.get<double>();
                         }
-                        std::string kind = best ? best->module : "building";
-                        for (const char* tail : {"-plot", "-yard", "-lot"}) {
-                            if (kind.size() > std::strlen(tail) && kind.ends_with(tail)) kind.resize(kind.size() - std::strlen(tail));
-                        }
-                        std::replace(kind.begin(), kind.end(), '-', ' ');
-                        kinds[kind] += rest;
                     }
                 }
+                const json parts = ZoneKinds(host_.ontology(), *m, UnitOf(host_.ontology(), spec_).cls,
+                                             BriefValue(brief_, "components." + m->id + ".kinds"), total);
+                for (const auto& p : parts) {
+                    std::string kind = p.value("name", p.value("module", "building"));
+                    for (char& ch : kind) if (ch == '-') ch = ' ';
+                    json row = {{"kind", kind}};
+                    if (p.contains("count")) row["count"] = p["count"];
+                    else if (p.contains("estimate")) row["count"] = p["estimate"];
+                    // For a plan paint the solved plan has the real count: prefer it over the estimate.
+                    if (!free) {
+                        if (const auto it = kinds.find(kind); it != kinds.end()) row["count"] = it->second;
+                    }
+                    buildings.push_back(row);
+                }
             }
-            json buildings = json::array();
-            for (const auto& [k, n] : kinds) buildings.push_back({{"kind", k}, {"count", n}});
             const json b = r.value("bounds", json::array());
             const std::string where = b.is_array() && b.size() == 4 ? whereIn(b[0].get<double>() + b[2].get<double>() / 2, b[1].get<double>() + b[3].get<double>() / 2) : "";
             std::string name = m && !m->name.empty() ? m->name : r.value("module", "");
@@ -5125,23 +5322,52 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                 zone["colour"] = c->second;
                 if (m) zone["description"] = m->description;
             }
+            // A zone's walled-borders option (e.g. the graveyard ward), so the paint prompt can ask for a fence/wall
+            // with an open gate. Read the set value or the ontology default (FieldDef::defaultValue).
+            if (m && m->Field("walled")) {
+                json val = m->Field("walled")->defaultValue;
+                if (const json* node = SpecNode(spec_, id)) {
+                    const json q = node->value("quality", json::object());
+                    if (q.contains("walled")) val = q["walled"];
+                }
+                const json briefVal = BriefValue(brief_, "components." + m->id + ".walled");
+                if (!briefVal.is_null()) val = briefVal;
+                zone["walled"] = val;
+            }
+            // The zone's ontology FIELDS (quantity + quality — area, plots, wealth, bustle, street-style...), exactly
+            // as shown in the Confirm Components table: each with its name, type, current value (or ontology default),
+            // description, unit and options. Given to the painter so it composes the zone to match how it was set.
+            if (m) {
+                json fields = json::array();
+                const json params = BriefValue(brief_, "components." + m->id + ".params");
+                const json given = params.is_object() ? params : json::object();
+                for (const auto* group : {&m->quantity, &m->quality}) {
+                    for (const auto& [fname, f] : *group) {
+                        const json setVal = given.value(fname, json());
+                        json fc = {{"name", fname}, {"type", f.type}, {"value", setVal.is_null() ? f.defaultValue : setVal}};
+                        if (!f.description.empty()) fc["description"] = f.description;
+                        if (!f.unit.empty()) fc["unit"] = f.unit;
+                        json options = json::array();
+                        for (const auto& v : f.values) options.push_back(v);
+                        if (!f.vocabulary.empty()) {
+                            if (const auto* scheme = host_.ontology().Scheme(f.vocabulary)) {
+                                for (const auto& concept_ : *scheme) options.push_back(concept_.id);
+                            }
+                        }
+                        if (f.type == "density") options = {"none", "rare", "some", "common", "abundant"};
+                        if (!options.empty()) fc["options"] = options;
+                        fields.push_back(fc);
+                    }
+                }
+                if (!fields.empty()) zone["fields"] = fields;
+            }
             zones.push_back(zone);
         }
         if (!zones.empty()) send["zones"] = zones;
     }
     if (free) {
-        // What it's to be: its kind and size, each kind of building and how many (the plan's counts), and its design
-        // (the request and the Brief's style), for the painter to compose on the land and decorate as it likes.
-        std::map<std::string, int> kinds;
-        for (const auto& o : solved_.value("objects", json::array())) {
-            if (o.value("layer", "") == "building" && o.value("primary", true)) ++kinds[o.value("slot", "building")];
-        }
-        json contents = json::array();
-        for (const auto& [slot, n] : kinds) {
-            std::string kind = slot;
-            std::replace(kind.begin(), kind.end(), '-', ' ');
-            contents.push_back({{"kind", kind}, {"count", n}});
-        }
+        // The Paint method paints the layout only: what it's to be (the request and the Brief's style), sent for the
+        // painter to fill the land's zones. The plan's buildings are not drawn nor sent.
         std::string design;
         if (const json style = brief_.value("style", json::object()); style.is_object()) {
             for (const auto& [k, v] : style.items()) {
@@ -5149,27 +5375,44 @@ std::string PlaceBuild::Paint(const std::string& notes) {
             }
         }
         send["free"] = true;
-        send["contents"] = contents;
-        send["design"] = design;
-        send["request"] = query_;
         send["scale"] = brief_.value("scale", json::object()).value("class", "");
+        send["request"] = query_;
+        // Preserve any plan/composition parameters already merged into design/notes.
+        if (send.contains("design") && send["design"].is_string() && !send["design"].get<std::string>().empty()) {
+            const std::string existing = send["design"].get<std::string>();
+            send["design"] = design.empty() ? existing : (design + "; " + existing);
+        } else {
+            send["design"] = design;
+        }
+    }
+    // Each component's fields as the user set them in ① Confirm (density, wealth, street style...), so the painter
+    // composes the place accordingly.
+    {
+        json comps = json::array();
+        const json briefComponents = brief_.value("components", json::object());
+        for (const auto& [id, c] : briefComponents.items()) {
+            if (!c.is_object() || !c.value("enabled", true)) continue;
+            const ModuleDef* m = host_.ontology().Module(id);
+            json row = {{"id", id}, {"name", m != nullptr ? m->name : id}};
+            if (c.contains("params") && c["params"].is_object()) row["params"] = c["params"];
+            if (c.contains("kinds") && c["kinds"].is_object()) row["kinds"] = c["kinds"];
+            if (c.contains("density") && c["density"].is_string()) row["density"] = c["density"];
+            comps.push_back(row);
+        }
+        if (!comps.empty()) send["components"] = comps;
     }
     if (!Send({"paint", -1, "", "/places/paint", send, 3600})) return "the AI is off";
     painting_ = true;
     if (free) {
-        const auto bounds = OccupiedBounds(solved_);
-        const FreePaintPlan plan = PlanFreePaint(bounds[2] - bounds[0], bounds[3] - bounds[1], paintCellPx_);
-        status_ = "Painting the place on its land: composed in one call, then " + std::to_string(plan.tiles) + " tiles (" + std::to_string(plan.calls) +
-                  " calls)…";
-        Log({{"step", "paint"}, {"notes", notes}, {"free", true}, {"calls", plan.calls}});
+        status_ = "Painting the place in " + std::to_string(paintCols) + " × " + std::to_string(paintRows) +
+                  " congruent tiles (" + std::to_string(paintCols * paintRows) + " calls)…";
+        Log({{"step", "paint"}, {"notes", notes}, {"free", true}, {"calls", paintCols * paintRows}});
         Save();
         return {};
     }
-    const auto bounds = OccupiedBounds(solved_);
-    const int tiles = PaintTiles(bounds[2] - bounds[0], bounds[3] - bounds[1]);
     status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting" +
-              (tiles > 1 ? ", in " + std::to_string(tiles) + " × " + std::to_string(tiles) + " tiles" : std::string()) + ")…";
-    Log({{"step", "paint"}, {"notes", notes}});
+              ", in " + std::to_string(paintCols) + " × " + std::to_string(paintRows) + " congruent tiles)…";
+    Log({{"step", "paint"}, {"notes", notes}, {"calls", paintCols * paintRows}});
     Save();
     return {};
 }
@@ -5211,6 +5454,8 @@ std::string PlaceBuild::SetMethod(const std::string& method) {
     if (NormalBuildMethod(method) == method_) return {};
     if (stage_ == "building") return "not while it's being built";
     method_ = NormalBuildMethod(method);
+    // Chosen Paint after its Brief came in: the Paint Prompt is written now (① Confirm shows it, the painter uses it).
+    EnsurePaintPrompt();
     Log({{"step", "method"}, {"method", method_}});
     Save();
     return {};
@@ -5377,6 +5622,7 @@ std::string PlaceBuild::Open(const std::string& id) {
         stage = session.value("stage", "");
         round_ = session.value("round", 1);
         brief_ = session.value("brief", json::object());
+        paintPrompt_ = session.value("paintPrompt", std::string());
         for (const auto& n : session.value("notices", json::array())) {
             if (n.is_string()) notices_.push_back(n.get<std::string>());
         }
@@ -5402,6 +5648,7 @@ std::string PlaceBuild::Open(const std::string& id) {
         reference_ = session.value("reference", std::string());
         scope_ = session.value("scope", std::string()) == "world" ? "world" : "place";
         paintCellPx_ = session.value("paintCellPx", kFreePaintCell);
+    objectVariety_ = session.value("objectVariety", "medium");
         if (const json sec = session.value("section", json()); sec.is_object()) section_ = SectionJobFrom(sec); // a world's section
         if (session.contains("method") && session["method"].is_string()) {
             method_ = NormalBuildMethod(session["method"].get<std::string>());
@@ -5499,7 +5746,11 @@ std::string PlaceBuild::Open(const std::string& id) {
             InterpretWithoutAi("the AI is off");
         }
     } else if (stage == "planning") {
-        StartPlanning();
+        // Opening a build never starts planning by itself: ① Confirm, its zones laid out when the user presses
+        // "Lay out the zones" (an automatic game build lays them out itself, GameBuild::DriveRow).
+        if (!solved_.is_object()) solved_ = ReadJson(folder / "zones.solved.json");
+        stage_ = "layout";
+        status_ = "Check what will be built, then lay out the zones.";
     } else {
         stage_ = stage;
         if (stage_ == "assets") round_ = 2;
@@ -5524,6 +5775,8 @@ std::string PlaceBuild::Open(const std::string& id) {
     }
     RestoreSections(ReadJson(folder / "session.json").value("sections", json::object()));
     DriveSections(); // a section that wasn't waiting on the AI goes on
+    // A painted place whose Paint Prompt wasn't written yet (an older build): written now, as ① Confirm opens.
+    if (stage_ == "layout" || stage_ == "plan") EnsurePaintPrompt();
     Save();
     return {};
 }
@@ -5719,8 +5972,15 @@ void PlaceBuild::Cancel() {
 // --- What the panels show -----------------------------------------------------------------
 
 json PlaceBuild::State() {
+    // A file written by another version (or half saved) may hold a null where an object belongs: the panel reads
+    // what it can rather than the editor failing a frame for it.
+    auto obj = [](const json& value) { return value.is_object() ? value : json::object(); };
+    auto arr = [](const json& value) { return value.is_array() ? value : json::array(); };
     json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"fromPlanner", fromPlanner_}, {"stage", stage_}, {"round", round_},
                   {"status", status_}, {"errors", errors_}, {"notices", notices_}, {"drafts", drafts_.size()}};
+    // The zones laid out (① Confirm ▸ Layout pressed), and whether they're out of date since the Contents changed.
+    state["layoutMade"] = HasLayout();
+    state["layoutStale"] = layoutStale_;
     // The layout form (the root's layout fields): each with its values, what each means, and its value now.
     if (spec_.is_object() && spec_.contains("root")) {
         static const std::vector<std::string> kForm = {"site-fit", "zone-shape", "street-grid", "block-size", "block-fill", "coverage", "open-space",
@@ -5854,14 +6114,14 @@ json PlaceBuild::State() {
             }
             if (!field.empty()) row["countField"] = field;
             if (m->Field("street-style")) {
-                row["style"] = c.value("quality", json::object()).value("street-style", json());
+                row["style"] = obj(c.value("quality", json())).value("street-style", json());
                 row["hasStyle"] = true;
             }
             if (c.contains("at")) row["drawn"] = c["at"];
             if (c.contains("paint")) row["painted"] = true;
             // An open world's place (its heartland, its site in it): its name, kind and class, as the section it becomes.
-            for (const auto& site : c.value("children", json::array())) {
-                const json q = site.value("quality", json::object());
+            for (const auto& site : arr(c.value("children", json()))) {
+                const json q = obj(site.value("quality", json()));
                 if (site.value("module", "") != "site" || q.value("name", "").empty()) continue;
                 const BuildType* bt = ontology.Build(q.value("build-type", ""));
                 std::string cls = q.value("scale-class", "");
@@ -5871,13 +6131,16 @@ json PlaceBuild::State() {
                 row["description"] = (cls.empty() ? std::string() : cls + ", ") + (bt ? bt->name : q.value("build-type", "")) +
                                      ": a section of the world, planned as a place of its own on this land";
             }
-            row["area"] = c.value("quantity", json::object()).value("area", json());
+            row["area"] = obj(c.value("quantity", json())).value("area", json()); // preferred/requested (Confirm)
+            int calculated = 0;
+            if (c.contains("layout") && c["layout"].is_object() && c["layout"].value("area", 0) > 0) calculated = c["layout"].value("area", 0);
+            for (const auto& r : arr(solved_.value("regions", json()))) {
+                if (r.value("statement", "") == "site/zones" && r.value("id", "") == id) calculated = r.value("area", calculated);
+            }
+            if (calculated > 0) row["calculatedArea"] = calculated;
             // Room for what it's to hold: its count of parcels, each a typical lot with its share of the streets.
             if (const int needed = ZoneNeed(ontology, c); needed > 0) {
-                int got = 0;
-                for (const auto& r : solved_.value("regions", json::array())) {
-                    if (r.value("statement", "") == "site/zones" && r.value("id", "") == id) got = r.value("area", 0);
-                }
+                int got = calculated;
                 // Within a tenth is room enough (the plan's fitting finds the rest).
                 row["space"] = {{"cells", got}, {"needed", needed}, {"ok", got >= needed * 0.9}};
             }
@@ -5916,12 +6179,12 @@ json PlaceBuild::State() {
         state["window"] = BriefWindow(ontology, brief_, &merge_, &catalog, host_.isoGrid ? host_.isoGrid() : true, 2);
         // The zones as laid out, for the drawing tool.
         json cells = json::array();
-        for (const auto& r : solved_.value("regions", json::array())) {
+        for (const auto& r : arr(solved_.value("regions", json()))) {
             if (r.value("statement", "") == "site/zones") cells.push_back({{"id", r.value("id", "")}, {"cells", r.value("cells", json::array())}});
         }
         state["layout"]["regions"] = cells;
         json paths = json::array();
-        for (const auto& pth : solved_.value("paths", json::array())) {
+        for (const auto& pth : arr(solved_.value("paths", json()))) {
             const std::string cls = pth.value("class", "");
             if (cls == "street" || cls == "lane" || cls == "trail") continue; // the zones' own streets are the plan's
             paths.push_back({{"class", cls}, {"cells", pth.value("cells", json::array())}});
@@ -5969,6 +6232,8 @@ json PlaceBuild::State() {
     state["paintModel"] = PaintModel();
     // Paint (Free): painted from its zones at ② Layout, with no ③ Plan.
     state["freePaint"] = FreePaint();
+    state["objectVariety"] = objectVariety_;
+    state["paintPrompt"] = paintPrompt_;
     // Painted freely: how big its painting is and how many calls it takes (shown before painting, on ③ Plan).
     if (FreePaint() && solved_.is_object() && solved_.contains("grid")) {
         const auto bounds = OccupiedBounds(solved_);

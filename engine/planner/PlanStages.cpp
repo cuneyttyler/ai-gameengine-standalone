@@ -1156,14 +1156,93 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
         int made = 0;
         std::vector<std::string> problems;
         json decisions = json::array(); // the edits it made: what Revert takes back
+        // A renamed scene's id in Act chapters follows it (the file moves, and so do the references).
+        auto cascadeSceneRename = [&](const std::string& from, const std::string& to) {
+            const std::string pre = "story/scenes/";
+            if (from.rfind(pre, 0) != 0 || to.rfind(pre, 0) != 0) return;
+            const std::string oldId = from.substr(pre.size()), newId = to.substr(pre.size());
+            for (const auto& actDoc : store_.List("story/acts")) {
+                auto a = store_.Read(actDoc);
+                if (!a) continue;
+                bool changed = false;
+                if (a->contains("chapters") && (*a)["chapters"].is_array()) {
+                    for (auto& ch : (*a)["chapters"]) {
+                        if (!ch.contains("scenes") || !ch["scenes"].is_array()) continue;
+                        for (auto& s : ch["scenes"]) {
+                            if (s.is_string() && s.get<std::string>() == oldId) { s = newId; changed = true; }
+                        }
+                    }
+                }
+                if (!changed) continue;
+                PlanDecision rd;
+                rd.stage = "story"; rd.actor = "rule"; rd.kind = "edit"; rd.subject = actDoc;
+                rd.chosen = "scene " + oldId + " renamed to " + newId;
+                store_.Touch(actDoc, *a, store_.Decide(rd));
+            }
+        };
         for (const auto& e : body.value("edits", json::array())) {
+            const std::string op = e.value("op", "replace");
             const std::string doc = e.value("doc", ""), pointer = e.value("pointer", "");
+            std::string reason = "AI revision: " + job.subject;
+            if (e.contains("reason")) reason += " (" + e.value("reason", "") + ")";
+            // Document-level operations (a whole document renamed, copied, made or removed).
+            if (op == "rename" || op == "copy") {
+                const std::string to = e.value("to", "");
+                if (doc.empty() || to.empty()) { problems.push_back(op + " needs 'doc' and 'to'"); continue; }
+                if (store_.Locked(doc)) { problems.push_back(doc + " is locked"); continue; }
+                if (op == "rename") {
+                    const std::string why = Move(doc, to, reason); // renames the file, records the decision
+                    if (why.empty()) { ++made; cascadeSceneRename(doc, to); }
+                    else problems.push_back(why);
+                } else {
+                    if (store_.Copy(doc, to) == 0) { problems.push_back("couldn't copy " + doc + " to " + to); continue; }
+                    PlanDecision cd;
+                    cd.stage = StageOfJob(doc.rfind("story/", 0) == 0 ? "scene" : doc.rfind("characters/", 0) == 0 ? "character"
+                                                                     : doc.rfind("quests/", 0) == 0 ? "quests" : "outline");
+                    cd.actor = "ai"; cd.kind = "edit"; cd.subject = doc + " -> " + to; cd.chosen = "copy " + doc + " to " + to;
+                    cd.reason = reason;
+                    store_.Decide(cd);
+                    ++made;
+                }
+                continue;
+            }
+            if (op == "create") {
+                if (doc.empty()) { problems.push_back("create needs 'doc'"); continue; }
+                if (store_.Exists(doc)) { problems.push_back(doc + " already exists"); continue; }
+                json value = e.value("value", json::object());
+                if (!value.is_object()) value = json{{"value", value}};
+                // A well-formed document: the schema its folder expects, when the answer left it out.
+                if (!value.contains("schema")) {
+                    if (doc.rfind("story/scenes/", 0) == 0) value["schema"] = "aige.scene/1";
+                    else if (doc.rfind("story/acts/", 0) == 0) value["schema"] = "aige.story/1";
+                    else if (doc.rfind("characters/", 0) == 0) value["schema"] = "aige.character/1";
+                    else if (doc.rfind("quests/", 0) == 0) value["schema"] = "aige.quest/1";
+                }
+                PlanDecision cd;
+                cd.stage = StageOfJob(doc.rfind("story/", 0) == 0 ? "scene" : doc.rfind("characters/", 0) == 0 ? "character"
+                                                                 : doc.rfind("quests/", 0) == 0 ? "quests" : "outline");
+                cd.actor = "ai"; cd.kind = "edit"; cd.subject = doc; cd.chosen = "create " + doc; cd.reason = reason;
+                store_.Write(doc, value, store_.Decide(cd));
+                ++made;
+                continue;
+            }
+            if (op == "delete") {
+                if (doc.empty() || !store_.Exists(doc)) { problems.push_back("no " + doc + " to delete"); continue; }
+                if (store_.Locked(doc)) { problems.push_back(doc + " is locked"); continue; }
+                PlanDecision cd;
+                cd.stage = StageOfJob(doc.rfind("story/", 0) == 0 ? "scene" : doc.rfind("characters/", 0) == 0 ? "character"
+                                                                 : doc.rfind("quests/", 0) == 0 ? "quests" : "outline");
+                cd.actor = "ai"; cd.kind = "edit"; cd.subject = doc; cd.chosen = "delete " + doc; cd.reason = reason;
+                store_.Decide(cd);
+                store_.Remove(doc);
+                ++made;
+                continue;
+            }
+            // A field edit (add|replace|move at a JSON pointer).
             if (store_.Locked(doc)) {
                 problems.push_back(doc + " is locked");
                 continue;
             }
-            std::string reason = "AI revision: " + job.subject;
-            if (e.contains("reason")) reason += " (" + e.value("reason", "") + ")";
             const std::string why = Edit(doc, pointer, e.value("value", json()), reason);
             if (why.empty()) ++made, decisions.push_back(lastEdit_);
             else problems.push_back(why);
@@ -1188,6 +1267,9 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
                     e["decisions"] = decisions;
                     e["rationale"] = rationale;
                     e["made"] = made;
+                    // A request decomposed into tasks: the tasks and what each one did, for the panel to show.
+                    if (body.contains("tasks")) e["tasks"] = body["tasks"];
+                    if (body.contains("results")) e["task_results"] = body["results"];
                     e["status"] = made == 0 && !problems.empty() ? "failed" : "done";
                     if (!problems.empty()) {
                         std::string all;

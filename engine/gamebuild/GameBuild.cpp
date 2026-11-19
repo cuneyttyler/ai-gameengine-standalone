@@ -56,6 +56,16 @@ namespace aige {
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+// Where a build stage sits in the tabs' order: Continue goes from the furthest one reached.
+int BuildStageOrder(const std::string& stage) {
+    static const std::vector<std::string> order = {"", "requirements", "build", "characters", "objects", "quests",
+        "placements", "behaviour", "scenes", "systems", "visuals", "finish", "features", "playtest", "result", "done"};
+    for (size_t i = 0; i < order.size(); ++i) {
+        if (order[i] == stage) return static_cast<int>(i);
+    }
+    return -1;
+}
+
 namespace {
 
 std::string Text(const json& j, const char* key) {
@@ -573,7 +583,9 @@ std::string GameBuild::Start(const std::string& mode) {
     SaveCheck();
     reqs_ = json::object(); // made again, first
     SaveRequirements();
+    rebuildOnly_ = false;
     stage_ = "requirements";
+    reached_ = "requirements"; // a fresh build: Continue starts at the top
     subStep_.clear();
     status_ = "working";
     message_ = "Requirements: reading the plan…";
@@ -590,8 +602,27 @@ void GameBuild::Stop() {
     }
     builds_.clear();
     pending_.clear();
+    // The requirements (or a tab's items) being made are stopped too: resumable, not left "making", which
+    // would keep the Requirements tab's buttons disabled and stop them being made again.
+    if (reqs_.value("status", "") == "making" || reqs_.value("implementing", false)) {
+        reqs_.erase("implementing");
+        reqs_["status"] = "stopped";
+        for (const char* list : {"scenes", "implScenes"}) {
+            if (!reqs_.contains(list) || !reqs_[list].is_array()) continue;
+            for (auto& s : reqs_[list]) {
+                if (s.value("status", "") == "asking") s["status"] = "queued";
+            }
+        }
+        if (reqs_.contains("implementations") && reqs_["implementations"].is_array()) {
+            for (auto& i : reqs_["implementations"]) {
+                if (i.value("status", "") == "building") i["status"] = "todo";
+            }
+        }
+        reqsOnly_ = false; // Continue goes back to the build's own progress, not a requirements-only run
+        SaveRequirements();
+    }
     status_ = "stopped";
-    message_ = "Stopped: Restart builds builds every place again (with the art setting as it is then).";
+    message_ = "Stopped: Continue building goes on from the step it was at; Restart builds every place again.";
     Save();
 }
 
@@ -634,6 +665,13 @@ std::string GameBuild::Open() {
     if (status_ == "working") {
         status_ = "stopped";
         message_ = "Stopped when the editor closed: Continue building goes on from where it was.";
+    }
+    // The requirements left "making" by a stop: resumable, so the Requirements tab's buttons stay usable.
+    if (reqs_.value("status", "") == "making" && status_ != "working") {
+        reqs_.erase("implementing");
+        reqs_["status"] = "stopped";
+        reqsOnly_ = false;
+        SaveRequirements();
     }
     Save();
     return {};
@@ -759,6 +797,12 @@ std::string GameBuild::Resume() {
     if (rows_.empty()) return "nothing to continue: start the build";
     if (status_ == "working" && !reqsOnly_) return {};
     reqsOnly_ = false; // Continue: the build goes on (requirements still being made are waited for)
+    // Continue goes from the furthest step reached: a step run again while stopped (the requirements, a tab's
+    // items) never moves the resume point back. A single place being rebuilt is the exception: it finishes here.
+    if (!rebuildOnly_ && BuildStageOrder(reached_) > BuildStageOrder(stage_)) {
+        stage_ = reached_;
+        subStep_.clear();
+    }
     // What a stop left half-way (its answer dropped with it): asked again, not waited on for ever.
     if (pending_.empty()) {
         ResetInFlight();
@@ -830,7 +874,8 @@ void GameBuild::Save() {
     std::ofstream(store_.Dir() / "buildplan.json", std::ios::binary) << json{{"schema", "aige.build-plan/1"}, {"mode", mode_}, {"rows", rows}}.dump(2);
     std::ofstream(store_.Dir() / "buildstate.json", std::ios::binary)
         << json{{"stage", stage_}, {"status", status_}, {"message", message_}, {"mode", mode_}, {"jobs", jobs}, {"nextJob", nextJob_},
-                {"bindings", bindings_}, {"files", files_}, {"playtest", playtest_}, {"features", features_}, {"art", art_}, {"keepArt", keepArt_}, {"requirementsOnly", reqsOnly_}, {"subStep", subStep_},
+                {"reached", reached_},
+                {"bindings", bindings_}, {"files", files_}, {"playtest", playtest_}, {"features", features_}, {"art", art_}, {"keepArt", keepArt_}, {"requirementsOnly", reqsOnly_}, {"rebuildOnly", rebuildOnly_}, {"subStep", subStep_},
                 {"artApproved", artApproved_}, {"placesApproved", placesApproved_}, {"placeStep", placeStep_}, {"placeStatus", placeStatus_},
                 {"placeWhy", placeWhy_}}
                .dump(2);
@@ -846,6 +891,8 @@ void GameBuild::Load() {
     status_ = s.value("status", "");
     message_ = s.value("message", "");
     mode_ = s.value("mode", "automatic");
+    // A build from before the furthest-stage marker: its stage is the furthest reached.
+    reached_ = s.value("reached", stage_);
     nextJob_ = s.value("nextJob", 1);
     bindings_ = s.value("bindings", json::object());
     files_ = s.value("files", json::object());
@@ -855,6 +902,7 @@ void GameBuild::Load() {
     artApproved_ = s.value("artApproved", false);
     keepArt_ = s.value("keepArt", false);
     reqsOnly_ = s.value("requirementsOnly", false);
+    rebuildOnly_ = s.value("rebuildOnly", false);
     subStep_ = s.value("subStep", "");
     // A build from before the Build tabs' order: its stage by its tab's name now.
     static const std::map<std::string, std::string> renamed = {{"art", "characters"}, {"populate", "placements"}, {"write", "behaviour"},
@@ -1223,19 +1271,46 @@ std::string GameBuild::Retry(const std::string& place) {
 std::string GameBuild::Rebuild(const std::string& place) {
     Row* r = FindRow(place);
     if (!r) return "no " + place + " in the build plan";
-    if (r->status == "building") return "it's being built now";
+    if (r->status == "building" && status_ == "working") return "it's being built now";
     r->status = "waiting";
     r->error.clear();
     r->steps = 0;
     r->build.clear(); // a new build of it, not the old one carried on
     r->inEditor = false;
     r->resumeInEditor = false;
+    r->mode = "manual"; // built again by the user in the Build panel: it waits at ① Confirm, never plans or paints by itself
     builds_.erase(place);
-    stage_ = "build"; // the rest follows again
+    rebuildOnly_ = BuildStageOrder(reached_) > BuildStageOrder("build"); // only this place, then back to where it was
+    stage_ = "build"; // the place is built here
     status_ = "working";
     message_ = "⑩ Building " + PlanSlug(place) + " again…";
-    Record("rebuild", place, "");
+    Record("rebuild", place, "the Build panel's, from ① Confirm");
     Save();
+    return {};
+}
+
+std::string GameBuild::HandToEditor(const std::string& place, const std::string& buildId) {
+    // The user opened this place's build in the Build panel: the automatic build stops driving it (no plan-root,
+    // plan-zone or paint behind the panel's window), and the row waits for the user's steps there.
+    auto stem = [](const std::string& s) {
+        const size_t at = s.find_last_of('/');
+        return at == std::string::npos ? s : s.substr(at + 1);
+    };
+    bool any = false;
+    for (auto& row : rows_) {
+        const bool match = (!buildId.empty() && row.build == buildId) ||
+                           (!place.empty() && (row.place == place || stem(row.place) == stem(place)));
+        if (!match) continue;
+        builds_.erase(row.place); // its copy stops acting: the panel's is the one now
+        buildAnswers_.erase(row.place);
+        row.inEditor = false;
+        row.resumeInEditor = false;
+        row.awaitingApproval = false;
+        if (row.status == "building" || row.status == "waiting") row.status = "needs-you";
+        Record("hand-to-editor", row.place, "the Build panel has it");
+        any = true;
+    }
+    if (any) Save();
     return {};
 }
 
@@ -1398,8 +1473,10 @@ bool GameBuild::DriveRow(Row& row) {
             if (stage == "request") why = build->Step("assets");
             else if (stage == "assets") why = build->Confirm();
             else if (stage == "layout") {
-                // Checked by the vision model first (its errors revised); then the plan.
-                if (build->LayoutChecked() || !build->CheckLayout().empty()) why = build->PlanFromLayout();
+                // The zones laid out first (as pressing "Lay out the zones" would), then checked by the vision model
+                // (its errors revised), then what's inside them.
+                if (!build->HasLayout()) why = build->ReplanLayout();
+                else if (build->LayoutChecked() || !build->CheckLayout().empty()) why = build->PlanFromLayout();
             }
             else if (stage == "plan") {
                 // Its zones checked by the vision model first (built without ② Layout); then approved.
@@ -5384,6 +5461,8 @@ void GameBuild::WriteResult() {
 
 void GameBuild::Next(const std::string& stage) {
     stage_ = stage;
+    // The furthest stage reached (Continue resumes here; an earlier step run again doesn't move it back).
+    if (BuildStageOrder(stage) > BuildStageOrder(reached_)) reached_ = stage;
     subStep_.clear();
     static const std::map<std::string, std::string> labels = {
         {"requirements", "Requirements: reading the plan…"}, {"build", "⑩ Building the places…"},
@@ -5618,7 +5697,17 @@ bool GameBuild::Pump() {
             } catch (const std::exception& e) {
                 throw std::runtime_error(std::string("⑩ connecting the scenes: ") + e.what());
             }
-            Next("characters");
+            if (rebuildOnly_ && BuildStageOrder(reached_) > BuildStageOrder("build")) {
+                // One place rebuilt from the start: the rest of the build stays where it was (its later steps
+                // aren't run again), so Continue still goes on from the furthest step reached.
+                rebuildOnly_ = false;
+                stage_ = reached_;
+                status_ = "stopped";
+                message_ = "⑩ The place is rebuilt. Continue goes on with the build.";
+            } else {
+                rebuildOnly_ = false;
+                Next("characters");
+            }
             did = true;
         }
     }
@@ -5895,9 +5984,22 @@ json GameBuild::State() const {
                 if (s.is_object() && s.value("planPhase", json()).is_string()) phase = s["planPhase"].get<std::string>();
             }
         }
+        // Its build's own method (a painted place has no ③ Plan, and its steps are numbered by its method), whether
+        // its zones are laid out yet (① Confirm until then), and whether it's painted already.
+        std::string method = host_.buildMethod ? host_.buildMethod() : std::string("Assembled");
+        bool layoutMade = false, paintedAlready = false;
+        if (!r.build.empty()) {
+            const fs::path folder = host_.projectRoot / "places" / r.build;
+            std::ifstream sessionIn(folder / "session.json", std::ios::binary);
+            const json session = sessionIn ? json::parse(sessionIn, nullptr, false) : json();
+            if (session.is_object() && session.value("method", json()).is_string()) method = session["method"].get<std::string>();
+            layoutMade = fs::exists(folder / "zones.solved.json");
+            paintedAlready = fs::exists(folder / "painting.png");
+        }
         json row = {{"place", r.place}, {"scene", r.scene}, {"buildType", r.buildType}, {"mode", r.mode}, {"status", r.status},
                     {"step", step}, {"planPhase", phase}, {"build", r.build}, {"error", r.error}, {"checks", r.checks}, {"dependsOn", r.dependsOn},
-                    {"sections", r.sections}, {"awaitingApproval", r.awaitingApproval}};
+                    {"sections", r.sections}, {"awaitingApproval", r.awaitingApproval},
+                    {"method", method}, {"layoutMade", layoutMade}, {"painted", paintedAlready}};
         // Painted (the Paint method): its tiles and calls, once its plan is laid out (before it's painted).
         if (!r.build.empty()) {
             const fs::path folder = host_.projectRoot / "places" / r.build;
@@ -5920,6 +6022,7 @@ json GameBuild::State() const {
     std::ifstream in(store_.Dir() / "result.json", std::ios::binary);
     const json result = json::parse(in, nullptr, false);
     return {{"active", Active()},  {"stage", stage_},           {"status", status_},  {"message", message_}, {"mode", mode_},
+            {"reached", reached_},
             {"rows", rows},        {"bindings", bindings_},     {"playtest", playtest_}, {"files", files_.size()},
             {"features", [&] {
                  // ⑫ The gameplay set up: each feature's steps (the AI panel's tasks), how each went.

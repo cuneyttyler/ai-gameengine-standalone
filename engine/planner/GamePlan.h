@@ -107,6 +107,10 @@ public:
     // A step's revision taken back: each of its edits undone, the newest first (a value put back as it was, an item it
     // added to a list taken out). Empty: done; else why not.
     std::string RevertRevision(const std::string& step, const std::string& id);
+    // A revision taken off a step's history (its edits stay; only the record is gone). Empty: done; else why not.
+    std::string RemoveRevision(const std::string& step, const std::string& id);
+    // Renames/moves a document (renames the file on disk and updates revision).
+    std::string Move(const std::string& from, const std::string& to, const std::string& reason);
     // A step that failed, tried again from its first attempt; or every failed step. The plan
     // goes back to what it was doing (waiting for review, done) once they're through.
     std::string RetryJob(const std::string& id);

@@ -53,6 +53,11 @@
         "old"
       ],
       "default": "old"
+    },
+    "walled": {
+      "type": "bool",
+      "default": true,
+      "description": "Whether the graveyard has a wall or fence around its border (with an open gate)."
     }
   },
   "slots": {},

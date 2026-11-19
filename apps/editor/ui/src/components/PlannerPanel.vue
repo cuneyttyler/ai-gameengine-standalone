@@ -168,11 +168,18 @@ const STAGE_TAB: Record<string, BuildTab> = {
 const STEP_TABS: BuildTab[] = ['requirements', 'places', 'characters', 'objects', 'quests', 'placements', 'cast', 'smallscenes', 'gameplay', 'visuals']
 const buildStageTab = computed<BuildTab | ''>(() => STAGE_TAB[state.value.build?.stage ?? ''] ?? '')
 function tabState(id: BuildTab): 'done' | 'now' | 'next' | '' {
-  const stage = state.value.build?.stage ?? ''
-  if (stage === 'done' || stage === 'result' || stage === 'playtest') return STEP_TABS.includes(id) ? 'done' : ''
-  const now = STEP_TABS.indexOf(buildStageTab.value as BuildTab), at = STEP_TABS.indexOf(id)
-  if (now < 0 || at < 0) return ''
-  return at < now ? 'done' : at === now ? (stage === 'finish' ? 'done' : 'now') : 'next'
+  const b = state.value.build ?? {}
+  const stage = b.stage ?? ''
+  // The furthest stage reached marks the steps done; the current stage is the one the build is at. A single place
+  // rebuilt from the start (a step before the last) doesn't turn the later steps back into "to come".
+  const reached = (b.reached as string) || stage
+  if (reached === 'done' || reached === 'result' || reached === 'playtest') return STEP_TABS.includes(id) ? 'done' : ''
+  const reachedIdx = STEP_TABS.indexOf((STAGE_TAB[reached] ?? '') as BuildTab)
+  const nowIdx = STEP_TABS.indexOf(buildStageTab.value as BuildTab)
+  const at = STEP_TABS.indexOf(id)
+  if (at < 0) return ''
+  if (reachedIdx >= 0 && at <= reachedIdx) return at === nowIdx && stage !== 'finish' ? 'now' : 'done'
+  return at === nowIdx ? 'now' : 'next'
 }
 const stepLine = computed(() => {
   const b = state.value.build ?? {}
@@ -634,16 +641,17 @@ const stages = computed(() => (state.value.stages ?? []) as Stage[])
 // makes it. A page's stage: its own, but World's and Life's two new pages are one stage, "world".
 const PAGE_GROUPS: { id: string; label: string; pages: string[] }[] = [
   { id: 'concept', label: '① Concept', pages: ['concept'] },
-  { id: 'story', label: '② Story', pages: ['outline', 'story'] },
-  { id: 'world', label: '③ World', pages: ['characters', 'places', 'objects'] },
-  { id: 'quests', label: '④ Quests', pages: ['quests'] },
-  { id: 'life', label: '⑤ Life', pages: ['timeline', 'cutscenes', 'smallscenes'] },
-  { id: 'systems', label: '⑥ Systems', pages: ['systems'] },
-  { id: 'visuals', label: '⑦ Visuals', pages: ['visuals'] },
-  { id: 'validate', label: '⑧ Validate', pages: ['validate'] },
+  { id: 'outline', label: '② Outline', pages: ['outline'] },
+  { id: 'story', label: '③ Story', pages: ['story'] },
+  { id: 'world', label: '④ World', pages: ['characters', 'places', 'objects'] },
+  { id: 'quests', label: '⑤ Quests', pages: ['quests'] },
+  { id: 'life', label: '⑥ Life', pages: ['timeline', 'cutscenes', 'smallscenes'] },
+  { id: 'systems', label: '⑦ Systems', pages: ['systems'] },
+  { id: 'visuals', label: '⑧ Visuals', pages: ['visuals'] },
+  { id: 'validate', label: '⑨ Validate', pages: ['validate'] },
 ]
 const PAGE_LABELS: Record<string, string> = {
-  outline: 'Outline', story: 'Acts & scenes', characters: 'Characters', places: 'Places', objects: 'Props & objects',
+  outline: 'Outline', story: 'Story', characters: 'Characters', places: 'Places', objects: 'Props & objects',
   timeline: 'Cast timeline', cutscenes: 'Cutscenes', smallscenes: 'Small scenes',
 }
 const stageOfPage = (page: string) => (page === 'objects' || page === 'smallscenes' ? 'world' : page === 'cutscenes' ? 'timeline' : page)
@@ -720,6 +728,7 @@ const uiInOrder = computed(() => {
 })
 // ⑩: the place being built now, how far along the places are, and which can be tried again.
 const buildRows = computed(() => (state.value.build?.rows ?? []) as { place: string; status: string; step?: string; planPhase?: string;
+  method?: string; layoutMade?: boolean; painted?: boolean;
   paint?: { tiles: number; calls: number; cellPx: number; painted: boolean } }[])
 // Painted places: their tiles and calls (each once its plan is laid out), the not-yet-painted counted, before painting.
 const paintCalls = computed(() => {
@@ -760,10 +769,21 @@ function retryFailedPlaces() {
   for (const r of buildRetryable.value) sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })
 }
 // The place builder's step, named as the Build panel names it (its activeStep): the AI drafting
-// the first plan is still ① Confirm there.
-function stepName(step: string, phase = ''): string {
-  if (['request', 'assets', 'interpreting'].includes(step) || (step === 'planning' && phase === 'root')) return '① Confirm'
+// the first plan is still ① Confirm there. A painted place has no ③ Plan: ③ is its Paint.
+function stepName(step: string, phase = '', row?: { method?: string; layoutMade?: boolean; painted?: boolean }): string {
+  // A build still taking its Brief in: the Build panel's first page, before ① Confirm.
+  if (step === 'interpreting') return 'reading the request'
+  // Before its zones are laid out, the Build panel is ① Confirm (its Layout tab lays them out).
+  if (['request', 'assets'].includes(step) || (step === 'planning' && phase === 'root') ||
+      (step === 'layout' && !row?.layoutMade)) return '① Confirm'
   if (step === 'layout') return '② Layout'
+  if (row?.method === 'Paint') {
+    if (['planning', 'plan', 'revising'].includes(step) || (step === 'planned' && !row.painted)) return '③ Paint'
+    if (step === 'planned') return '④ Mark'
+    if (['sourcing', 'sourced'].includes(step)) return '⑤ Assets'
+    if (['building', 'built'].includes(step)) return '⑥ Result'
+    return step
+  }
   if (['planning', 'plan', 'planned', 'revising'].includes(step)) return '③ Plan'
   if (['sourcing', 'sourced'].includes(step)) return '④ Assets'
   if (['building', 'built'].includes(step)) return '⑤ Result'
@@ -793,9 +813,13 @@ function sendRevert(id: string): void {
   if (reviseKey.value.startsWith('build:')) sendToHost({ type: 'build:revertTabRevision', tab: reviseKey.value.slice(6), id })
   else sendToHost({ type: 'planner:revertRevision', step: reviseKey.value, id })
 }
+function sendRemove(id: string): void {
+  if (reviseKey.value.startsWith('build:')) sendToHost({ type: 'build:removeTabRevision', tab: reviseKey.value.slice(6), id })
+  else sendToHost({ type: 'planner:removeRevision', step: reviseKey.value, id })
+}
 function sendRevise(text: string): void {
-  if (reviseKey.value.startsWith('build:')) sendToHost({ type: 'build:reviseTab', tab: reviseKey.value.slice(6), text })
-  else sendToHost({ type: 'planner:reviseStep', step: reviseKey.value, text })
+  if (reviseKey.value.startsWith('build:')) sendToHost({ type: 'build:reviseTab', tab: reviseKey.value.slice(6), text, history: reviseEntries.value })
+  else sendToHost({ type: 'planner:reviseStep', step: reviseKey.value, text, history: reviseEntries.value })
 }
 const failedJobs = computed(() => (state.value.failedJobs ?? []) as FailedJob[])
 const failedHere = computed(() => failedJobs.value.filter((j) => j.stage === view.value))
@@ -1643,7 +1667,7 @@ function statusMark(status: string): string {
               <div class="build-now">
                 <template v-if="buildingRow">
                   <span class="busy">Building <b>{{ buildingRow.place }}</b></span>
-                  <span v-if="buildingRow.step" class="muted"> — {{ stepName(buildingRow.step, buildingRow.planPhase) }}</span>
+                  <span v-if="buildingRow.step" class="muted"> — {{ stepName(buildingRow.step, buildingRow.planPhase, buildingRow) }}</span>
                 </template>
                 <span v-else class="muted">{{ state.build.message }}</span>
                 <span class="muted"> · {{ buildDone }} of {{ (state.build.rows ?? []).length }} places done</span>
@@ -1687,7 +1711,7 @@ function statusMark(status: string): string {
                     <td>{{ r.buildType }}</td>
                     <td>{{ r.mode }}</td>
                     <td :class="{ err: r.status === 'failed', warn: r.status === 'placeholder' || r.status === 'needs-you', busy: r.status === 'building' }">
-                      {{ r.status === 'building' ? `building… ${r.step ? '(' + stepName(r.step, r.planPhase) + ')' : ''}` : r.status }}
+                      {{ r.status === 'building' ? `building… ${r.step ? '(' + stepName(r.step, r.planPhase, r) + ')' : ''}` : r.status }}
                     </td>
                     <td class="wide muted">{{ r.error }}</td>
                     <td class="muted" :title="r.paint ? `Painted at ${r.paint.cellPx} px a cell (change it in the place's build, on ③ Plan)` : ''">
@@ -1699,7 +1723,7 @@ function statusMark(status: string): string {
                         @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'approvePaint' })">Approve painting</button>
                       <button v-if="r.status === 'needs-you'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'done' })">Built</button>
                       <button v-if="r.status === 'failed' || r.status === 'placeholder'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })">Retry</button>
-                      <button v-if="r.status === 'built' || r.status === 'needs-you'" title="Build this place again from the start, with the art setting as it is now"
+                      <button v-if="['built','needs-you','waiting','building','failed','placeholder'].includes(r.status)" title="Build this place again from the start, with the art setting as it is now"
                         @click="rebuildPlace(r.place)">Rebuild</button>
                       <button v-if="r.status === 'failed'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'placeholder' })">Placeholder</button>
                     </td>
@@ -2186,7 +2210,7 @@ function statusMark(status: string): string {
             </div>
             <div v-else class="muted">Validation runs when the design is complete.</div>
           </template>
-          <ReviseBox v-if="reviseKey" :key="reviseKey" :step="reviseKey" :label="reviseLabel" :entries="reviseEntries" @revise="sendRevise" @revert="sendRevert" />
+          <ReviseBox v-if="reviseKey" :key="reviseKey" :step="reviseKey" :label="reviseLabel" :entries="reviseEntries" @revise="sendRevise" @revert="sendRevert" @remove="sendRemove" />
         </div>
 
         <!-- The item: its document, Why?, Regenerate, Edit, Lock -->

@@ -41,7 +41,7 @@ from .websource import all_candidates, candidates, fetch_file, search_web
 from .art_brief import better_queries, write_art_prompt
 from . import progress
 from . import style as project_style
-from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, OpenRouterProvider, Provider, ProviderError
+from .providers import ClaudeProvider, LmStudioProvider, MistralEmbedder, MistralProvider, OpenRouterProvider, Provider, ProviderError
 from .help import HelpIndex, looks_like_question
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -245,6 +245,20 @@ class PaintRequest(BaseModel):
     request: str = ""                  # the user's request
     scale: str = ""                    # its size class (large-village)
     zones: list = []                   # its parts: [{name, where (in the picture), buildings: [{kind, count}]}]
+    components: list = []              # [{id, name, params, kinds, density}]: each component's fields from ① Confirm
+    paintPrompt: str = ""              # the Paint Prompt (① Confirm): what the painter is told to paint
+    layoutParams: dict = {}            # plan/composition parameters (layout form) the painter must follow
+    cols: int = 0                      # paint tile grid, chosen in the editor from cell count / pixel density
+    rows: int = 0                      # (0 = not sent by an older caller: the painter falls back to 2x2)
+    variety: str = ""                  # object variety: low/medium/high -> style-reference sheets of part designs
+
+
+class PaintPromptRequest(BaseModel):
+    place: dict = {}                   # the place's data from the Planner (its Brief): components, scale, style...
+    story: dict = {}                   # what the story needs of it
+    name: str = ""
+    type: str = ""
+    layoutParams: dict = {}            # plan/composition parameters (layout form) the painter must follow
 
 
 class FindMarksRequest(BaseModel):
@@ -416,7 +430,50 @@ class ProposeResponse(BaseModel):
     model: str = ""
 
 
-PROVIDERS = ("mistral", "claude", "openrouter")
+PROVIDERS = ("mistral", "claude", "openrouter", "lmstudio")
+
+# LM Studio's local server (Preferences ▸ AI ▸ LM Studio): no key, its loaded models read from it.
+_lmstudio_cache: tuple[float, list[str]] = (0.0, [])
+
+
+def lmstudio_url() -> str:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    return os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234/v1").rstrip("/")
+
+
+def lmstudio_models(refresh: bool = False) -> list[str]:
+    """The models LM Studio has loaded (its server's GET /models), for Preferences' model selects. Empty when its
+    server isn't running or nothing is loaded. Kept for ten seconds so the availability checks don't stall on it."""
+    global _lmstudio_cache
+    import time
+    now = time.monotonic()
+    if not refresh and now - _lmstudio_cache[0] < 10.0:
+        return _lmstudio_cache[1]
+    models: list[str] = []
+    try:
+        import httpx
+        data = httpx.get(lmstudio_url() + "/models", timeout=4).json().get("data", [])
+        # Only models that can chat: an embedding model in the list can't write or check anything.
+        models = sorted({m["id"] for m in data if isinstance(m, dict) and m.get("id") and "embed" not in m["id"].lower()})
+    except Exception:
+        models = []
+    _lmstudio_cache = (now, models)
+    return models
+
+
+def make_lmstudio(model: str = "", timeout_s: float = 300.0) -> Provider | None:
+    """A local model in LM Studio: the one named, else the first its server has loaded. None when it isn't running."""
+    chosen = model or os.environ.get("LMSTUDIO_MODEL", "")
+    if not chosen:
+        loaded = lmstudio_models(refresh=True)
+        chosen = loaded[0] if loaded else ""
+    return LmStudioProvider(chosen, timeout_s=timeout_s, base_url=lmstudio_url(),
+                            max_tokens=int(os.environ.get("LMSTUDIO_MAX_TOKENS", "12000"))) if chosen else None
+
+
+def lmstudio_error() -> str:
+    return (f"LM Studio isn't answering at {lmstudio_url()} (or has no model loaded): start its local server, "
+            "load a model, then choose it here. LMSTUDIO_BASE_URL in ai_service/.env points at another address.")
 
 
 def available_providers() -> dict[str, bool]:
@@ -425,6 +482,7 @@ def available_providers() -> dict[str, bool]:
     return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
             "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
             "openrouter": bool(os.environ.get("OPENROUTER_API_KEY")),
+            "lmstudio": bool(lmstudio_models()),  # a local server, not a key: its loaded models say it's there
             "pixellab": bool(os.environ.get("PIXELLAB_API_KEY")),
             "bfl": bool(os.environ.get("BFL_API_KEY")),
             "autosprite": bool(os.environ.get("AUTO_SPRITE_API_KEY") or os.environ.get("AUTOSPRITE_API_KEY"))}
@@ -470,6 +528,11 @@ def list_models(provider: str) -> list[str]:
             data = [m for m in data if "image" in (m.get("architecture") or {}).get("input_modalities", [])]
         free = lambda m: m["id"].endswith(":free") or (m.get("pricing") or {}).get("prompt") == "0"
         return [m["id"] for m in sorted(data, key=lambda m: (not free(m), m["id"]))]
+    if provider == "lmstudio":
+        models = lmstudio_models(refresh=True)
+        if not models:
+            raise ProviderError(lmstudio_error())
+        return models
     if provider == "claude" and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         import anthropic
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY") or None)
@@ -478,13 +541,15 @@ def list_models(provider: str) -> list[str]:
 
 
 def make_provider(name: str, model: str | None = None) -> Provider | None:
-    """The model that writes: Mistral (MISTRAL_API_KEY), Claude (ANTHROPIC_API_KEY) or any of OpenRouter's
-    (OPENROUTER_API_KEY; OPENROUTER_MODEL, else GPT-6 Luna)."""
+    """The model that writes: Mistral (MISTRAL_API_KEY), Claude (ANTHROPIC_API_KEY), any of OpenRouter's
+    (OPENROUTER_API_KEY; OPENROUTER_MODEL, else GPT-6 Luna), or a local one in LM Studio (no key)."""
     if not available_providers().get(name):
         return None
     if name == "openrouter":
         return OpenRouterProvider(os.environ["OPENROUTER_API_KEY"], model or os.environ.get("OPENROUTER_MODEL", OPENROUTER_WRITE_MODEL),
                                   timeout_s=300.0, max_tokens=16000)
+    if name == "lmstudio":
+        return make_lmstudio(model or "")
     if name == "claude":
         return ClaudeProvider(api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
                               model=model or os.environ.get("CLAUDE_MODEL", "claude-opus-5-5"),
@@ -515,6 +580,8 @@ def make_checker(provider: str = "auto", model: str = "") -> Provider | None:
     if provider == "openrouter":
         key = os.environ.get("OPENROUTER_API_KEY")
         return OpenRouterProvider(key, model or os.environ.get("OPENROUTER_CHECK_MODEL", OPENROUTER_CHECK_MODEL)) if key else None
+    if provider == "lmstudio":
+        return make_lmstudio(model or os.environ.get("LMSTUDIO_CHECK_MODEL", ""))
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -522,11 +589,13 @@ def make_checker(provider: str = "auto", model: str = "") -> Provider | None:
 
 
 def make_vision(provider: str = "auto", model: str = "") -> Provider | None:
-    """Looks at images (6.2). auto and mistral: Mistral Large 4; openrouter: a vision model there."""
+    """Looks at images (6.2). auto and mistral: Mistral Large 4; openrouter: a vision model there; lmstudio: a local one."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     if provider == "openrouter":
         key = os.environ.get("OPENROUTER_API_KEY")
         return OpenRouterProvider(key, model or os.environ.get("OPENROUTER_VISION_MODEL", OPENROUTER_VISION_MODEL), timeout_s=240.0) if key else None
+    if provider == "lmstudio":
+        return make_lmstudio(model or os.environ.get("LMSTUDIO_VISION_MODEL", ""), timeout_s=240.0)
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -538,6 +607,8 @@ def default_checker() -> Provider | None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     if os.environ.get("AIGE_CHECK_PROVIDER") == "openrouter":
         return make_checker("openrouter")
+    if os.environ.get("AIGE_CHECK_PROVIDER") == "lmstudio":
+        return make_checker("lmstudio")
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -552,6 +623,8 @@ def default_vision() -> Provider | None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     if os.environ.get("AIGE_VISION_PROVIDER") == "openrouter":
         return make_vision("openrouter")
+    if os.environ.get("AIGE_VISION_PROVIDER") == "lmstudio":
+        return make_vision("lmstudio")
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -1019,6 +1092,40 @@ def create_app(
             return {"ok": False, "errors": [f"The selection failed: {error}"]}
         return {"ok": True, "png": _b64.b64encode(png).decode("ascii"), "box": box, "points": request.points}
 
+    @app.post("/places/paint-prompt")
+    def places_paint_prompt(request: PaintPromptRequest) -> dict:
+        """The STYLE-ONLY art direction for a place, written from its Planner data and used as a style reference by
+        the painter (not a layout brief — the block-out fixes the layout). A paint-method build opened from the Planner
+        starts with it in ① Confirm."""
+        provider: Provider | None = state["provider"]
+        if provider is None:
+            return {"ok": False, "errors": ["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"]}
+        # STYLE ONLY. This prompt is a reference for the painter's ART STYLE, not a composition brief. The exact layout
+        # comes from the block-out (and the ontology zones/part counts), which is especially important when the place is
+        # painted in tiles: each tile is painted from its own crop, so any instruction here about painting a "complete
+        # map" or placing "the centre / market square / roads" makes the model recompose a whole scene inside ONE tile.
+        # Layout parameters are therefore deliberately NOT sent — they are resolved in the plan, not in the art direction.
+        data = {"name": request.name, "type": request.type, "place": request.place, "story": request.story}
+        task = ("You write the STYLE-ONLY art-direction prompt for painting a 2D game place, seen from above at an "
+                "isometric top-down angle. From the place's data below, describe ONLY its VISUAL STYLE: the era and "
+                "architecture, the buildings' materials and roofing, the colour palette and temperature, the age, "
+                "wealth and upkeep of the place, its mood and atmosphere, the lighting, and the texture of the ground "
+                "and vegetation. This is a STYLE REFERENCE used while painting many separate tiles of the place; a "
+                "block-out already fixes exactly where the land, streets, squares, water, fields and buildings go. "
+                "So do NOT describe the layout or composition: never say where the centre, market square, roads, rivers "
+                "or any part lies, never describe the whole scene's shape or boundaries, and never instruct the painter "
+                "to paint a complete map, a whole village or town, or a central square. Describe the look, never the plan. "
+                "Do NOT describe characters, building interiors or the interface. Return only the style text, one "
+                "short paragraph under 150 words (about 900 characters), no quotes.")
+        try:
+            reply = provider.complete([{"role": "system", "content": task},
+                                       {"role": "user", "content": "Place data:\n" + json.dumps(data, ensure_ascii=False)}])
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error)]}
+        state["usage"].add(reply.usage)
+        prompt = (reply.text or "").strip().strip('"').strip()
+        return {"ok": bool(prompt), "prompt": prompt, "usage": reply.usage.model_dump()}
+
     @app.post("/places/paint")
     def places_paint(request: PaintRequest) -> dict:
         """A place painted whole from its plan's block-out (docs/places/painted-places.md §2), by FLUX.3 Image;
@@ -1051,13 +1158,48 @@ def create_app(
         # The plan's parts (each zone, where it is, its buildings by kind and count) go with the place to every prompt.
         if request.zones:
             request.place = {**request.place, "zones": request.zones}
+        # Each component's fields as set in ① Confirm (density, wealth, street style, its parts) go into the prompt so the
+        # painter composes the place accordingly.
+        if request.components:
+            described = []
+            for c in request.components:
+                if not isinstance(c, dict):
+                    continue
+                name = str(c.get("name") or c.get("id") or "")
+                bits = [f"{k}={v}" for k, v in (c.get("params") or {}).items() if v not in (None, "")]
+                if c.get("density"):
+                    bits.append(f"density={c['density']}")
+                kinds = c.get("kinds") or {}
+                if isinstance(kinds, dict) and kinds:
+                    bits.append("parts: " + ", ".join(f"{kk}×{vv}" for kk, vv in kinds.items()))
+                if bits:
+                    described.append(f"{name}: " + "; ".join(bits))
+            if described:
+                text = "Component fields — " + " | ".join(described) + "."
+                request.design = (request.design + "; " if request.design else "") + text
+                request.notes = (request.notes + "\n" if request.notes else "") + text
+        # The Paint Prompt (① Confirm): the place's layout in the user's words, the painter's main guide.
+        if request.paintPrompt:
+            lead = request.paintPrompt.strip()
+            request.design = (lead + "; " + request.design) if request.design else lead
+            request.notes = (lead + "\n" + request.notes) if request.notes else lead
+        # Plan/composition parameters (layout form): painter must follow them, especially in Paint (Free) with no drawn plan.
+        if request.layoutParams:
+            layout_text = "Plan/composition parameters — " + "; ".join(
+                f"{k}: {v}" for k, v in request.layoutParams.items() if v not in (None, "", [], {})
+            ) + "."
+            request.place = {**request.place, "layoutParams": request.layoutParams}
+            request.design = (request.design + "; " + layout_text) if request.design else layout_text
+            request.notes = (request.notes + "\n" + layout_text) if request.notes else layout_text
         if request.free:
-            # Composed by the painter on the land, then its tiles (saved as they're painted: a run cut short goes on).
+            # Painted in congruent tiles directly from the colour-coded block-out (docs/places/tiling.md §6);
+            # each tile saved as it is painted so a run cut short can go on.
             from .bfl import paint_free
             try:
                 png, prompt = paint_free(key, (folder / request.blockout).read_bytes(), request.place, request.scale, request.contents,
                                          request.design, request.request or query, guide, request.notes, request.seed, report,
-                                         folder / "paint-tiles", request.model)
+                                         folder / "paint-tiles", request.model, cols=request.cols, rows=request.rows,
+                                         variety=request.variety, debug_dir=folder / "testing")
             except Exception as error:  # noqa: BLE001 - said to the editor
                 return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
             (folder / "painting.png").write_bytes(png)
@@ -1065,7 +1207,7 @@ def create_app(
             import shutil
             shutil.rmtree(folder / "paint-tiles", ignore_errors=True)  # painted: the next painting starts afresh
             report(1, 1, "Painted")
-            return {"ok": True, "provider": f"{PAINT_MODELS.get(request.model, request.model)} (composed, then tiles)", "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
+            return {"ok": True, "provider": f"{PAINT_MODELS.get(request.model, request.model)} (congruent tiles)", "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
                     "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
         written = write_place_words(state["provider"], query, guide, request.place, request.story, request.look, request.legend)
         try:
@@ -1073,7 +1215,8 @@ def create_app(
             png, prompt = paint_place(key, request.model, (folder / request.blockout).read_bytes(), request.legend,
                                       request.place, request.story, request.look, request.notes, request.seed,
                                       reference.read_bytes() if reference and reference.is_file() else None,
-                                      guide, written, request.objects, report)
+                                      guide, written, request.objects, report, cols=request.cols, rows=request.rows,
+                                      variety=request.variety, debug_dir=folder / "testing")
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
         (folder / "painting.png").write_bytes(png)
@@ -1794,6 +1937,8 @@ def create_app(
             return {"ok": False, "errors": [f"Unknown provider {request.provider}: one of {', '.join(PROVIDERS)}"]}
         chosen = make_provider(request.provider, request.model or None)
         if chosen is None:
+            if request.provider == "lmstudio":
+                return {"ok": False, "errors": [lmstudio_error()], "available": available_providers()}
             key = {"claude": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}.get(request.provider, "MISTRAL_API_KEY")
             return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"],
                     "available": available_providers()}
@@ -1810,20 +1955,26 @@ def create_app(
         or openrouter, each with a model (empty: its default)."""
         errors = []
         for which, provider in (("check", request.checkProvider), ("vision", request.visionProvider)):
-            if provider not in ("auto", "mistral", "openrouter"):
-                errors.append(f"Unknown {which} provider {provider}: auto, mistral or openrouter")
+            if provider not in ("auto", "mistral", "openrouter", "lmstudio"):
+                errors.append(f"Unknown {which} provider {provider}: auto, mistral, openrouter or lmstudio")
         if errors:
             return {"ok": False, "errors": errors}
         checker = make_checker(request.checkProvider, request.checkModel)
         if checker is None and request.checkProvider != "auto":
-            key = "OPENROUTER_API_KEY" if request.checkProvider == "openrouter" else "MISTRAL_API_KEY"
-            errors.append(f"No key for the check model: set {key} in ai_service/.env")
+            if request.checkProvider == "lmstudio":
+                errors.append(lmstudio_error())
+            else:
+                key = "OPENROUTER_API_KEY" if request.checkProvider == "openrouter" else "MISTRAL_API_KEY"
+                errors.append(f"No key for the check model: set {key} in ai_service/.env")
         else:
             state["checker"] = checker
         vision = make_vision(request.visionProvider, request.visionModel) if request.visionProvider != "auto" else None
         if request.visionProvider != "auto" and vision is None:
-            key = "OPENROUTER_API_KEY" if request.visionProvider == "openrouter" else "MISTRAL_API_KEY"
-            errors.append(f"No key for the vision model: set {key} in ai_service/.env")
+            if request.visionProvider == "lmstudio":
+                errors.append(lmstudio_error())
+            else:
+                key = "OPENROUTER_API_KEY" if request.visionProvider == "openrouter" else "MISTRAL_API_KEY"
+                errors.append(f"No key for the vision model: set {key} in ai_service/.env")
         else:
             # auto: Claude itself when it writes, else Mistral Large 4 (as before).
             state["chosenVision"] = vision
@@ -1836,6 +1987,8 @@ def create_app(
     def places_revise_plan(request: RevisePlanRequest) -> dict:
         if not request.instruction.strip():
             return {"ok": False, "errors": ["Say what to change"]}
+        # Plan and layout are different things: a painted place has no plan, so what's revised there is its layout.
+        progress.label("Revising the layout" if request.stage == "layout" else "Revising the plan")
         return _planning(lambda p: revise_plan(p, request.brief, request.plan, request.result, request.instruction,
                                                request.context, request.mode, where=request.where, stage=request.stage,
                                                room=request.room, language=request.language))
@@ -1976,7 +2129,7 @@ def create_app(
     @app.post("/planner/{step}")
     def planner_step(step: str, body: dict = Body(default_factory=dict)) -> dict:
         """The AI Planner's steps (app/planner.py): concept, outline, act, scene, critic, character,
-        quests, place, systems, visuals, review."""
+        quests, world, gameplay, system, behaviour, systems, visuals, review, revise, revise_chained, dialogue, buildcheck, judgetest, cutscene, requirements, assets, implement, timeline, input, uipanel, objects, smallscenes, placements, decompose."""
         provider: Provider | None = state["provider"]
         if provider is None:
             return {"ok": False, "errors": ["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"]}

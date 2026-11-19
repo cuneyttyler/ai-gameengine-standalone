@@ -1447,9 +1447,17 @@ void Solver::Partition(const json& s, int region) {
     };
     std::vector<uint8_t> anySketch(W * H, 0);
     std::vector<Zone> zones;
+    struct ZoneQuota {
+        double requested = 0; // preferred/requested target from plan/confirm
+        double min = 0;
+        double max = 1e9;
+        bool fixed = false;   // drawn/painted: area is exact
+    };
+    std::vector<ZoneQuota> qinfo;
     double wanted = 0;
     for (const auto& z : s.value("into", json::array())) {
         Zone zone;
+        ZoneQuota qi;
         zone.id = z.value("id", "");
         zone.node = z.value("node", zone.id);
         zone.module = z.value("module", "");
@@ -1465,7 +1473,19 @@ void Solver::Partition(const json& s, int region) {
                 if (m.is_string()) zone.along.insert(m.get<std::string>());
             }
         }
-        zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
+        // Prefer explicit quota/range from compile (requested/preferred area) so relative zone sizes are preserved.
+        qi.min = (z.contains("minQuota") && z["minQuota"].is_number()) ? z["minQuota"].get<double>() : 0.0;
+        qi.max = (z.contains("maxQuota") && z["maxQuota"].is_number()) ? z["maxQuota"].get<double>() : 1e9;
+        if (qi.max <= 0) qi.max = 1e9;
+        if (z.contains("quota") && z["quota"].is_number()) zone.quota = z["quota"].get<double>();
+        else {
+            const auto r = RangeOf(z.value("area", json()), 400);
+            zone.quota = r.lo > 0 ? (r.lo + r.hi) / 2.0 : 400;
+            if (qi.min <= 0) qi.min = r.lo;
+            if (qi.max >= 1e9 && r.hi > 0) qi.max = r.hi;
+        }
+        if (qi.min <= 0) qi.min = zone.quota;
+        qi.requested = zone.quota;
         zone.prefers = z.value("prefers", json::object());
         zone.flexible = z.value("flexible", false);
         zone.rel = z.value("rel", json::array());
@@ -1475,6 +1495,8 @@ void Solver::Partition(const json& s, int region) {
         if (const json b = z.value("box", json()); b.is_array() && b.size() == 4) {
             zone.box = {std::max(0, b[0].get<int>()), std::max(0, b[1].get<int>()), std::min(W, b[2].get<int>()), std::min(H, b[3].get<int>())};
             zone.quota = std::max(1, (zone.box[2] - zone.box[0]) * (zone.box[3] - zone.box[1]));
+            qi.requested = zone.quota;
+            qi.fixed = true;
         }
         if (const json paint = z.value("paint", json()); paint.is_array() && !paint.empty()) {
             for (int c : DecodeCells(paint, W)) {
@@ -1482,6 +1504,8 @@ void Solver::Partition(const json& s, int region) {
             }
             zone.box = {0, 0, 0, 0}; // drawn: it doesn't grow
             zone.quota = std::max<double>(1, zone.painted.size());
+            qi.requested = zone.quota;
+            qi.fixed = true;
         }
         if (const json sketch = z.value("sketch", json()); sketch.is_array() && !sketch.empty() && zone.painted.empty()) {
             zone.sketched.assign(W * H, 0);
@@ -1491,29 +1515,47 @@ void Solver::Partition(const json& s, int region) {
         }
         wanted += zone.quota;
         zones.push_back(zone);
+        qinfo.push_back(qi);
     }
     std::vector<int> available;
     for (int c : parent.cells) {
         if (owner_[c] == region && !road_[c] && !water_[c] && !occ_[kBuilding][c]) available.push_back(c);
     }
     if (zones.empty() || available.empty()) return;
-    // Quotas scaled to what's there (open land is left between zones). Zones
-    // without buildings (farmland, a green) give way first: the wards' parcels
-    // need their land, a field can be smaller.
+    // Quotas scaled to what's there (open land is left between zones). When capacity is tight,
+    // scale requested/preferred zone areas proportionally so relative zone sizes are preserved
+    // (Confirm preferred vs Layout calculated). Fixed/drawn/painted zones keep their exact area.
     const double room = 0.92 * available.size();
-    if (wanted > room) {
-        double built = 0, flexible = 0;
-        for (const auto& z : zones) (z.flexible ? flexible : built) += z.quota;
-        if (built <= room) {
-            const double left = room - built;
-            for (auto& z : zones) {
-                if (z.flexible) z.quota *= flexible > 0 ? left / flexible : 0;
+    double fixedTotal = 0, growRequested = 0;
+    for (size_t i = 0; i < zones.size(); ++i) {
+        if (qinfo[i].fixed) fixedTotal += zones[i].quota;
+        else growRequested += qinfo[i].requested;
+    }
+    const double cap = std::max(1.0, room - fixedTotal);
+    if (growRequested > cap && growRequested > 0) {
+        // Keep per-zone minima when feasible; otherwise scale everything proportionally.
+        double minTotal = 0;
+        for (size_t i = 0; i < zones.size(); ++i) if (!qinfo[i].fixed) minTotal += std::min(qinfo[i].min, qinfo[i].requested);
+        if (minTotal <= cap) {
+            const double extra = cap - minTotal;
+            const double extraReq = std::max(0.0, growRequested - minTotal);
+            for (size_t i = 0; i < zones.size(); ++i) {
+                if (qinfo[i].fixed) continue;
+                const double base = std::min(qinfo[i].min, qinfo[i].requested);
+                const double share = extraReq > 0 ? (qinfo[i].requested - base) / extraReq : 0.0;
+                zones[i].quota = std::max(1.0, base + extra * share);
             }
         } else {
-            const double keep = 0.1 * room; // a little for the fields, the rest for the wards
-            for (auto& z : zones) z.quota *= z.flexible ? (flexible > 0 ? keep / flexible : 0) : (room - (flexible > 0 ? keep : 0)) / built;
+            const double factor = cap / growRequested;
+            for (size_t i = 0; i < zones.size(); ++i) {
+                if (!qinfo[i].fixed) zones[i].quota = std::max(1.0, qinfo[i].requested * factor);
+            }
         }
+    } else if (growRequested > 0 && room > 0) {
+        // Under/at capacity: keep requested targets so calculated areas reflect preferred sizes/ratios.
+        for (size_t i = 0; i < zones.size(); ++i) if (!qinfo[i].fixed) zones[i].quota = std::max(1.0, qinfo[i].requested);
     }
+    (void)wanted;
     // Planned zones (the layout form's zone-shape "blocks"): rectangles cut along the main roads (rows and
     // columns that are mostly road), each sliced among the zones that go there, the central ones to the zones
     // that prefer the centre; cuts on the shared street lattice. Each zone then takes its rectangle as if

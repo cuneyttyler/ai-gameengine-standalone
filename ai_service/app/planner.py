@@ -121,6 +121,136 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
     return out
 
 
+DECOMPOSE_TASK = """You are an AI Planner. Decompose a user's revision request into a sequence of atomic, executable tasks.
+Each task should be a single, clear instruction that can be executed independently by the planner's revise step.
+
+Rules:
+- Split on logical boundaries: "then", "and then", "after that", "afterwards", "next", "also", ",", ";"
+- Each task must be self-contained and executable by the revise step alone
+- Preserve the original intent and order
+- Don't split atomic actions (e.g., "edit s1-01's goal" is one task)
+- Return ONLY the tasks list, no extra commentary
+
+Example:
+Input: "Split s1-01 into two beats, then move s1-02 to s1-03, then update the act summary"
+Output: ["Split s1-01 into two beats", "Move s1-02 to s1-03", "Update the act summary"]
+
+Input: "Make Jory a fisherman and update his dialogue"
+Output: ["Make Jory a fisherman", "Update Jory's dialogue"]
+
+Input: "Fix the east gate and repair the bridge"
+Output: ["Fix the east gate", "Repair the bridge"]"""
+
+DECOMPOSE_SHAPE = """{"tasks": ["task 1", "task 2", ...], "rationale": ""}"""
+
+
+def decompose_request(provider: Provider, instruction: str) -> dict:
+    """Decompose a natural language instruction into atomic tasks using LLM."""
+    inputs = {"instruction": instruction}
+    return _step(provider, DECOMPOSE_TASK, inputs, DECOMPOSE_SHAPE, "tasks",
+                 lambda a: [] if isinstance(a.get("tasks"), list) else ["'tasks' must be a list"], None)
+
+
+def plan_revise_chained(provider: Provider, inputs: dict) -> dict:
+    """Decompose a revise request and execute each task as a separate revise step, flattening the
+    edits in order (the engine applies them one after another, so the last state is the sum)."""
+    instruction = inputs.get("instruction", "")
+    if not instruction.strip():
+        return {"ok": False, "errors": ["Say what to change"]}
+
+    # Step 1: Decompose into atomic tasks.
+    decomp = decompose_request(provider, instruction)
+    if not decomp.get("ok"):
+        return decomp
+    tasks = decomp.get("tasks", [])
+    if not tasks:
+        return {"ok": True, "edits": [], "tasks": [], "results": [], "rationale": "nothing to change"}
+
+    # Step 2: Run each task in turn; apply its edits to the working copy so the next task sees them.
+    all_edits: list[dict] = []
+    results = []
+    context = dict(inputs)
+    context.pop("instruction", None)
+    docs = {k: json.loads(json.dumps(v)) for k, v in (context.get("documents") or {}).items()}
+    for i, task in enumerate(tasks):
+        task_inputs = dict(context)
+        task_inputs["instruction"] = task
+        task_inputs["documents"] = docs
+        result = plan_revise_one(provider, task_inputs)
+        edits = result.get("edits") or []
+        # Apply this task's edits to the working copy and collect them in order.
+        for e in edits:
+            all_edits.append(e)
+            _apply_edit(docs, e)
+        results.append({"task": task, "ok": bool(result.get("ok")), "edits": edits,
+                        "error": " ".join(result.get("errors") or []) or None})
+        if not result.get("ok"):
+            break  # a task that can't be done stops the chain (the ones before it stay)
+
+    return {
+        "ok": all(r["ok"] for r in results),
+        "edits": all_edits,
+        "tasks": tasks,
+        "results": results,
+        "rationale": " ".join(f"{i + 1}. {r['task']}" for i, r in enumerate(results)),
+    }
+
+
+def plan_revise(provider: Provider, inputs: dict) -> dict:
+    """A revise from a panel: first decomposed into tasks, then each run as its own revise pass (the
+    edits flattened in order). The build tabs (scope) keep the direct single pass."""
+    if inputs.get("scope"):
+        return _revise_step(provider, inputs)
+    return plan_revise_chained(provider, inputs)
+
+
+def _apply_edit(docs: dict, e: dict) -> None:
+    """Apply one edit to the working copy of the documents between chained tasks: a field edit, or a
+    whole document renamed, copied, made or removed."""
+    op = e.get("op", "replace")
+    doc = e.get("doc")
+    if op == "rename":
+        to = e.get("to")
+        if doc in docs and to:
+            moved = docs.pop(doc)
+            if isinstance(moved, dict) and "id" in moved:
+                moved["id"] = to.rsplit("/", 1)[-1]
+            docs[to] = moved
+    elif op == "copy":
+        to = e.get("to")
+        if doc in docs and to:
+            import copy as _copy
+            copied = _copy.deepcopy(docs[doc])
+            if isinstance(copied, dict) and "id" in copied:
+                copied["id"] = to.rsplit("/", 1)[-1]
+            docs[to] = copied
+    elif op == "create":
+        if doc and isinstance(e.get("value"), dict):
+            docs[doc] = dict(e["value"])
+    elif op == "delete":
+        docs.pop(doc, None)
+    else:
+        pointer = e.get("pointer", "")
+        if doc in docs and isinstance(pointer, str) and pointer.startswith("/"):
+            _apply_pointer(docs[doc], pointer, e.get("value"))
+
+
+def _apply_pointer(doc: Any, pointer: str, value: Any) -> None:
+    """Apply one JSON pointer edit to a document in place (for the working copy between chained tasks)."""
+    parts = [p.replace("~1", "/").replace("~0", "~") for p in pointer.split("/")[1:]]
+    target = doc
+    for p in parts[:-1]:
+        target = target[int(p)] if isinstance(target, list) else target[p]
+    last = parts[-1]
+    if isinstance(target, list):
+        if last == "-":
+            target.append(value)
+        else:
+            target[int(last)] = value
+    else:
+        target[last] = value
+
+
 def _get(data: dict, path: str):
     """A dotted path into nested dicts ("setting.era"), or None."""
     for key in path.split("."):
@@ -347,8 +477,7 @@ def plan_outline(provider: Provider, inputs: dict) -> dict:
 
 # --- ③ Story --------------------------------------------------------------------------------
 
-ACT_TASK = """③ Story, one act: split the act into chapters (each with one dramatic question) and give each chapter
-its scenes as scene cards, in the order they're played. About sceneTarget scenes in the act.
+STORY_TASK = """③ Story: write the full story with acts, chapters, and scenes. Include the structure template's acts in order, each split into chapters with dramatic questions, and give each chapter its scenes as scene cards. About sceneTarget scenes total.
 A scene card: goal, conflict, outcome; value (a McKee value from vocab.Value) with chargeBefore and chargeAfter
 (-1 to 1; a kernel scene turns its value); mode (vocab.SceneMode: cutscene, dialogue, gameplay, environmental,
 discoverable, ambient); kernel (true for the main line's turning points); beat (the template beat it carries, if
@@ -358,10 +487,11 @@ patient | witness}] (the player's character takes part in most); needsParts (wha
 two main-line scenes). Use the cast's and places' ids; a scene may need a new minor character or place: give it
 an id (character/<slug>, location/<slug>) and the engine adds it. Earlier acts' chapters are given: continue them."""
 
-ACT_SHAPE = """{"act": {"chapters": [{"id": "ch-1", "question": "", "summary": "",
-   "scenes": [{"id": "s-1", "mode": "dialogue", "kernel": true, "beat": "", "goal": "", "conflict": "", "outcome": "",
-     "value": "truth-lie", "chargeBefore": -1, "chargeAfter": 1, "location": "location/x",
-     "participants": [{"who": "character/x", "role": "agent"}], "needsParts": [], "branch": ""}]}]},
+STORY_SHAPE = """{"story": {"acts": [{"id": "act-1", "purpose": "setup", "summary": "", "beats": ["inciting-incident"],
+    "chapters": [{"id": "ch-1", "question": "", "summary": "",
+    "scenes": [{"id": "s-1", "mode": "dialogue", "kernel": true, "beat": "", "goal": "", "conflict": "", "outcome": "",
+      "value": "truth-lie", "chargeBefore": -1, "chargeAfter": 1, "location": "location/x",
+      "participants": [{"who": "character/x", "role": "agent"}], "needsParts": [], "branch": ""}]}]}},
  "rationale": ""}"""
 
 
@@ -369,19 +499,20 @@ def plan_act(provider: Provider, inputs: dict) -> dict:
     modes = set(_vocab(inputs, "SceneMode"))
 
     def check(answer: dict) -> list[str]:
-        act = answer.get("act")
-        if not isinstance(act, dict) or not act.get("chapters"):
-            return ["'act' needs chapters"]
+        story = answer.get("story")
+        if not isinstance(story, dict) or not story.get("acts"):
+            return ["'story' needs acts"]
         problems = []
-        for ch in act["chapters"]:
-            if not ch.get("scenes"):
-                problems.append(f"chapter {ch.get('id')} has no scenes")
-            for s in ch.get("scenes", []):
-                if modes and s.get("mode") not in modes:
-                    problems.append(f"scene {s.get('id')} mode {s.get('mode')!r} isn't one of {', '.join(sorted(modes))}")
+        for act in story["acts"]:
+            for ch in act.get("chapters", []):
+                if not ch.get("scenes"):
+                    problems.append(f"chapter {ch.get('id')} has no scenes")
+                for s in ch.get("scenes", []):
+                    if modes and s.get("mode") not in modes:
+                        problems.append(f"scene {s.get('id')} mode {s.get('mode')!r} isn't one of {', '.join(sorted(modes))}")
         return problems
 
-    return _step(provider, ACT_TASK, inputs, ACT_SHAPE, "act", check, inputs.get("problems"))
+    return _step(provider, STORY_TASK, inputs, STORY_SHAPE, "story", check, inputs.get("problems"))
 
 
 SCENE_TASK = """③ Story, one scene: write the scene from its card, against the world as it stands (world: who is
@@ -466,9 +597,9 @@ def plan_critic(provider: Provider, inputs: dict) -> dict:
                  lambda a: [] if isinstance(a.get("findings"), list) else ["'findings' must be a list"], inputs.get("problems"))
 
 
-# --- ④ Characters ---------------------------------------------------------------------------
+# --- ⑤ Characters ---------------------------------------------------------------------------
 
-CHARACTER_TASK = """④ Characters, one character: detail it from its outline line, the scenes it takes part in and
+CHARACTER_TASK = """⑤ Characters, one character: detail it from its outline line, the scenes it takes part in and
 the facts about it. Write its biography (backstory, personality as [trait, 0-1] pairs from vocab.Trait, need,
 desire, weakness, motivations from vocab.Motivation, secrets, arc {from, to}), appearance (description and a few
 palette colours), voice (how it speaks, a sample line), relationships to other characters of the cast
@@ -569,9 +700,9 @@ def plan_routine(provider: Provider, inputs: dict) -> dict:
     return _step(provider, ROUTINE_TASK, inputs, ROUTINE_SHAPE, "routine", check, inputs.get("problems"))
 
 
-# --- ⑤ Quests -------------------------------------------------------------------------------
+# --- ⑥ Quests -------------------------------------------------------------------------------
 
-QUESTS_TASK = """⑤ Quests: the main quest in full, and side quests. The main quest (id q-main, type main) keeps
+QUESTS_TASK = """⑥ Quests: the main quest in full, and side quests. The main quest (id q-main, type main) keeps
 every stage of its skeleton (each plays a kernel scene: keep its index and advancesScene) and gets objectives,
 aliases, journal lines and rewards. Side quests (about sideQuests of them; mode tells whether the genre wants
 main-only or side-only quests) grow from characters' motivations: pick a giver whose motivation and situation
@@ -645,10 +776,10 @@ def plan_quests(provider: Provider, inputs: dict) -> dict:
     return _step(provider, task, inputs, QUESTS_SHAPE, "quests", check, inputs.get("problems"))
 
 
-# --- ⑥ Places -------------------------------------------------------------------------------
+# --- ④ World -------------------------------------------------------------------------------
 
-PLACE_TASK = """⑥ Places, one place: describe it from everything the story needs of it — what it is (purpose,
-culture, era, mood, residents), what it contains (zones, named buildings and features, interiors as places of
+WORLD_TASK = """④ World: describe a location from everything the story needs of it — what it is (purpose,
+culture, era, mood, residents), what it contains (zones, named buildings and features, interiors as locations of
 their own), the story anchors the scenes and quests need (each {id, module: a component or module from the
 interpret context, relation, for: {quest} or {scene}} — every quest anchor given must be there), the characters
 who live or work there (actors {character, anchor}: the anchor is the id of one of its storyAnchors — the forge for
@@ -656,32 +787,32 @@ the smith, the counter for the innkeeper, a house for someone who lives there �
 style (palette, materials). Then write its draft Brief for the Build panel, exactly as the interpret context
 describes for its build type (schema aige.brief/1: buildType, name, scale, components with their fields, features,
 style), with the anchors' modules on. In the Brief, also describe its background (the ground everything stands on,
-painted as one picture: docs/places/background.md): a first line saying what the place is for a game and its style
+painted as one picture: docs/places/background.md): a first line saying what the location is for a game and its style
 and look, then one line per kind of ground it has, "<ground>: <how it looks, in plain words>" (asphalt: road with white
 lane markings; stone-floor: old worn stone slabs, cracks, moss in the joints). Only ground: no buildings or things.
 A section of an open world ("world" given; entry.section): its scale class matches entry.size (small: a village or
 hamlet, medium: a large village, big: a town, huge: a city; a harbour, castle, camp or farmland its own words for
 these), no woods or wilderness round it (the world grows those), its exits are the world's roads (edge "road", no
 edge of the map); entry.where (by the sea, near a forest) is the world's to place, mentioned in the description only.
-A place entered through a gateway (a connection with "gateway", entered "here": a dungeon behind a cave mouth, a
+A location entered through a gateway (a connection with "gateway", entered "here": a dungeon behind a cave mouth, a
 crypt under a graveyard): its way in is the room or zone the gateway leads to (an entrance hall at the foot of the
 stairs), and it has gateways of its own back ("entered" "there": its stairs up), which the engine places.
-Its zones are its layout, as a level designer lays the place out for the builder: "contains.zones", one for each part
-of the place (each a component of its Brief: a residential ward, the market square, the craftsmen's ward, a graveyard,
+Its zones are its layout, as a level designer lays the location out for the builder: "contains.zones", one for each part
+of the location (each a component of its Brief: a residential ward, the market square, the craftsmen's ward, a graveyard,
 farmland; a dungeon's levels, a building's floors), each {"id": a short slug, "kind": its component (one of the Brief's
 enabled components), "feel": what it's like in a sentence (its buildings, its people, its sounds), "where": {"words": where
-it lies in the place ("in the north-east, beyond the square, along the road to the graveyard"), "rel": the same as
+it lies in the location ("in the north-east, beyond the square, along the road to the graveyard"), "rel": the same as
 relations — [{"type": near | adjacent | along | far | north-of | south-of | east-of | west-of (of another zone's id, "river"
 or "road") | in-north | in-south | in-east | in-west | in-middle (of "site": the whole map)}]}, "share": how much of the
-place it takes, a percent (they add up to at most 85: streets and open land take the rest), "buildings": [{"type": house
+location it takes, a percent (they add up to at most 85: streets and open land take the rest), "buildings": [{"type": house
 | cottage | townhouse | shop | smithy | workshop | inn | tavern | temple | chapel | stable | mill | barn | warehouse |
 tower | ..., "count", "for": a character id or role when it's someone's (the smith's forge, Nima's apothecary)}], "features":
 what stands in it that isn't a building (a well, market stalls, graves, a fountain, crop fields, a notice board)}. Every
 building the story or the cast needs is in a zone (each merchant's shop, each resident's home), the counts add up to the
-Brief's scale, and the zones' places agree with the exits (the zone a road leaves by is on that edge) and with the story
-(the graveyard on the side its gate is). The builder lays the place out by them."""
+Brief's scale, and the zones' locations agree with the exits (the zone a road leaves by is on that edge) and with the story
+(the graveyard on the side its gate is). The builder lays the location out by them."""
 
-PLACE_SHAPE = """{"place": {"kind": "<build type>",
+WORLD_SHAPE = """{"location": {"kind": "<build type>",
    "description": {"purpose": "", "culture": "", "era": "", "mood": "", "residents": []},
    "contains": {"zones": [{"id": "", "kind": "<component>", "feel": "", "where": {"words": "", "rel": [{"type": "in-north", "to": "site"}]},
                           "share": 25, "buildings": [{"type": "house", "count": 6, "for": ""}], "features": [""]}],
@@ -691,7 +822,7 @@ PLACE_SHAPE = """{"place": {"kind": "<build type>",
    "exits": [{"to": "location/y", "edge": "east", "kind": "road"}],
    "style": {"palette": [], "materials": []},
    "brief": {"schema": "aige.brief/1", "buildType": "<build type>", "name": "", "scale": {}, "components": {}, "features": [],
-             "background": {"description": "<line one: the place and its look>
+             "background": {"description": "<line one: the location and its look>
 <ground>: <how it looks>
 ..."}}},
  "rationale": ""}"""
@@ -702,19 +833,19 @@ def plan_place(provider: Provider, inputs: dict) -> dict:
     anchors = [a.get("where", {}).get("anchor") or a.get("alias") for a in inputs.get("anchors", []) if a.get("kind") == "spot"]
 
     def check(answer: dict) -> list[str]:
-        p = answer.get("place")
+        p = answer.get("location")
         if not isinstance(p, dict):
-            return ["'place' must be an object"]
+            return ["'location' must be an object"]
         problems = []
         brief = p.get("brief")
         if not isinstance(brief, dict):
-            problems.append("the place needs its brief")
+            problems.append("the location needs its brief")
         elif kind and brief.get("buildType") not in (kind, None):
             problems.append(f"brief.buildType must be {kind}")
-        # Its layout: each zone where it lies, how much of the place it takes, its buildings by type.
+        # Its layout: each zone where it lies, how much of the location it takes, its buildings by type.
         zones = ((p.get("contains") or {}).get("zones") or []) if isinstance(p.get("contains"), dict) else []
         if kind not in ("interior",) and not zones:
-            problems.append("contains.zones: the place's layout, a zone for each part (where it lies, its share, its buildings)")
+            problems.append("contains.zones: the location's layout, a zone for each part (where it lies, its share, its buildings)")
         share = 0
         relations = {"near", "adjacent", "along", "far", "north-of", "south-of", "east-of", "west-of", "in-north", "in-south",
                      "in-east", "in-west", "in-middle"}
@@ -733,7 +864,7 @@ def plan_place(provider: Provider, inputs: dict) -> dict:
             if isinstance(z.get("share"), (int, float)):
                 share += z["share"]
             else:
-                problems.append(f"contains.zones[{k}] ({z.get('id')}) needs its share (a percent of the place)")
+                problems.append(f"contains.zones[{k}] ({z.get('id')}) needs its share (a percent of the location)")
         if share > 90:
             problems.append(f"the zones' shares add up to {share}%: at most 85% (streets and open land take the rest)")
         have = {a.get("id") for a in p.get("storyAnchors", [])} | {a.get("module") for a in p.get("storyAnchors", [])}
@@ -742,7 +873,7 @@ def plan_place(provider: Provider, inputs: dict) -> dict:
                 problems.append(f"the story anchor {anchor!r} a quest needs is missing")
         return problems
 
-    return _step(provider, PLACE_TASK, inputs, PLACE_SHAPE, "place", check, inputs.get("problems"))
+    return _step(provider, WORLD_TASK, inputs, WORLD_SHAPE, "location", check, inputs.get("problems"))
 
 
 # --- ⑦ Systems and ⑧ Visuals ----------------------------------------------------------------
@@ -1796,10 +1927,10 @@ def plan_review(provider: Provider, inputs: dict) -> dict:
                  lambda a: [] if isinstance(a.get("findings"), list) else ["'findings' must be a list"], inputs.get("problems"))
 
 
-REVISE_TASK = """A change to the plan, in the user's words: turn it into edits of the plan's documents. Each edit is
-{doc (a document from index or documents), pointer (a JSON pointer into it, e.g. "/biography/need",
-"/relationships/0/type", "/card/goal"), value (the new value), reason}. Change only what the words ask, in the
-documents that hold it (a character's family in its relationships; a scene's events in its card); the engine marks
+REVISE_TASK = """A change to the plan, in the user's words: think through the steps agentically, then turn it into edits of the plan's documents. Each edit is
+{doc (a document from index or documents), op (add|move|replace), pointer (a JSON pointer into it, e.g. "/biography/need",
+"/relationships/0/type", "/card/goal"), value (the new value for add/replace), from (for move), reason}. 
+Change only what the words ask, in the documents that hold it (a character's family in its relationships; a scene's events in its card); the engine marks
 what depends on the changed documents for regenerating. If the words ask for nothing the documents hold, answer
 no edits and say why in the rationale.
 "value" is the new value at the pointer, of the same type and shape as the value it replaces (its document's
@@ -1808,22 +1939,54 @@ holds — a cutscene the words ask for goes into the timeline's "cutscenes" as o
 character's changes): a list stays a list of the same kind of items, an object an object with its fields, a text a
 text. Point at the smallest part that changes ("/stages/0/journal", "/stages/0/objectives/0") rather than a whole list;
 to add an item to a list point at its end ("/stages/0/objectives/-") and give one item of its kind; never write a list
-or an object out as text."""
+or an object out as text.
 
-REVISE_SHAPE = """{"edits": [{"doc": "characters/aldric", "pointer": "/relationships/0", "value": null, "reason": ""}], "rationale": ""}"""
+For scene splitting, think through the steps first, then use generic edits:
+Example: "Split s1-01 into two beats, making four in act 1" →
+1. rename s1-03 to s1-04 (shift the last scene up)
+2. rename s1-02 to s1-03 (shift the middle scene)
+3. copy s1-01 to s1-02 (the new second beat, then trim it)
+4. edit s1-01 to only arrival+Sella (trim first)
+5. edit s1-02 to only questioning (trim second)
+
+Document operations act on WHOLE documents (use them only when the request says so — renaming a page/item to a new id, copying one, making a new one, deleting one):
+- {"op":"rename","doc":"story/scenes/s1-03","to":"story/scenes/s1-04","reason":"..."} — the document (and its file) is renamed; use it ONLY when the request says to rename/move an item to a new id ("move s1-03 to s1-04", "rename the market to the bazaar"). References that list the old id follow.
+- {"op":"copy","doc":"story/scenes/s1-01","to":"story/scenes/s1-02","reason":"..."} — a new document that is a copy of `doc`.
+- {"op":"create","doc":"story/scenes/s1-05","value":{<the whole new document>},"reason":"..."} — a brand-new document.
+- {"op":"delete","doc":"story/scenes/s1-05","reason":"..."} — remove a document.
+Field edits (add|replace|move with a pointer) change one field inside a document. Apply document operations in the right order (rename the higher ids first, then copy into the freed id).
+
+Adding a scene to an act needs TWO edits, always together: create the scene document, AND add its id to the act's chapter scene list. A scene not listed in its act's chapters does not appear.
+  Example — "Add a scene to act 1":
+  {"op":"create","doc":"story/scenes/s1-05","value":{"schema":"aige.scene/1","id":"s1-05","act":"act-1","order":105.0,"card":{"goal":"","conflict":"","outcome":"","mode":"gameplay","location":"location/bellwether","participants":[]},"summary":""},"reason":"new scene"}
+  {"op":"add","doc":"story/acts/act-1","pointer":"/chapters/0/scenes/-","value":"s1-05","reason":"list the new scene in the act"}
+Removing a scene: delete the document AND take its id out of its act's chapters[].scenes. Renaming a scene: rename the document AND its id is followed in the act (the engine does that), so no act edit is needed for a rename."""
+
+REVISE_SHAPE = """{"edits": [
+  {"doc": "story/scenes/s1-03", "op": "rename", "to": "story/scenes/s1-04", "reason": "shift s1-03 to s1-04"},
+  {"doc": "story/scenes/s1-02", "op": "rename", "to": "story/scenes/s1-03", "reason": "shift s1-02 to s1-03"},
+  {"doc": "story/scenes/s1-01", "op": "copy", "to": "story/scenes/s1-02", "reason": "new second beat, a copy of s1-01"},
+  {"doc": "story/scenes/s1-01", "op": "replace", "pointer": "/card/goal", "value": "Arrive and hear Elder Sella", "reason": "trim to arrival only"},
+  {"doc": "story/scenes/s1-02", "op": "replace", "pointer": "/card/goal", "value": "Question villagers and shopkeepers", "reason": "trim to questioning"}
+ ], "rationale": "split s1-01 into arrival and questioning beats"}"""
 
 
-REVISE_PICK_TASK = """A change to one step of the game's plan (or of its build), in the user's words. First only find
-what it's about: of this step's documents ("index": each document, its name and its fields; "schema": every field a
-document of this step can have, the empty ones too), which ones the words change and which of their fields (as JSON pointers, "/biography/need", "/stages/2/journal", "/characters/3/spot"), and
-why. Only what the words ask: "make Jory a fisherman" is Jory's document alone, not the others; a change that the words
-make to several (every merchant) names each. None when the words ask for nothing this step holds."""
+REVISE_PICK_TASK = """A change to one step of the game's plan (or of its build), in the user's words. First make a short ordered plan
+("steps") of what must happen (think through it agentically), then find what it's about: of this step's documents ("index": each document, its name and its fields; "schema": every field a document of this step can have, the empty ones too), which ones the words change and which of their fields (as JSON pointers, "/biography/need", "/stages/2/journal", "/characters/3/spot"), and why. Only what the words ask: "make Jory a fisherman" is Jory's document alone, not the others; a change that the words make to several (every merchant) names each. None when the words ask for nothing this step holds.
+A request to rename, copy or delete a whole item ("move s1-03 to s1-04", "duplicate the inn", "remove the market") targets that item's document.
+Adding or removing a scene also targets its act (the act's chapters list the scene ids); include the act document (story/acts/<act>) among the targets.
 
-REVISE_PICK_SHAPE = """{"targets": [{"doc": "characters/jory-fen", "fields": ["/line", "/gameplay/class"], "why": ""}],
- "rationale": ""}"""
+For scene splitting, the steps should describe the edits in order (renaming scenes, copying a scene, then editing the copies):
+Example: "Split s1-01 into two beats" → steps: ["rename s1-03 to s1-04", "rename s1-02 to s1-03", "copy s1-01 to s1-02", "edit s1-01 to arrival only", "edit s1-02 to questioning only"]"""
+
+REVISE_PICK_SHAPE = """{"steps": ["rename s1-03 to s1-04", "rename s1-02 to s1-03", "copy s1-01 to s1-02", "edit s1-01 to arrival only", "edit s1-02 to questioning only"],
+ "targets": [{"doc": "story/scenes/s1-01", "fields": ["/card/goal", "/card/conflict", "/card/outcome"], "why": "trim to arrival only, and copy it to s1-02"},
+            {"doc": "story/scenes/s1-02", "fields": ["/card/goal", "/card/conflict", "/card/outcome"], "why": "the copied beat, renamed to s1-03"},
+            {"doc": "story/scenes/s1-03", "fields": [], "why": "renamed to s1-04"}], "rationale": ""}"""
 
 
-def plan_revise(provider: Provider, inputs: dict) -> dict:
+def plan_revise_one(provider: Provider, inputs: dict) -> dict:
+    """One revise pass over the documents: pick the docs the words are about, then edit only those."""
     if inputs.get("scope"):
         return _revise_step(provider, inputs)
     known = {d.get("doc") for d in inputs.get("index", [])} | set((inputs.get("documents") or {}).keys())
@@ -1834,12 +1997,37 @@ def plan_revise(provider: Provider, inputs: dict) -> dict:
             return ["'edits' must be a list"]
         problems = []
         for e in edits:
-            if known and e.get("doc") not in known:
-                problems.append(f"no document {e.get('doc')!r}")
-            if not str(e.get("pointer", "")).startswith("/"):
-                problems.append(f"pointer {e.get('pointer')!r} must start with /")
-            elif isinstance(inputs.get("documents"), dict) and e.get("doc") in inputs["documents"]:
-                problems += _structure_problems(str(e.get("doc")), inputs["documents"][e["doc"]], str(e["pointer"]), e.get("value"))
+            if not isinstance(e, dict):
+                problems.append("an edit must be an object")
+                continue
+            op = e.get("op", "replace")
+            doc = e.get("doc", "")
+            if op in ("rename", "copy"):
+                if known and doc not in known:
+                    problems.append(f"no document {doc!r}")
+                if not str(e.get("to", "")).strip():
+                    problems.append(f"op '{op}' needs 'to' (the new document id)")
+            elif op == "create":
+                if not doc:
+                    problems.append("op 'create' needs 'doc'")
+                if not isinstance(e.get("value"), dict):
+                    problems.append("op 'create' needs 'value' (the whole new document)")
+            elif op == "delete":
+                if known and doc not in known:
+                    problems.append(f"no document {doc!r}")
+            elif op in ("add", "replace", "move"):
+                if known and doc not in known:
+                    problems.append(f"no document {doc!r}")
+                if not str(e.get("pointer", "")).startswith("/"):
+                    problems.append(f"pointer {e.get('pointer')!r} must start with /")
+                if op in ("add", "replace") and "value" not in e:
+                    problems.append(f"op '{op}' requires 'value'")
+                if op == "move" and "from" not in e:
+                    problems.append("op 'move' requires 'from'")
+                if isinstance(inputs.get("documents"), dict) and doc in inputs["documents"]:
+                    problems += _structure_problems(doc, inputs["documents"][doc], str(e.get("pointer", "")), e.get("value"))
+            else:
+                problems.append(f"op {op!r} must be one of add, replace, move, rename, copy, create, delete")
         return problems
 
     return _step(provider, REVISE_TASK, inputs, REVISE_SHAPE, "edits", check, inputs.get("problems"))
@@ -1936,10 +2124,18 @@ def _revise_step(provider: Provider, inputs: dict) -> dict:
     if not picked.get("ok"):
         return {**picked, "usage": usage.model_dump()}
     targets = [t for t in picked.get("targets") or [] if isinstance(t, dict) and t.get("doc") in documents]
-    if not targets:
+    chosen = {t["doc"]: documents[t["doc"]] for t in targets}
+    # The act always lists its scene ids: added, removed or renamed, a scene changes its act too, so the
+    # act documents are always editable in a Story revision (a new scene's id goes into chapters[].scenes).
+    if str(inputs.get("scope") or "") == "story":
+        have = {t["doc"] for t in targets}
+        for d, v in documents.items():
+            if d.startswith("story/acts/") and d not in have:
+                targets.append({"doc": d, "fields": ["chapters"], "why": "the act lists its scenes"})
+                chosen[d] = v
+    if not chosen:
         return {"ok": True, "edits": [], "targets": [], "rationale": picked.get("rationale", "nothing in this step to change"),
                 "usage": usage.model_dump()}
-    chosen = {t["doc"]: documents[t["doc"]] for t in targets}
     edit_inputs = {"instruction": inputs.get("instruction"), "step": inputs.get("scope"), "targets": targets, "documents": chosen,
                    "structure": {d: _structure(v) for d, v in chosen.items()},
                    "schema": schema,
@@ -1951,12 +2147,34 @@ def _revise_step(provider: Provider, inputs: dict) -> dict:
             return ["'edits' must be a list"]
         problems = []
         for i, e in enumerate(edits):
-            if not isinstance(e, dict) or e.get("doc") not in chosen:
-                problems.append(f"edits[{i}].doc must be one of {', '.join(chosen)} (the documents the words are about)")
-            elif not str(e.get("pointer", "")).startswith("/"):
-                problems.append(f"edits[{i}].pointer {e.get('pointer')!r} must start with /")
+            if not isinstance(e, dict):
+                problems.append(f"edits[{i}] must be an object")
+                continue
+            op = e.get("op", "replace")
+            doc = e.get("doc", "")
+            if op in ("rename", "copy"):
+                # A whole document renamed/copied: the source must be one of this step's documents.
+                if doc not in documents:
+                    problems.append(f"edits[{i}].doc {doc!r} isn't one of this step's documents")
+                if not str(e.get("to", "")).strip():
+                    problems.append(f"edits[{i}] op '{op}' needs 'to' (the new document id)")
+            elif op == "create":
+                if not doc:
+                    problems.append(f"edits[{i}] op 'create' needs 'doc'")
+                if not isinstance(e.get("value"), dict):
+                    problems.append(f"edits[{i}] op 'create' needs 'value' (the whole new document)")
+            elif op == "delete":
+                if doc not in documents:
+                    problems.append(f"edits[{i}].doc {doc!r} isn't one of this step's documents")
+            elif op in ("add", "replace", "move"):
+                if doc not in chosen:
+                    problems.append(f"edits[{i}].doc must be one of {', '.join(chosen)} (the documents the words are about)")
+                elif not str(e.get("pointer", "")).startswith("/"):
+                    problems.append(f"edits[{i}].pointer {e.get('pointer')!r} must start with /")
+                else:
+                    problems += _structure_problems(f"edits[{i}]", chosen[doc], str(e["pointer"]), e.get("value"))
             else:
-                problems += _structure_problems(f"edits[{i}]", chosen[e["doc"]], str(e["pointer"]), e.get("value"))
+                problems.append(f"edits[{i}].op {op!r} must be one of add, replace, move, rename, copy, create, delete")
         return problems
 
     task = (REVISE_TASK + "\nChange only the documents and fields in \"targets\" (what the words were found to be about); keep "
@@ -2813,9 +3031,25 @@ def plan_placements(provider: Provider, inputs: dict) -> dict:
     return _step(provider, PLACEMENTS_TASK, inputs, PLACEMENTS_SHAPE, "placements", check, inputs.get("problems"))
 
 
+# Planner steps in order:
+# ① Concept          -> concept
+# ② Outline          -> outline
+# ③ Story (Acts & Scenes) -> act, scene, critic
+# ④ World             -> world (was "place")
+# ⑤ Characters       -> character, routine
+# ⑥ Quests           -> quests
+# ⑦ Systems          -> gameplay, system, behaviour, systems
+# ⑧ Visuals          -> visuals
+# Other steps:
+#    review, revise, dialogue, buildcheck, judgetest, cutscene,
+#    requirements, assets, implement, timeline, input, uipanel,
+#    objects, smallscenes, placements
+
 STEPS: dict[str, Callable[[Provider, dict], dict]] = {
-    "concept": plan_concept, "outline": plan_outline, "act": plan_act, "scene": plan_scene, "critic": plan_critic,
-    "character": plan_character, "routine": plan_routine, "quests": plan_quests, "place": plan_place, "gameplay": plan_gameplay, "system": plan_system, "behaviour": plan_behaviour, "systems": plan_systems,
+    "concept": plan_concept, "outline": plan_outline,
+    "act": plan_act, "scene": plan_scene, "critic": plan_critic,
+    "world": plan_place, "character": plan_character, "routine": plan_routine, "quests": plan_quests,
+    "gameplay": plan_gameplay, "system": plan_system, "behaviour": plan_behaviour, "systems": plan_systems,
     "visuals": plan_visuals, "review": plan_review, "revise": plan_revise, "dialogue": plan_dialogue,
     "buildcheck": plan_buildcheck,
     "judgetest": plan_judgetest,
@@ -2829,4 +3063,5 @@ STEPS: dict[str, Callable[[Provider, dict], dict]] = {
     "objects": plan_objects,
     "smallscenes": plan_scenes,
     "placements": plan_placements,
+    "decompose": decompose_request,
 }

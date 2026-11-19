@@ -7,6 +7,9 @@
   "classes": [
     "NatureArea"
   ],
+  "compile": {
+    "fill": "forest-floor"
+  },
   "quantity": {
     "area": {
       "type": "area",

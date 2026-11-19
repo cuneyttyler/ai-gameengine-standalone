@@ -244,7 +244,8 @@ static json ComponentRows(const Ontology& ontology, const json& brief, const Bui
     // Components: every one the build type allows, those in the Brief first.
     json components = json::array();
     std::vector<std::string> order;
-    const auto given = brief.value("components", json::object());
+    const auto givenAll = brief.value("components", json::object());
+    const json given = givenAll.is_object() ? givenAll : json::object();
     for (const auto& [id, c] : given.items()) order.push_back(id);
     for (const auto& id : build->components) {
         if (std::find(order.begin(), order.end(), id) == order.end()) order.push_back(id);
@@ -302,16 +303,32 @@ static json ComponentRows(const Ontology& ontology, const json& brief, const Bui
             }
         }
         if (round >= 2 && enabled) {
+            // Its fields from the ontology (quantity + quality): area, plots, wealth, bustle, street-style... each with
+            // its type, choices and default. Every field, so the Confirm page shows them all.
             json params = json::array();
             const json given = settings.value("params", json::object());
             ParamScope scope(*m, given);
             for (const auto* group : {&m->quantity, &m->quality}) {
                 for (const auto& [name, f] : *group) {
-                    if (!f.ask || !Holds(f.when, scope)) continue;
+                    if (!Holds(f.when, scope)) continue;
                     params.push_back(FieldControl(ontology, name, f, given.value(name, json())));
                 }
             }
             row["params"] = params;
+            // Its parts from the ontology (its children): a market ward's market square, shop plots, inn plots, well,
+            // roads; each with how many the user set (or empty, the plan decides).
+            json parts = json::array();
+            const json givenKinds = settings.value("kinds", json::object());
+            for (const ChildDef& rule : m->children) {
+                const ModuleDef* cm = ontology.Module(rule.module);
+                if (cm == nullptr || cm->level == PlaceLevel::Dressing) continue;
+                json part = {{"module", rule.module}, {"name", cm->name}, {"min", rule.min}, {"max", rule.max}};
+                if (givenKinds.is_object() && givenKinds.contains(rule.module) && givenKinds[rule.module].is_number()) {
+                    part["count"] = givenKinds[rule.module];
+                }
+                parts.push_back(part);
+            }
+            if (!parts.empty()) row["parts"] = parts;
         }
         components.push_back(row);
     }
@@ -361,7 +378,8 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
     }
     window["settings"] = settings;
     json features = json::array();
-    for (const auto& f : brief.value("features", json::array())) {
+    const json featuresIn = brief.value("features", json::array()); // a brief written by another version may hold null here
+    for (const auto& f : featuresIn.is_array() ? featuresIn : json::array()) {
         if (f.is_object()) features.push_back(f.value("module", ""));
         else if (f.is_string()) features.push_back(f);
     }
