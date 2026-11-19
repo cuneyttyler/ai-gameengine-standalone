@@ -20,7 +20,7 @@ import httpx
 import numpy as np
 
 from .providers import ProviderError
-from .tiling import paint_tiled, tile_prompt, tile_note
+# Tiling pipeline removed from production; painting uses a placeholder.
 from .style_refs import generate_style_refs
 
 BASE = "https://api.bfl.ai/v1"
@@ -622,11 +622,8 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
     from the tile before it, the bands restored exactly and the tiles joined on an exact grid. No whole-scene compose
     step (which made buildings the same size in big scenes). Open-world sections use the same path.
     Returns (painting PNG bytes at the block-out's size, the prompt used)."""
-    import io
-    from PIL import Image
-    import math
-    Image.MAX_IMAGE_PIXELS = None
-    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
+    # PLACEHOLDER: tiling pipeline disabled in production.
+    return blockout_png, "placeholder (tiling disabled)"
     W, H = src.size
     black = src.getpixel((2, 2))
     painter = BflPainter(key, model if model in PAINT_MODELS else "flux-3-image")
@@ -771,11 +768,8 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     context band from the previously painted tile, restored exactly, then joined on an exact grid. The building/terrain
     colour key and counts come from the legend; art direction from the Build panel. A reference picture's look is
     described in the prompt. Works for any number of tiles and place types (and open-world sections)."""
-    import io
-    import math
-    from PIL import Image
-    Image.MAX_IMAGE_PIXELS = None
-    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
+    # PLACEHOLDER: tiling pipeline disabled in production.
+    return blockout_png, "placeholder (tiling disabled)"
     W, H = src.size
     black = src.getpixel((2, 2))
     guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
