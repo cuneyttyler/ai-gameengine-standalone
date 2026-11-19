@@ -642,11 +642,10 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
     # Style references: paint a few distinct designs of each part kind once, and give those sheets to every tile of
     # this place. Generated once here so all tiles of the place share the same designs (open-world: once per section).
     refs = []
-    if variety:
-        # `design` is the place's Paint Prompt from the Build panel's Confirm window — use it as the sheet's art style.
-        refs, _ = generate_style_refs(place, variety, painter, design, out_dir=tiles_dir)
-        if report:
-            report(0, cols * rows, "Painted 1 style-reference sheet")
+    # Manual style: one combined stylesheet of 30 designs, generated with the Confirm-window paint prompt as style reference.
+    refs, _ = generate_style_refs({"zones": zones}, "low", painter, design, out_dir=tiles_dir)
+    if report:
+        report(0, cols * rows, "Painted 1 style-reference sheet")
 
     # Per-tile colour key: only zones whose tint actually appears in this tile's crop. The full-place key makes the
     # model build every listed zone inside a tile that shows only one of them. Detect from the SAME resized crop that
@@ -672,8 +671,10 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
         return prompt
 
     def paint_one(png, prompt, width, height, sd, tile_idx=0):
-        size = {"width": width // 16 * 16, "height": height // 16 * 16}
-        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
+        ref_bytes = refs[0] if refs else None
+        references = [ref_bytes] if ref_bytes is not None else None
+        return painter.repaint(png, prompt, references=references,
+                              width=width // 16 * 16, height=height // 16 * 16)
 
     out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
                       seed=seed, black=black, debug_dir=debug_dir)
@@ -798,12 +799,11 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     painter_model = model if model in PAINT_MODELS else "flux-3-image"
     painter = BflPainter(key, painter_model)
 
-    # Style references (Low/Medium/High variety), shared across this place's tiles; combined with any user reference.
+    # Style references: manual style — one combined stylesheet of 30 designs.
     style_refs = []
-    if variety:
-        style_refs, _ = generate_style_refs(place, variety, painter, notes, out_dir=tiles_dir)
-        if report:
-            report(0, cols * rows, "Painted 1 style-reference sheet")
+    style_refs, _ = generate_style_refs({"zones": place.get("zones") or []}, "low", painter, notes, out_dir=tiles_dir)
+    if report:
+        report(0, cols * rows, "Painted 1 style-reference sheet")
 
     def prompt_for_tile(r, c, edges, tile_idx=0):
         base = keyed if painter_model != "flux-2-klein-4b" else draft
@@ -816,9 +816,14 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
             buf = io.BytesIO(); big.save(buf, format="PNG")
             size = {"width": width // 16 * 16, "height": height // 16 * 16}
             return painter.repaint(buf.getvalue(), prompt, seed=sd, **size)
-        size = {"width": width // 16 * 16, "height": height // 16 * 16}
+        size_w = width // 16 * 16
+        size_h = height // 16 * 16
         refs = style_refs + ([reference] if reference else [])
-        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
+        ref_bytes = refs[0] if refs else None
+        references = [ref_bytes] if (refs and ref_bytes is not None) else ([reference] if reference else None)
+        # keep all refs for production behavior? manual uses single sheet only
+        return painter.repaint(png, prompt, references=refs,
+                              width=size_w, height=size_h)
 
     out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
                       seed=seed, black=black, debug_dir=debug_dir)

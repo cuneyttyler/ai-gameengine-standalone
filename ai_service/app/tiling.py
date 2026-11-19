@@ -578,30 +578,23 @@ def paint_tiled(blockout_png: bytes, paint_one, cols: int, prompt_for_tile, rows
                 if pb is not None: pb.save(dbg / "extracted" / f"PAINTED_top_from_r{r-1}_c{c}_to_r{r}_c{c}.png")
                 block.save(dbg / "overlays" / f"blockout_overlay_r{r}_c{c}.png")
 
-            # Cache of the FINISHED painted tile (never the blockout — that would put the flat blockout in the result).
-            done_file = saved / f"painted_r{r}_c{c}.png" if saved else None
-            if done_file and done_file.is_file():
-                result = Image.open(done_file).convert("RGB")
-            else:
-                # Show WHICH tile is being built while it is in flight (done holds the last finished tile).
-                if report:
-                    report(step, total, f"Painting tile {step + 1} of {total} (row {r+1}, column {c+1})")
-                if saved:
-                    block.save(saved / f"blockout_r{r}_c{c}.png")
-                buf = io.BytesIO(); block.save(buf, format="PNG")
-                raw_painted = Image.open(io.BytesIO(paint_one(buf.getvalue(), prompt_for_tile(r, c, context_edges(r, c), step),
-                                                              cw, ch, seed, step))).convert("RGB").resize((cw, ch), Image.LANCZOS)
-                if dbg:
-                    raw_painted.save(dbg / "painted" / f"raw_r{r}_c{c}.png")
-                result = raw_painted
-                # EXACT restoration of the painted neighbour bands (congruence). Same as the manual 4-tile test:
-                # TOP neighbour's bottom band first, then RIGHT neighbour's left band.
-                if top_nb is not None:
-                    result.paste(painted_bottom(top_nb), (0, 0))
-                if right_nb is not None:
-                    result.paste(painted_left(right_nb), (cw - ctx_x, 0))
-                if done_file:
-                    result.save(done_file)
+            # No tile caching: always repaint (manual behaviour).
+            if report:
+                report(step, total, f"Painting tile {step + 1} of {total} (row {r+1}, column {c+1})")
+            if saved:
+                block.save(saved / f"blockout_r{r}_c{c}.png")
+            buf = io.BytesIO(); block.save(buf, format="PNG")
+            raw_painted = Image.open(io.BytesIO(paint_one(buf.getvalue(), prompt_for_tile(r, c, context_edges(r, c), step),
+                                                          cw, ch, seed, step))).convert("RGB").resize((cw, ch), Image.LANCZOS)
+            if dbg:
+                raw_painted.save(dbg / "painted" / f"raw_r{r}_c{c}.png")
+            result = raw_painted
+            if top_nb is not None:
+                result.paste(painted_bottom(top_nb), (0, 0))
+            if right_nb is not None:
+                result.paste(painted_left(right_nb), (cw - ctx_x, 0))
+            if saved:
+                result.save(saved / f"painted_r{r}_c{c}.png")
 
             if dbg:
                 result.save(dbg / "painted" / f"restored_r{r}_c{c}.png")
