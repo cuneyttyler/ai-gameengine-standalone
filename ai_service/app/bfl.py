@@ -624,61 +624,7 @@ def paint_free(key: str, blockout_png: bytes, place: dict, scale: str, contents:
     Returns (painting PNG bytes at the block-out's size, the prompt used)."""
     # PLACEHOLDER: tiling pipeline disabled in production.
     return blockout_png, "placeholder (tiling disabled)"
-    W, H = src.size
-    black = src.getpixel((2, 2))
-    painter = BflPainter(key, model if model in PAINT_MODELS else "flux-3-image")
-    # Tile grid chosen in the editor from the scene's cell count / pixel density, sent in the request.
-    # 0 means the editor didn't send one (older callers): fall back to a 2x2 grid.
-    cols = cols if cols > 0 else 2
-    rows = rows if rows > 0 else cols
 
-    # Art direction from the Build panel. A zone-tinted block-out uses the generic colour key from the editor's
-    # zones (colour + name + ontology description); land-only block-outs get the land/woods instructions.
-    extra = " ".join(x for x in (guide, design, request, notes) if x).strip()
-
-    # Style references: paint a few distinct designs of each part kind once, and give those sheets to every tile of
-    # this place. Generated once here so all tiles of the place share the same designs (open-world: once per section).
-    refs = []
-    if variety:
-        # `design` is the place's Paint Prompt from the Build panel's Confirm window — use it as the sheet's art style.
-        refs, _ = generate_style_refs(place, variety, painter, design, out_dir=tiles_dir)
-        if report:
-            report(0, cols * rows, "Painted 1 style-reference sheet")
-
-    # Per-tile colour key: only zones whose tint actually appears in this tile's crop. The full-place key makes the
-    # model build every listed zone inside a tile that shows only one of them. Detect from the SAME resized crop that
-    # is put into the block-out (pw x ph), not the raw native cell — thin features (a road only a few px wide) vanish
-    # when downsampled, so detecting on the raw cell and the model seeing the resized crop disagree.
-    zones = place.get("zones") or []
-    tile_zones = {}
-    tile_terrain = {}
-    _pw = min(2048, W)
-    _ph = max(16, round(_pw * H / W / 16) * 16)
-    for r in range(rows):
-        for c in range(cols):
-            bx0, bx1 = c * W // cols, (c + 1) * W // cols
-            by0, by1 = r * H // rows, (r + 1) * H // rows
-            cell = src.crop((bx0, by0, bx1, by1)).resize((_pw, _ph), Image.LANCZOS)
-            tile_zones[(r, c)] = _zones_in_tile(cell, zones)
-            tile_terrain[(r, c)] = _terrain_in_tile(cell)
-
-    def prompt_for_tile(r, c, edges, tile_idx=0):
-        tile_place = {**place, "zones": tile_zones.get((r, c), [])} if zones else place
-        prompt = tile_prompt(tile_place, scale, extra, "", "", "", edges, with_refs=bool(refs),
-                             terrain_lines=tile_terrain.get((r, c)))
-        return prompt
-
-    def paint_one(png, prompt, width, height, sd, tile_idx=0):
-        size = {"width": width // 16 * 16, "height": height // 16 * 16}
-        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
-
-    out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
-                      seed=seed, black=black, debug_dir=debug_dir)
-    return out, prompt_for_tile(0, 0, {"right":"outer","top":"outer","left":"outer","bottom":"outer","position":"the whole map (a single tile)"}) + "\n---\n(painted in " + str(cols) + " x " + str(rows) + " congruent tiles)"
-
-
-# Who paints a place whole (Project Settings ▸ AI ▸ paint), as shown.
-# (FLUX.2 pro and max, and FLUX-3-Image-to-Pro/-Klein, are no longer offered: they drift from the layout.)
 PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-3-image": "FLUX-3-Image"}
 
 
@@ -770,52 +716,3 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     described in the prompt. Works for any number of tiles and place types (and open-world sections)."""
     # PLACEHOLDER: tiling pipeline disabled in production.
     return blockout_png, "placeholder (tiling disabled)"
-    W, H = src.size
-    black = src.getpixel((2, 2))
-    guide = paint_guide(str(place.get("type") or "")) if guide is None else guide
-    # Tile grid chosen in the editor from the scene's cell count / pixel density, sent in the request.
-    # 0 means the editor didn't send one (older callers): fall back to a 2x2 grid.
-    cols = cols if cols > 0 else 2
-    rows = rows if rows > 0 else cols
-    tiled = _tile_legend(legend, cols) if cols > 1 or rows > 1 else legend
-    # The plan's building/terrain colour key, its counts and the art direction. The whole place's counts become
-    # "of the whole map's" for a tiled paint, and the per-tile note is added in prompt_for_tile.
-    keyed = (blockout_prompt(place, story, look, tiled, notes, guide, written, objects) + " " +
-             (counts_sentence(tiled) if objects else "")).strip()
-    if cols > 1 or rows > 1:
-        keyed = keyed.replace("Exactly ", "Of the whole map's ")
-    if reference:
-        keyed += (" A reference picture shows how this place should look: paint it in that picture's look, palette and "
-                  "details, but keep the block-out's layout exactly.")
-    draft = draft_prompt(place, story, look, tiled, notes, guide, written, objects)
-
-    painter_model = model if model in PAINT_MODELS else "flux-3-image"
-    painter = BflPainter(key, painter_model)
-
-    # Style references (Low/Medium/High variety), shared across this place's tiles; combined with any user reference.
-    style_refs = []
-    if variety:
-        style_refs, _ = generate_style_refs(place, variety, painter, notes, out_dir=tiles_dir)
-        if report:
-            report(0, cols * rows, "Painted 1 style-reference sheet")
-
-    def prompt_for_tile(r, c, edges, tile_idx=0):
-        base = keyed if painter_model != "flux-2-klein-4b" else draft
-        return base + "\n\n" + tile_note(edges)
-
-    def paint_one(png, prompt, width, height, sd, tile_idx=0):
-        if painter_model == "flux-2-klein-4b":
-            im = Image.open(io.BytesIO(png))
-            big = im.resize((4096, round(4096 * height / width)), Image.LANCZOS)
-            buf = io.BytesIO(); big.save(buf, format="PNG")
-            size = {"width": width // 16 * 16, "height": height // 16 * 16}
-            return painter.repaint(buf.getvalue(), prompt, seed=sd, **size)
-        size = {"width": width // 16 * 16, "height": height // 16 * 16}
-        refs = style_refs + ([reference] if reference else [])
-        return painter.repaint(png, prompt, references=refs, seed=sd, **size)
-
-    out = paint_tiled(blockout_png, paint_one, cols, prompt_for_tile, rows=rows, report=report, tiles_dir=tiles_dir,
-                      seed=seed, black=black, debug_dir=debug_dir)
-    label = "klein draft" if painter_model == "flux-2-klein-4b" else "colour key"
-    return out, label + "\n---\n(painted in " + str(cols) + " x " + str(rows) + " congruent tiles)"
-
